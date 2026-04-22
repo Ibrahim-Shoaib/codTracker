@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl *)",
+      "Bash(python3 -m json.tool)",
+      "Bash(node *)",
+      "Bash(npx @shopify/create-app@latest --name cod-tracker --template remix --no-git-init)",
+      "Bash(npx *)",
+      "Bash(git clone *)",
+      "Bash(rsync -a --exclude='.git' app-scaffold/ .)",
+      "Bash(rm -rf app-scaffold)",
+      "Bash(cp -r app-scaffold/. .)",
+      "Bash(rm -rf /c/Users/ibrah/projects/codTracker/prisma)",
+      "Bash(rm -f /c/Users/ibrah/projects/codTracker/app/db.server.ts)",
+      "Bash(npm install *)",
+      "mcp__plugin_supabase_supabase__list_projects",
+      "mcp__plugin_supabase_supabase__apply_migration",
+      "mcp__plugin_supabase_supabase__execute_sql",
+      "mcp__plugin_supabase_supabase__get_project_url",
+      "mcp__plugin_supabase_supabase__get_publishable_keys",
+      "Bash(openssl rand *)"
+    ]
+  }
+}
