@@ -3,14 +3,19 @@ const BASE_URL = 'https://api.postex.pk/services/integration/api/order';
 const DELIVERED_CODES  = new Set(['0005']);
 const RETURNED_CODES   = new Set(['0002', '0006', '0007']);
 
-// Fallback map when transactionStatusHistory is missing or empty
+// Fallback map when transactionStatusHistory is missing or empty.
+// Live data confirmed: the list-orders API never returns transactionStatusHistory,
+// so this map is the primary (and only) status resolution path for all synced orders.
+// Actual API values observed: 'Delivered', 'Return', 'Booked', 'Cancelled', 'Under Verification'
 const STRING_STATUS_MAP = {
   'Delivered':             '0005',
-  'Returned':              '0002',
+  'Return':                '0002', // actual API value — NOT 'Returned'
+  'Returned':              '0002', // kept as safety fallback
   'Booked':                '0003',
   'Out For Delivery':      '0004',
   'Attempted':             '0013',
-  'Delivery Under Review': '0008',
+  'Under Verification':    '0008', // actual API value for 'Delivery Under Review'
+  'Delivery Under Review': '0008', // kept as safety fallback
 };
 
 function resolveStatusCode(raw) {
@@ -27,14 +32,18 @@ function statusFlags(code) {
   return                                  { is_delivered: false, is_returned: false, is_in_transit: true  };
 }
 
-// GET /v1/get-all-order — returns raw dist[] array or throws
-// Verified param names: orderStatusId (camelCase), startDate/endDate (not fromDate/toDate)
+// GET /v1/get-all-order — returns flat order objects or throws.
+// Verified param names: orderStatusId (camelCase), startDate/endDate (not fromDate/toDate).
+// The API may wrap each order in { trackingResponse: {...}, trackingNumber, message } (same
+// envelope as the bulk-tracking endpoint). Extract trackingResponse when present so mapOrder
+// always receives a flat order object regardless of which envelope format the API returns.
 export async function fetchOrders(token, startDate, endDate) {
   const url = `${BASE_URL}/v1/get-all-order?orderStatusId=0&startDate=${startDate}&endDate=${endDate}`;
   const res = await fetch(url, { headers: { token } });
   if (!res.ok) throw new Error(`PostEx fetchOrders failed: ${res.status} ${res.statusText}`);
   const data = await res.json();
-  return data.dist || [];
+  const dist = data.dist || [];
+  return dist.map(item => item.trackingResponse ?? item);
 }
 
 // GET /v2/get-operational-city — 200 = valid token
