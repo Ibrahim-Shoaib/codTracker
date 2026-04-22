@@ -6,6 +6,10 @@ import {
 } from "@shopify/shopify-app-remix/server";
 import { PostgreSQLSessionStorage } from "@shopify/shopify-app-session-storage-postgresql";
 
+if (!process.env.SUPABASE_DATABASE_URL) {
+  throw new Error("SUPABASE_DATABASE_URL is not set. Add it to Railway environment variables.");
+}
+
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
   apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
