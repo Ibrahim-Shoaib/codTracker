@@ -1,14 +1,22 @@
-# This file stores configurations for your Shopify app.
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = ""
+client_id = "c0b0015598600c64aea6c7c8f9e94161"
+name = "cod-tracker"
+application_url = "https://codtracker-production.up.railway.app"
+embedded = true
+
+[webhooks]
+api_version = "2025-10"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/api/webhooks/uninstall"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_products,read_orders"
+scopes = "read_orders,read_products"
+optional_scopes = [ ]
+use_legacy_install_flow = false
 
-[webhooks]
-api_version = "2025-01"
-
-  [[webhooks.subscriptions]]
-  uri = "/api/webhooks/uninstall"
-  topics = ["app/uninstalled"]
+[auth]
+redirect_urls = [ "https://codtracker-production.up.railway.app/auth/callback" ]

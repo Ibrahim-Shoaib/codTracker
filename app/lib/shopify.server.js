@@ -1,7 +1,7 @@
 // Shopify Admin API client — uses REST with session accessToken.
 // This file is the Admin API helper, distinct from app/shopify.server.ts (app config).
 
-const API_VERSION = '2025-01';
+const API_VERSION = '2025-10';
 
 function adminUrl(shop, path) {
   return `https://${shop}/admin/api/${API_VERSION}/${path}`;
