@@ -5,6 +5,8 @@ import {
   shopifyApp,
 } from "@shopify/shopify-app-remix/server";
 import { PostgreSQLSessionStorage } from "@shopify/shopify-app-session-storage-postgresql";
+import { createClient } from "@supabase/supabase-js";
+import { registerUninstallWebhook } from "./lib/shopify.server.js";
 
 if (!process.env.SUPABASE_DATABASE_URL) {
   throw new Error("SUPABASE_DATABASE_URL is not set. Add it to Railway environment variables.");
@@ -19,6 +21,27 @@ const shopify = shopifyApp({
   authPathPrefix: "/auth",
   sessionStorage: new PostgreSQLSessionStorage(process.env.SUPABASE_DATABASE_URL as string),
   distribution: AppDistribution.AppStore,
+  hooks: {
+    afterAuth: async ({ session }) => {
+      const { shop } = session;
+
+      // Create stores row on first install — ignoreDuplicates prevents overwriting
+      // existing credentials on reinstall
+      const supabase = createClient(
+        process.env.SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      );
+      await supabase.from("stores").upsert(
+        { store_id: shop, onboarding_complete: false, onboarding_step: 1 },
+        { onConflict: "store_id", ignoreDuplicates: true }
+      );
+
+      // Register shop-specific uninstall webhook (TOML covers app-level; this is belt-and-suspenders)
+      await registerUninstallWebhook(session).catch((err) =>
+        console.error(`registerUninstallWebhook failed for ${shop}:`, err)
+      );
+    },
+  },
   future: {
     unstable_newEmbeddedAuthStrategy: true,
     expiringOfflineAccessTokens: true,
