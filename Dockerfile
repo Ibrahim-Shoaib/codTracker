@@ -1,12 +1,11 @@
 FROM node:20-alpine
 RUN apk add --no-cache openssl
 
-EXPOSE 8080
+EXPOSE 3000
 
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV PORT=8080
 
 COPY package.json package-lock.json* ./
 
