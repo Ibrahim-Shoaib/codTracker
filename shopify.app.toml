@@ -1,6 +1,6 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "c0b0015598600c64aea6c7c8f9e94161"
+client_id = "4e49263445787763216232655d181ef2"
 name = "cod-tracker"
 application_url = "https://codtracker-production.up.railway.app"
 embedded = true
