@@ -23,33 +23,62 @@ function parseNextUrl(linkHeader) {
 
 // ─── Products ─────────────────────────────────────────────────────────────────
 
-// Returns flat list of all product variants for COGS setup table
-export async function getProductVariants(session) {
+// Returns active products grouped by product, with shopify_cost pre-filled from
+// Shopify's native "Cost per item" field (InventoryItem.cost).
+// Shape: [{ shopify_product_id, product_title, variants: [{ shopify_variant_id,
+//   shopify_product_id, product_title, variant_title, sku, shopify_cost }] }]
+export async function getProductsForCOGS(session) {
   const { shop, accessToken } = session;
-  const variants = [];
-  let url = adminUrl(shop, `products.json?limit=250&fields=id,title,variants`);
+  const headers = adminHeaders(accessToken);
 
+  // 1. Paginate through all active products
+  const rawProducts = [];
+  let url = adminUrl(shop, `products.json?status=active&limit=250&fields=id,title,variants`);
   while (url) {
-    const res = await fetch(url, { headers: adminHeaders(accessToken) });
-    if (!res.ok) throw new Error(`Shopify getProductVariants failed: ${res.status}`);
-    const { products } = await res.json();
-
-    for (const product of products) {
-      for (const variant of product.variants) {
-        variants.push({
-          shopify_variant_id: String(variant.id),
-          shopify_product_id: String(product.id),
-          sku:            variant.sku || '',
-          product_title:  product.title,
-          variant_title:  variant.title,
-        });
-      }
-    }
-
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new Error(`Shopify products fetch failed: ${res.status}`);
+    const data = await res.json();
+    rawProducts.push(...data.products);
     url = parseNextUrl(res.headers.get('Link'));
   }
 
-  return variants;
+  // 2. Collect every inventory_item_id across all variants
+  const invItemIds = [];
+  for (const p of rawProducts) {
+    for (const v of p.variants) {
+      if (v.inventory_item_id) invItemIds.push(v.inventory_item_id);
+    }
+  }
+
+  // 3. Batch-fetch inventory items (Shopify max = 100 per request)
+  const costByInvItemId = {};
+  for (let i = 0; i < invItemIds.length; i += 100) {
+    const batch = invItemIds.slice(i, i + 100);
+    const res = await fetch(
+      adminUrl(shop, `inventory_items.json?ids=${batch.join(',')}&fields=id,cost`),
+      { headers }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      for (const item of data.inventory_items ?? []) {
+        costByInvItemId[item.id] = item.cost != null ? parseFloat(item.cost) : null;
+      }
+    }
+  }
+
+  // 4. Build grouped structure
+  return rawProducts.map(p => ({
+    shopify_product_id: String(p.id),
+    product_title: p.title,
+    variants: p.variants.map(v => ({
+      shopify_variant_id: String(v.id),
+      shopify_product_id: String(p.id),
+      product_title:      p.title,
+      variant_title:      v.title,
+      sku:                v.sku || '',
+      shopify_cost:       costByInvItemId[v.inventory_item_id] ?? null,
+    })),
+  }));
 }
 
 // ─── Orders ───────────────────────────────────────────────────────────────────

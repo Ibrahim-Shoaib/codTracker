@@ -29,11 +29,9 @@ import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { validateToken } from "../lib/postex.server.js";
-import { getProductVariants } from "../lib/shopify.server.js";
 import { getMetaAuthUrl } from "../lib/meta.server.js";
 import { isTokenExpired, isTokenExpiringSoon } from "../lib/meta.server.js";
 import { metaOAuthSession } from "../lib/meta-session.server.js";
-import COGSTable from "../components/COGSTable.jsx";
 
 // ─── Loader ───────────────────────────────────────────────────────────────────
 
@@ -51,30 +49,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     oauthSession.get("meta_ad_accounts") ?? null;
 
   const supabase = await getSupabaseForStore(shop);
-  const [storeRes, costsRes, variants] = await Promise.all([
-    supabase
-      .from("stores")
-      .select(
-        "postex_token, meta_access_token, meta_ad_account_id, meta_token_expires_at, expenses_amount, expenses_type"
-      )
-      .eq("store_id", shop)
-      .single(),
-    supabase
-      .from("product_costs")
-      .select("shopify_variant_id, unit_cost"),
-    getProductVariants(session),
-  ]);
+  const storeRes = await supabase
+    .from("stores")
+    .select(
+      "postex_token, meta_access_token, meta_ad_account_id, meta_token_expires_at, expenses_amount, expenses_type"
+    )
+    .eq("store_id", shop)
+    .single();
 
   const store = storeRes.data;
-  const costsMap: Record<string, number> = {};
-  for (const row of costsRes.data ?? []) {
-    costsMap[row.shopify_variant_id] = row.unit_cost;
-  }
 
   return json({
     store,
-    variants,
-    costsMap,
     pendingToken,
     pendingAccounts,
     metaJustConnected,
@@ -150,44 +136,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return redirect("/app/settings?meta=connected", { headers: { "Set-Cookie": destroyCookie } });
   }
 
-  // ── Section 3: COGS ───────────────────────────────────────────────────────
-  if (intent === "cogs") {
-    const rows: Array<{
-      store_id: string;
-      shopify_variant_id: string;
-      shopify_product_id: string;
-      sku: string;
-      product_title: string;
-      variant_title: string;
-      unit_cost: number;
-      updated_at: string;
-    }> = [];
-
-    for (const [key, value] of formData.entries()) {
-      if (!key.startsWith("cost_")) continue;
-      const variantId = key.slice(5);
-      rows.push({
-        store_id:           shop,
-        shopify_variant_id: variantId,
-        shopify_product_id: String(formData.get(`product_${variantId}`) ?? ""),
-        sku:                String(formData.get(`sku_${variantId}`)     ?? ""),
-        product_title:      String(formData.get(`ptitle_${variantId}`)  ?? ""),
-        variant_title:      String(formData.get(`vtitle_${variantId}`)  ?? ""),
-        unit_cost:          Number(value) || 0,
-        updated_at:         new Date().toISOString(),
-      });
-    }
-
-    if (rows.length > 0) {
-      await supabase
-        .from("product_costs")
-        .upsert(rows, { onConflict: "store_id,shopify_variant_id" });
-    }
-    // Note: do NOT trigger retroactiveCOGSMatch from settings (spec rule)
-    return json({ intent, success: true });
-  }
-
-  // ── Section 4: Expenses ───────────────────────────────────────────────────
+  // ── Section 3: Expenses ───────────────────────────────────────────────────
   if (intent === "expenses") {
     const amount = Number(formData.get("expenses_amount")) || 0;
     const type   = String(formData.get("expenses_type") ?? "monthly");
@@ -208,7 +157,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const { store, variants, costsMap, pendingToken, pendingAccounts,
+  const { store, pendingToken, pendingAccounts,
           metaJustConnected, isMetaExpired, isMetaExpiringSoon } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
@@ -416,25 +365,11 @@ export default function SettingsPage() {
                 snapshots will not be recalculated.
               </Banner>
 
-              {forSection("cogs")?.success && (
-                <Banner tone="success">Product costs saved.</Banner>
-              )}
-
-              <Form method="post">
-                <input type="hidden" name="intent" value="cogs" />
-                <BlockStack gap="400">
-                  <COGSTable variants={variants} costsMap={costsMap} />
-                  <InlineStack>
-                    <Button
-                      submit
-                      variant="primary"
-                      loading={submitting && currentIntent === "cogs"}
-                    >
-                      Save COGS
-                    </Button>
-                  </InlineStack>
-                </BlockStack>
-              </Form>
+              <InlineStack>
+                <Button url="/app/cogs" variant="primary">
+                  Edit COGS
+                </Button>
+              </InlineStack>
             </BlockStack>
           </Card>
         </Layout.Section>

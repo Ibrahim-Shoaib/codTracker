@@ -9,7 +9,7 @@ import {
 import { Card, BlockStack, Text, Button, Banner, InlineStack } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
-import { getProductVariants } from "../lib/shopify.server.js";
+import { getProductsForCOGS } from "../lib/shopify.server.js";
 import { retroactiveCOGSMatch } from "../lib/sync.server.js";
 import COGSTable from "../components/COGSTable.jsx";
 
@@ -19,8 +19,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const metaConnected = url.searchParams.get("meta") === "connected";
 
-  const [variants, supabase] = await Promise.all([
-    getProductVariants(session),
+  const [products, supabase] = await Promise.all([
+    getProductsForCOGS(session),
     getSupabaseForStore(shop),
   ]);
 
@@ -33,7 +33,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     costsMap[row.shopify_variant_id] = row.unit_cost;
   }
 
-  return json({ variants, costsMap, metaConnected });
+  return json({ products, costsMap, metaConnected });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -88,7 +88,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Step3COGS() {
-  const { variants, costsMap, metaConnected } = useLoaderData<typeof loader>();
+  const { products, costsMap, metaConnected } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const saving = navigation.state === "submitting";
@@ -117,7 +117,7 @@ export default function Step3COGS() {
 
         <Form method="post">
           <BlockStack gap="400">
-            <COGSTable variants={variants} costsMap={costsMap} />
+            <COGSTable products={products} costsMap={costsMap} />
             <InlineStack>
               <Button submit variant="primary" loading={saving}>
                 Save & Continue
