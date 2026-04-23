@@ -16,6 +16,8 @@ import COGSTable from "../components/COGSTable.jsx";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
+  const url = new URL(request.url);
+  const metaConnected = url.searchParams.get("meta") === "connected";
 
   const [variants, supabase] = await Promise.all([
     getProductVariants(session),
@@ -31,7 +33,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     costsMap[row.shopify_variant_id] = row.unit_cost;
   }
 
-  return json({ variants, costsMap });
+  return json({ variants, costsMap, metaConnected });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -86,7 +88,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Step3COGS() {
-  const { variants, costsMap } = useLoaderData<typeof loader>();
+  const { variants, costsMap, metaConnected } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const saving = navigation.state === "submitting";
@@ -104,6 +106,10 @@ export default function Step3COGS() {
             in Settings.
           </Text>
         </BlockStack>
+
+        {metaConnected && (
+          <Banner tone="success">Meta Ads connected successfully.</Banner>
+        )}
 
         {actionData && "error" in actionData && (
           <Banner tone="critical">{(actionData as { error: string }).error}</Banner>

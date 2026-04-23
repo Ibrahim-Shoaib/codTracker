@@ -68,6 +68,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const oauthSession = await metaOAuthSession.getSession(cookieHeader);
     oauthSession.set("state", state);
     oauthSession.set("shop", shop);
+    // After Meta OAuth we must re-enter via Shopify admin so authenticate.admin() works.
+    // Direct navigation to /app/* outside the iframe loses the embedded session context.
+    const shopHandle = shop.replace(".myshopify.com", "");
+    const returnTo = `https://admin.shopify.com/store/${shopHandle}/apps/${process.env.SHOPIFY_API_KEY}/onboarding/step2-meta`;
+    oauthSession.set("returnTo", returnTo);
     const metaAuthUrl = getMetaAuthUrl(state);
     const setCookie = await metaOAuthSession.commitSession(oauthSession);
     // Return the URL as JSON — client breaks out of the Shopify iframe via window.top
@@ -96,7 +101,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const cookieHeader = request.headers.get("Cookie");
     const oauthSession = await metaOAuthSession.getSession(cookieHeader);
     const destroyCookie = await metaOAuthSession.destroySession(oauthSession);
-    return redirect("/app/onboarding/step3-cogs", {
+    return redirect("/app/onboarding/step3-cogs?meta=connected", {
       headers: { "Set-Cookie": destroyCookie },
     });
   }

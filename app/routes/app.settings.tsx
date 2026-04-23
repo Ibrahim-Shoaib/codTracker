@@ -39,6 +39,8 @@ import COGSTable from "../components/COGSTable.jsx";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
+  const url = new URL(request.url);
+  const metaJustConnected = url.searchParams.get("meta") === "connected";
 
   // Check for pending Meta OAuth data (after callback redirect)
   const cookieHeader = request.headers.get("Cookie");
@@ -74,6 +76,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     costsMap,
     pendingToken,
     pendingAccounts,
+    metaJustConnected,
     isMetaExpired:      isTokenExpired(store?.meta_token_expires_at),
     isMetaExpiringSoon: isTokenExpiringSoon(store?.meta_token_expires_at),
   });
@@ -115,7 +118,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const oauthSession = await metaOAuthSession.getSession(cookieHeader);
     oauthSession.set("state", state);
     oauthSession.set("shop", shop);
-    oauthSession.set("returnTo", "/app/settings"); // redirect back to settings after callback
+    const shopHandle = shop.replace(".myshopify.com", "");
+    oauthSession.set("returnTo", `https://admin.shopify.com/store/${shopHandle}/apps/${process.env.SHOPIFY_API_KEY}/settings`);
     const metaAuthUrl = getMetaAuthUrl(state);
     const setCookie = await metaOAuthSession.commitSession(oauthSession);
     return json(
@@ -142,7 +146,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const cookieHeader = request.headers.get("Cookie");
     const oauthSession = await metaOAuthSession.getSession(cookieHeader);
     const destroyCookie = await metaOAuthSession.destroySession(oauthSession);
-    return redirect("/app/settings", { headers: { "Set-Cookie": destroyCookie } });
+    return redirect("/app/settings?meta=connected", { headers: { "Set-Cookie": destroyCookie } });
   }
 
   // ── Section 3: COGS ───────────────────────────────────────────────────────
@@ -204,7 +208,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function SettingsPage() {
   const { store, variants, costsMap, pendingToken, pendingAccounts,
-          isMetaExpired, isMetaExpiringSoon } = useLoaderData<typeof loader>();
+          metaJustConnected, isMetaExpired, isMetaExpiringSoon } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const submitting = navigation.state === "submitting";
@@ -309,6 +313,10 @@ export default function SettingsPage() {
                 You will be redirected to Meta to re-authorize. This is required
                 when your token expires.
               </Banner>
+
+              {metaJustConnected && (
+                <Banner tone="success">Meta Ads connected successfully.</Banner>
+              )}
 
               {/* Connection status */}
               <InlineStack gap="300" blockAlign="center">
