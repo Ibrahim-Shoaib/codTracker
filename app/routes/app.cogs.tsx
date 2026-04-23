@@ -97,11 +97,6 @@ export default function COGSPage() {
 
               <Card>
                 <BlockStack gap="400">
-                  <Banner tone="warning">
-                    Updated costs apply to future calculations only. Historical
-                    snapshots will not be recalculated.
-                  </Banner>
-
                   <COGSTable products={products} costsMap={costsMap} />
                 </BlockStack>
               </Card>
