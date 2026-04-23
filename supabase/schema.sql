@@ -94,6 +94,15 @@ CREATE TABLE ad_spend (
   UNIQUE(store_id, spend_date)
 );
 
+CREATE TABLE store_expenses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id text NOT NULL REFERENCES stores(store_id) ON DELETE CASCADE,
+  name text NOT NULL,
+  amount numeric NOT NULL DEFAULT 0,
+  type text NOT NULL CHECK (type IN ('monthly', 'per_order')),
+  created_at timestamptz DEFAULT now()
+);
+
 -- NEVER purged. Used for period-over-period % change calculations.
 CREATE TABLE daily_snapshots (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -122,9 +131,10 @@ CREATE INDEX idx_orders_store_date    ON orders(store_id, transaction_date);
 CREATE INDEX idx_orders_store_flags   ON orders(store_id, is_delivered, is_returned, is_in_transit);
 CREATE INDEX idx_orders_ref           ON orders(store_id, order_ref_number);
 CREATE INDEX idx_orders_status        ON orders(store_id, status_code);
-CREATE INDEX idx_product_costs_variant ON product_costs(store_id, shopify_variant_id);
-CREATE INDEX idx_ad_spend_store_date  ON ad_spend(store_id, spend_date);
-CREATE INDEX idx_snapshots_store_date ON daily_snapshots(store_id, snapshot_date);
+CREATE INDEX idx_product_costs_variant  ON product_costs(store_id, shopify_variant_id);
+CREATE INDEX idx_ad_spend_store_date    ON ad_spend(store_id, spend_date);
+CREATE INDEX idx_snapshots_store_date   ON daily_snapshots(store_id, snapshot_date);
+CREATE INDEX idx_store_expenses_store   ON store_expenses(store_id);
 
 
 -- ============================================================
@@ -160,6 +170,12 @@ CREATE POLICY "store_isolation" ON daily_snapshots
   USING      (store_id = current_setting('app.current_store_id', true))
   WITH CHECK (store_id = current_setting('app.current_store_id', true));
 
+ALTER TABLE store_expenses ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "store_isolation" ON store_expenses
+  USING      (store_id = current_setting('app.current_store_id', true))
+  WITH CHECK (store_id = current_setting('app.current_store_id', true));
+
 
 -- ============================================================
 -- RPC FUNCTIONS
@@ -174,13 +190,14 @@ $$ LANGUAGE sql;
 
 -- Main dashboard stats for a period.
 -- Returns one row. NULL for ratio metrics when denominator = 0 (show "N/A" in UI).
+-- Expenses split into monthly (prorated) and per_order (× delivered orders).
 CREATE OR REPLACE FUNCTION get_dashboard_stats(
-  p_store_id       text,
-  p_from_date      date,
-  p_to_date        date,
-  p_expenses_amount numeric,
-  p_expenses_type  text,
-  p_days_in_period integer
+  p_store_id              text,
+  p_from_date             date,
+  p_to_date               date,
+  p_monthly_expenses      numeric,
+  p_per_order_expenses    numeric,
+  p_days_in_period        integer
 )
 RETURNS TABLE (
   sales          numeric,
@@ -258,12 +275,10 @@ BEGIN
     AND a.spend_date >= p_from_date
     AND a.spend_date <= p_to_date;
 
-  -- Expenses (prorated by days or per-order)
-  v_expenses := CASE p_expenses_type
-    WHEN 'monthly'   THEN p_expenses_amount * (p_days_in_period::numeric / 30.0)
-    WHEN 'per_order' THEN p_expenses_amount * v_orders
-    ELSE 0
-  END;
+  -- Expenses: monthly prorated + per-order multiplied by delivered orders
+  v_expenses :=
+    p_monthly_expenses   * (p_days_in_period::numeric / 30.0) +
+    p_per_order_expenses * v_orders;
 
   v_gross_profit := v_sales - v_delivery_cost - v_cogs;
   v_net_profit   := v_gross_profit - v_ad_spend - v_expenses;

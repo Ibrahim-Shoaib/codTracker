@@ -54,14 +54,14 @@ function fmtRange(fromStr: string, toStr: string) {
   return `${mLabel} ${parseInt(d1, 10)} – ${months[parseInt(m2, 10) - 1]} ${parseInt(d2, 10)}`;
 }
 
-function statsRpc(supabase: ReturnType<typeof getSupabaseForStore> extends Promise<infer T> ? T : never, shop: string, from: string, to: string, expAmt: number, expType: string, days: number) {
+function statsRpc(supabase: ReturnType<typeof getSupabaseForStore> extends Promise<infer T> ? T : never, shop: string, from: string, to: string, monthlyExp: number, perOrderExp: number, days: number) {
   return (supabase as any).rpc("get_dashboard_stats", {
-    p_store_id: shop,
-    p_from_date: from,
-    p_to_date: to,
-    p_expenses_amount: expAmt,
-    p_expenses_type: expType,
-    p_days_in_period: days,
+    p_store_id:           shop,
+    p_from_date:          from,
+    p_to_date:            to,
+    p_monthly_expenses:   monthlyExp,
+    p_per_order_expenses: perOrderExp,
+    p_days_in_period:     days,
   });
 }
 
@@ -70,14 +70,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const shop = session.shop;
   const supabase = await getSupabaseForStore(shop);
 
-  // 1. Store row
-  const { data: store } = await supabase
-    .from("stores")
-    .select(
-      "postex_token, onboarding_complete, onboarding_step, expenses_amount, expenses_type, sellable_returns_pct, meta_access_token, meta_token_expires_at, last_postex_sync_at"
-    )
-    .eq("store_id", shop)
-    .single();
+  // 1. Store row + expenses list (parallel)
+  const [{ data: store }, { data: expensesList }] = await Promise.all([
+    supabase
+      .from("stores")
+      .select(
+        "postex_token, onboarding_complete, onboarding_step, sellable_returns_pct, meta_access_token, meta_token_expires_at, last_postex_sync_at"
+      )
+      .eq("store_id", shop)
+      .single(),
+    supabase
+      .from("store_expenses")
+      .select("id, name, amount, type")
+      .eq("store_id", shop)
+      .order("created_at"),
+  ]);
 
   // Client-side redirects preserve App Bridge auth context; server-side 302s strip it
   if (!store) return json({ redirectTo: "/app/onboarding/step1-postex" });
@@ -93,8 +100,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return json({ redirectTo: "/app/settings" });
   }
 
-  const expAmt = Number(store.expenses_amount) || 0;
-  const expType = store.expenses_type ?? "monthly";
+  const expenses = expensesList ?? [];
+  const monthlyExp   = expenses.filter((e: any) => e.type === "monthly").reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const perOrderExp  = expenses.filter((e: any) => e.type === "per_order").reduce((s: number, e: any) => s + Number(e.amount), 0);
 
   // 2. Period boundaries
   const today = getTodayPKT();
@@ -131,12 +139,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     lastMonthRes,
     { count: unmatchedCount },
   ] = await Promise.all([
-    statsRpc(supabase, shop, todayFrom,   todayTo,   expAmt, expType, getDaysInPeriod(today.start,      today.end)),
-    statsRpc(supabase, shop, yestFrom,    yestTo,    expAmt, expType, getDaysInPeriod(yesterday.start,  yesterday.end)),
-    statsRpc(supabase, shop, dayBefFrom,  dayBefTo,  expAmt, expType, getDaysInPeriod(dayBefore.start,  dayBefore.end)),
-    statsRpc(supabase, shop, mtdFrom,     mtdTo,     expAmt, expType, getDaysInPeriod(mtd.start,        mtd.end)),
-    statsRpc(supabase, shop, mtdCompFrom, mtdCompTo, expAmt, expType, getDaysInPeriod(mtdComp.start,    mtdComp.end)),
-    statsRpc(supabase, shop, lmFrom,      lmTo,      expAmt, expType, getDaysInPeriod(lastMonth.start,  lastMonth.end)),
+    statsRpc(supabase, shop, todayFrom,   todayTo,   monthlyExp, perOrderExp, getDaysInPeriod(today.start,      today.end)),
+    statsRpc(supabase, shop, yestFrom,    yestTo,    monthlyExp, perOrderExp, getDaysInPeriod(yesterday.start,  yesterday.end)),
+    statsRpc(supabase, shop, dayBefFrom,  dayBefTo,  monthlyExp, perOrderExp, getDaysInPeriod(dayBefore.start,  dayBefore.end)),
+    statsRpc(supabase, shop, mtdFrom,     mtdTo,     monthlyExp, perOrderExp, getDaysInPeriod(mtd.start,        mtd.end)),
+    statsRpc(supabase, shop, mtdCompFrom, mtdCompTo, monthlyExp, perOrderExp, getDaysInPeriod(mtdComp.start,    mtdComp.end)),
+    statsRpc(supabase, shop, lmFrom,      lmTo,      monthlyExp, perOrderExp, getDaysInPeriod(lastMonth.start,  lastMonth.end)),
     supabase
       .from("orders")
       .select("id", { count: "exact", head: true })
@@ -162,6 +170,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       : null;
 
   return json({
+    expensesList: expenses,
     sellableReturnsPct: store.sellable_returns_pct ?? 100,
     metaConnected:      !!store.meta_access_token,
     isMetaExpired:      isTokenExpired(store.meta_token_expires_at),
@@ -209,7 +218,7 @@ export default function Dashboard() {
     return <Navigate to={(data as { redirectTo: string }).redirectTo} replace />;
   }
 
-  const { periods, sellableReturnsPct, unmatchedCOGSCount,
+  const { periods, expensesList, sellableReturnsPct, unmatchedCOGSCount,
           metaConnected, isMetaExpired, isMetaExpiringSoon, metaExpiresAt,
           backfillInProgress } = data;
 
@@ -271,6 +280,7 @@ export default function Dashboard() {
           stats={periods[openDetail].stats}
           dateRange={periods[openDetail].dateRange}
           sellableReturnsPct={sellableReturnsPct}
+          expensesList={expensesList}
           open={!!openDetail}
           onClose={() => setOpenDetail(null)}
         />

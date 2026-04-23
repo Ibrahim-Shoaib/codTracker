@@ -10,64 +10,80 @@ import { useState } from "react";
 import {
   Card,
   BlockStack,
+  InlineStack,
   Text,
   TextField,
   Button,
   Banner,
   FormLayout,
   RadioButton,
+  Badge,
+  Divider,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
+
+type Expense = { id: string; name: string; amount: number; type: "monthly" | "per_order" };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const supabase = await getSupabaseForStore(session.shop);
 
-  const { data: store } = await supabase
-    .from("stores")
-    .select("expenses_amount, expenses_type")
+  const { data: expenses } = await supabase
+    .from("store_expenses")
+    .select("id, name, amount, type")
     .eq("store_id", session.shop)
-    .single();
+    .order("created_at");
 
-  return json({
-    expensesAmount: String(store?.expenses_amount ?? "0"),
-    expensesType: (store?.expenses_type ?? "monthly") as "monthly" | "per_order",
-  });
+  return json({ expenses: (expenses ?? []) as Expense[] });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
   const formData = await request.formData();
-  const amount = Number(formData.get("expenses_amount")) || 0;
-  const type = String(formData.get("expenses_type") ?? "monthly");
+  const intent = String(formData.get("intent") ?? "");
+  const supabase = await getSupabaseForStore(shop);
 
-  if (!["monthly", "per_order"].includes(type)) {
-    return json({ error: "Invalid expense type." });
+  if (intent === "add_expense") {
+    const name = String(formData.get("name") ?? "").trim();
+    const amount = Number(formData.get("amount")) || 0;
+    const type = String(formData.get("type") ?? "monthly");
+
+    if (!name) return json({ error: "Expense name is required." });
+    if (!["monthly", "per_order"].includes(type)) return json({ error: "Invalid expense type." });
+
+    await supabase.from("store_expenses").insert({ store_id: shop, name, amount, type });
+    return json({ error: null });
   }
 
-  const supabase = await getSupabaseForStore(shop);
-  await supabase
-    .from("stores")
-    .update({
-      expenses_amount: amount,
-      expenses_type: type,
-      onboarding_complete: true,
-      onboarding_step: 4,
-    })
-    .eq("store_id", shop);
+  if (intent === "delete_expense") {
+    const id = String(formData.get("id") ?? "");
+    await supabase.from("store_expenses").delete().eq("id", id).eq("store_id", shop);
+    return json({ error: null });
+  }
 
-  return redirect("/app");
+  if (intent === "finish") {
+    await supabase
+      .from("stores")
+      .update({ onboarding_complete: true, onboarding_step: 4 })
+      .eq("store_id", shop);
+    return redirect("/app");
+  }
+
+  return json({ error: "Unknown action." });
 };
 
 export default function Step4Expenses() {
-  const { expensesAmount, expensesType } = useLoaderData<typeof loader>();
+  const { expenses } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const saving = navigation.state === "submitting";
-  const [expType, setExpType] = useState<"monthly" | "per_order">(expensesType);
-  const [amount, setAmount] = useState(expensesAmount);
+  const currentIntent = navigation.formData?.get("intent") as string | undefined;
+
+  const [name, setName] = useState("");
+  const [amount, setAmount] = useState("0");
+  const [expType, setExpType] = useState<"monthly" | "per_order">("monthly");
 
   return (
     <Card>
@@ -77,9 +93,9 @@ export default function Step4Expenses() {
             Set Business Expenses
           </Text>
           <Text as="p" variant="bodyMd" tone="subdued">
-            Enter your fixed business expenses (e.g. rent, salaries, utilities).
-            Per Month expenses are prorated across each time period. Per Order
-            expenses multiply by the number of delivered orders.
+            Add your fixed business expenses (e.g. rent, salaries, packaging).
+            Monthly expenses are prorated across each time period. Per Order expenses
+            multiply by the number of delivered orders.
           </Text>
         </BlockStack>
 
@@ -87,27 +103,75 @@ export default function Step4Expenses() {
           <Banner tone="critical">{actionData.error}</Banner>
         )}
 
+        {/* Existing expenses list */}
+        {expenses.length > 0 && (
+          <BlockStack gap="200">
+            <Text as="p" variant="headingSm">Your expenses</Text>
+            {expenses.map((exp) => (
+              <InlineStack key={exp.id} align="space-between" blockAlign="center">
+                <InlineStack gap="200" blockAlign="center">
+                  <Text as="span" variant="bodyMd">{exp.name}</Text>
+                  <Badge tone="info">
+                    {exp.type === "monthly" ? "Monthly" : "Per Order"}
+                  </Badge>
+                  <Text as="span" variant="bodyMd" tone="subdued">
+                    PKR {Number(exp.amount).toLocaleString()}
+                  </Text>
+                </InlineStack>
+                <Form method="post">
+                  <input type="hidden" name="intent" value="delete_expense" />
+                  <input type="hidden" name="id" value={exp.id} />
+                  <Button
+                    submit
+                    variant="plain"
+                    tone="critical"
+                    loading={saving && currentIntent === "delete_expense"}
+                  >
+                    Remove
+                  </Button>
+                </Form>
+              </InlineStack>
+            ))}
+          </BlockStack>
+        )}
+
+        {expenses.length === 0 && (
+          <Text as="p" variant="bodyMd" tone="subdued">
+            No expenses added yet. Add one below, or skip if you don't track expenses.
+          </Text>
+        )}
+
+        <Divider />
+
+        {/* Add expense form */}
+        <Text as="p" variant="headingSm">Add an expense</Text>
         <Form method="post">
+          <input type="hidden" name="intent" value="add_expense" />
           <FormLayout>
             <TextField
-              label="Expense Amount (PKR)"
-              name="expenses_amount"
+              label="Name"
+              name="name"
+              value={name}
+              onChange={setName}
+              placeholder="e.g. Warehouse Rent"
+              autoComplete="off"
+            />
+            <TextField
+              label="Amount (PKR)"
+              name="amount"
               value={amount}
               onChange={setAmount}
               type="number"
               min="0"
               autoComplete="off"
-              helpText="Enter 0 if you don't want to track expenses right now."
             />
             <BlockStack gap="200">
-              <Text as="p" variant="bodyMd">
-                Expense Type
-              </Text>
+              <Text as="p" variant="bodyMd">Expense Type</Text>
               <RadioButton
                 label="Per Month"
                 helpText="Prorated across each time period (e.g. today = 1/30 of monthly amount)."
-                id="monthly"
-                name="expenses_type"
+                id="add_monthly"
+                name="type"
                 value="monthly"
                 checked={expType === "monthly"}
                 onChange={() => setExpType("monthly")}
@@ -115,17 +179,49 @@ export default function Step4Expenses() {
               <RadioButton
                 label="Per Order"
                 helpText="Multiplied by the number of delivered orders in each period."
-                id="per_order"
-                name="expenses_type"
+                id="add_per_order"
+                name="type"
                 value="per_order"
                 checked={expType === "per_order"}
                 onChange={() => setExpType("per_order")}
               />
             </BlockStack>
-            <Button submit variant="primary" loading={saving}>
-              Finish Setup
+            <Button
+              submit
+              variant="secondary"
+              loading={saving && currentIntent === "add_expense"}
+            >
+              + Add Expense
             </Button>
           </FormLayout>
+        </Form>
+
+        <Divider />
+
+        {/* Finish / skip */}
+        <Form method="post">
+          <input type="hidden" name="intent" value="finish" />
+          <InlineStack gap="300">
+            <Button
+              submit
+              variant="primary"
+              loading={saving && currentIntent === "finish"}
+            >
+              Finish Setup
+            </Button>
+            {expenses.length === 0 && (
+              <Text as="span" variant="bodyMd" tone="subdued">
+                or{" "}
+                <Button
+                  submit
+                  variant="plain"
+                  loading={saving && currentIntent === "finish"}
+                >
+                  skip for now
+                </Button>
+              </Text>
+            )}
+          </InlineStack>
         </Form>
       </BlockStack>
     </Card>

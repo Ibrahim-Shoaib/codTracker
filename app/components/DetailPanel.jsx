@@ -28,7 +28,6 @@ const PERIOD_NAMES = {
   lastMonth: "Last Month",
 };
 
-// A single row with optional drill-down click
 function Row({ label, value, onClick }) {
   return (
     <InlineStack align="space-between" blockAlign="center">
@@ -53,6 +52,7 @@ function Row({ label, value, onClick }) {
 //   stats            object from get_dashboard_stats RPC
 //   dateRange        { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }
 //   sellableReturnsPct  number
+//   expensesList     Array<{ id, name, amount, type }>
 //   open             boolean
 //   onClose          () => void
 export default function DetailPanel({
@@ -60,14 +60,32 @@ export default function DetailPanel({
   stats,
   dateRange,
   sellableReturnsPct,
+  expensesList,
   open,
   onClose,
 }) {
   const [drillFilter, setDrillFilter] = useState(null);
+  const [showExpBreakdown, setShowExpBreakdown] = useState(false);
 
   if (!stats) return null;
 
   const drill = (filter) => setDrillFilter(filter);
+
+  // Compute per-expense amounts for this period
+  const expenses = expensesList ?? [];
+  const daysInPeriod = dateRange
+    ? Math.round(
+        (new Date(dateRange.to) - new Date(dateRange.from)) / 86_400_000
+      ) + 1
+    : 30;
+
+  const expBreakdown = expenses.map((exp) => ({
+    name: exp.name,
+    value:
+      exp.type === "monthly"
+        ? Number(exp.amount) * (daysInPeriod / 30)
+        : Number(exp.amount) * Number(stats.orders ?? 0),
+  }));
 
   return (
     <>
@@ -127,7 +145,27 @@ export default function DetailPanel({
               value={fmtCost(stats.cogs)}
               onClick={() => drill("all")}
             />
-            <Row label="Expenses" value={fmtCost(stats.expenses)} />
+
+            {/* Expenses row — expandable when there are named items */}
+            <Row
+              label="Expenses"
+              value={fmtCost(stats.expenses)}
+              onClick={expBreakdown.length > 0 ? () => setShowExpBreakdown((v) => !v) : undefined}
+            />
+            {showExpBreakdown && expBreakdown.length > 0 && (
+              <BlockStack gap="100">
+                {expBreakdown.map((item) => (
+                  <InlineStack key={item.name} align="space-between" blockAlign="center">
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      &nbsp;&nbsp;&nbsp;{item.name}
+                    </Text>
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      {fmtCost(item.value)}
+                    </Text>
+                  </InlineStack>
+                ))}
+              </BlockStack>
+            )}
 
             <Divider />
 

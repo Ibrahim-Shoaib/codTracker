@@ -33,6 +33,8 @@ import { getMetaAuthUrl } from "../lib/meta.server.js";
 import { isTokenExpired, isTokenExpiringSoon } from "../lib/meta.server.js";
 import { metaOAuthSession } from "../lib/meta-session.server.js";
 
+type Expense = { id: string; name: string; amount: number; type: "monthly" | "per_order" };
+
 // ─── Loader ───────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -41,7 +43,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const metaJustConnected = url.searchParams.get("meta") === "connected";
 
-  // Check for pending Meta OAuth data (after callback redirect)
   const cookieHeader = request.headers.get("Cookie");
   const oauthSession = await metaOAuthSession.getSession(cookieHeader);
   const pendingToken: string | null = oauthSession.get("meta_access_token") ?? null;
@@ -49,18 +50,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     oauthSession.get("meta_ad_accounts") ?? null;
 
   const supabase = await getSupabaseForStore(shop);
-  const storeRes = await supabase
-    .from("stores")
-    .select(
-      "postex_token, meta_access_token, meta_ad_account_id, meta_token_expires_at, expenses_amount, expenses_type"
-    )
-    .eq("store_id", shop)
-    .single();
+
+  const [storeRes, expensesRes] = await Promise.all([
+    supabase
+      .from("stores")
+      .select(
+        "postex_token, meta_access_token, meta_ad_account_id, meta_token_expires_at"
+      )
+      .eq("store_id", shop)
+      .single(),
+    supabase
+      .from("store_expenses")
+      .select("id, name, amount, type")
+      .eq("store_id", shop)
+      .order("created_at"),
+  ]);
 
   const store = storeRes.data;
 
   return json({
     store,
+    expensesList: (expensesRes.data ?? []) as Expense[],
     pendingToken,
     pendingAccounts,
     metaJustConnected,
@@ -75,7 +85,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
 
-  // formData can only be read once
   const formData = await request.formData();
   const intent = String(formData.get("intent") ?? "");
   const supabase = await getSupabaseForStore(shop);
@@ -136,18 +145,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return redirect("/app/settings?meta=connected", { headers: { "Set-Cookie": destroyCookie } });
   }
 
-  // ── Section 3: Expenses ───────────────────────────────────────────────────
-  if (intent === "expenses") {
-    const amount = Number(formData.get("expenses_amount")) || 0;
-    const type   = String(formData.get("expenses_type") ?? "monthly");
+  // ── Section 3: Expenses — add ─────────────────────────────────────────────
+  if (intent === "expense_add") {
+    const name = String(formData.get("name") ?? "").trim();
+    const amount = Number(formData.get("amount")) || 0;
+    const type = String(formData.get("type") ?? "monthly");
 
+    if (!name) return json({ intent, error: "Expense name is required." });
     if (!["monthly", "per_order"].includes(type)) {
       return json({ intent, error: "Invalid expense type." });
     }
-    await supabase
-      .from("stores")
-      .update({ expenses_amount: amount, expenses_type: type })
-      .eq("store_id", shop);
+    await supabase.from("store_expenses").insert({ store_id: shop, name, amount, type });
+    return json({ intent, success: true });
+  }
+
+  // ── Section 3: Expenses — delete ─────────────────────────────────────────
+  if (intent === "expense_delete") {
+    const id = String(formData.get("id") ?? "");
+    await supabase.from("store_expenses").delete().eq("id", id).eq("store_id", shop);
     return json({ intent, success: true });
   }
 
@@ -157,19 +172,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const { store, pendingToken, pendingAccounts,
+  const { store, expensesList, pendingToken, pendingAccounts,
           metaJustConnected, isMetaExpired, isMetaExpiringSoon } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const submitting = navigation.state === "submitting";
   const currentIntent = navigation.formData?.get("intent") as string | undefined;
 
-  // Controlled state for text inputs (Polaris requires value + onChange)
   const [postexToken, setPostexToken] = useState(store?.postex_token ?? "");
-  const [expAmount,        setExpAmount]        = useState(String(store?.expenses_amount ?? "0"));
-  const [expType,          setExpType]          = useState<"monthly" | "per_order">(
-    (store?.expenses_type ?? "monthly") as "monthly" | "per_order"
-  );
+
+  // Add-expense form state
+  const [newExpName,   setNewExpName]   = useState("");
+  const [newExpAmount, setNewExpAmount] = useState("0");
+  const [newExpType,   setNewExpType]   = useState<"monthly" | "per_order">("monthly");
+
   const [selectedMetaAccount, setSelectedMetaAccount] = useState(
     pendingAccounts?.[0]?.id ?? ""
   );
@@ -177,7 +193,6 @@ export default function SettingsPage() {
   const revalidator = useRevalidator();
   const [metaOAuthFailed, setMetaOAuthFailed] = useState(false);
 
-  // Once the server returns the OAuth URL, navigate the already-open popup to it.
   useEffect(() => {
     if (actionData && "metaAuthUrl" in actionData && actionData.metaAuthUrl) {
       const popup = window.open("", "meta_oauth_window");
@@ -189,7 +204,6 @@ export default function SettingsPage() {
     }
   }, [actionData]);
 
-  // Listen for popup completion — reload loader data in-place, preserving scroll position.
   useEffect(() => {
     const channel = new BroadcastChannel("meta_oauth");
     channel.onmessage = (event) => {
@@ -203,14 +217,21 @@ export default function SettingsPage() {
     return () => channel.close();
   }, [revalidator]);
 
-  // Scroll to Meta Ads section after OAuth return (account selector) or after save (success banner)
   useEffect(() => {
     if ((pendingToken && pendingAccounts) || metaJustConnected) {
       document.getElementById("meta-ads-section")?.scrollIntoView({ behavior: "smooth" });
     }
   }, [pendingToken, pendingAccounts, metaJustConnected]);
 
-  // Shorthand for per-section action result
+  // Clear add-expense form after a successful add
+  useEffect(() => {
+    if (actionData && "intent" in actionData && actionData.intent === "expense_add" && "success" in actionData) {
+      setNewExpName("");
+      setNewExpAmount("0");
+      setNewExpType("monthly");
+    }
+  }, [actionData]);
+
   const ad = actionData as { intent?: string; error?: string; success?: boolean; metaAuthUrl?: string } | null;
   const forSection = (section: string) => ad?.intent === section ? ad : null;
 
@@ -219,7 +240,6 @@ export default function SettingsPage() {
     value: acc.id,
   }));
 
-  // Meta connection status badge
   const metaStatus = () => {
     if (!store?.meta_access_token) return <Badge tone="warning">Not connected</Badge>;
     if (isMetaExpired)              return <Badge tone="critical">Token expired</Badge>;
@@ -302,7 +322,6 @@ export default function SettingsPage() {
                 <Banner tone="critical">Meta Ads connection failed. Please try again.</Banner>
               )}
 
-              {/* Connection status */}
               <InlineStack gap="300" blockAlign="center">
                 <Text as="span" variant="bodyMd">Status:</Text>
                 {metaStatus()}
@@ -313,7 +332,6 @@ export default function SettingsPage() {
                 )}
               </InlineStack>
 
-              {/* Ad account selector shown after OAuth callback */}
               {pendingToken && pendingAccounts ? (
                 <Form method="post">
                   <input type="hidden" name="intent"       value="meta_save" />
@@ -381,57 +399,104 @@ export default function SettingsPage() {
               <Text as="h2" variant="headingMd">Expenses</Text>
 
               <Banner tone="warning">
-                Expense changes apply from today. Past snapshots will not be
-                updated.
+                Expense changes apply from today. Past snapshots will not be updated.
               </Banner>
 
-              {forSection("expenses")?.error && (
-                <Banner tone="critical">{forSection("expenses")!.error}</Banner>
+              {(forSection("expense_add")?.error || forSection("expense_delete")?.error) && (
+                <Banner tone="critical">
+                  {forSection("expense_add")?.error ?? forSection("expense_delete")?.error}
+                </Banner>
               )}
-              {forSection("expenses")?.success && (
-                <Banner tone="success">Expense settings saved.</Banner>
+              {forSection("expense_add")?.success && (
+                <Banner tone="success">Expense added.</Banner>
               )}
 
+              {/* Existing expenses */}
+              {expensesList.length > 0 ? (
+                <BlockStack gap="200">
+                  {expensesList.map((exp) => (
+                    <InlineStack key={exp.id} align="space-between" blockAlign="center">
+                      <InlineStack gap="200" blockAlign="center">
+                        <Text as="span" variant="bodyMd">{exp.name}</Text>
+                        <Badge tone="info">
+                          {exp.type === "monthly" ? "Monthly" : "Per Order"}
+                        </Badge>
+                        <Text as="span" variant="bodyMd" tone="subdued">
+                          PKR {Number(exp.amount).toLocaleString()}
+                        </Text>
+                      </InlineStack>
+                      <Form method="post">
+                        <input type="hidden" name="intent" value="expense_delete" />
+                        <input type="hidden" name="id" value={exp.id} />
+                        <Button
+                          submit
+                          variant="plain"
+                          tone="critical"
+                          loading={submitting && currentIntent === "expense_delete"}
+                        >
+                          Remove
+                        </Button>
+                      </Form>
+                    </InlineStack>
+                  ))}
+                </BlockStack>
+              ) : (
+                <Text as="p" variant="bodyMd" tone="subdued">
+                  No expenses added. Use the form below to add one.
+                </Text>
+              )}
+
+              <Divider />
+
+              {/* Add expense form */}
+              <Text as="p" variant="headingSm">Add an expense</Text>
               <Form method="post">
-                <input type="hidden" name="intent" value="expenses" />
+                <input type="hidden" name="intent" value="expense_add" />
                 <FormLayout>
                   <TextField
-                    label="Expense Amount (PKR)"
-                    name="expenses_amount"
-                    value={expAmount}
-                    onChange={setExpAmount}
+                    label="Name"
+                    name="name"
+                    value={newExpName}
+                    onChange={setNewExpName}
+                    placeholder="e.g. Warehouse Rent"
+                    autoComplete="off"
+                  />
+                  <TextField
+                    label="Amount (PKR)"
+                    name="amount"
+                    value={newExpAmount}
+                    onChange={setNewExpAmount}
                     type="number"
                     min="0"
                     autoComplete="off"
-                    helpText="Enter 0 to disable expense tracking."
                   />
                   <BlockStack gap="200">
                     <Text as="p" variant="bodyMd">Expense Type</Text>
                     <RadioButton
                       label="Per Month"
                       helpText="Prorated across each time period."
-                      id="expenses_monthly"
-                      name="expenses_type"
+                      id="new_expenses_monthly"
+                      name="type"
                       value="monthly"
-                      checked={expType === "monthly"}
-                      onChange={() => setExpType("monthly")}
+                      checked={newExpType === "monthly"}
+                      onChange={() => setNewExpType("monthly")}
                     />
                     <RadioButton
                       label="Per Order"
                       helpText="Multiplied by the number of delivered orders in each period."
-                      id="expenses_per_order"
-                      name="expenses_type"
+                      id="new_expenses_per_order"
+                      name="type"
                       value="per_order"
-                      checked={expType === "per_order"}
-                      onChange={() => setExpType("per_order")}
+                      checked={newExpType === "per_order"}
+                      onChange={() => setNewExpType("per_order")}
                     />
                   </BlockStack>
                   <Button
                     submit
                     variant="primary"
-                    loading={submitting && currentIntent === "expenses"}
+                    loading={submitting && currentIntent === "expense_add"}
                   >
-                    Save Expenses
+                    + Add Expense
                   </Button>
                 </FormLayout>
               </Form>

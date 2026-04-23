@@ -18,11 +18,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const { data: stores } = await adminClient
     .from("stores")
-    .select("store_id, expenses_amount, expenses_type")
+    .select("store_id")
     .eq("onboarding_complete", true);
 
   if (!stores?.length) {
     return json({ snapshotted: 0, errors: 0 });
+  }
+
+  // Fetch all expenses for all stores in one query (service role bypasses RLS)
+  const storeIds = stores.map((s) => s.store_id);
+  const { data: allExpenses } = await adminClient
+    .from("store_expenses")
+    .select("store_id, amount, type")
+    .in("store_id", storeIds);
+
+  // Group by store: { monthly total, per_order total }
+  const expByStore = new Map<string, { monthly: number; perOrder: number }>();
+  for (const exp of allExpenses ?? []) {
+    const cur = expByStore.get(exp.store_id) ?? { monthly: 0, perOrder: 0 };
+    if (exp.type === "monthly")   cur.monthly  += Number(exp.amount);
+    if (exp.type === "per_order") cur.perOrder += Number(exp.amount);
+    expByStore.set(exp.store_id, cur);
   }
 
   const today = getTodayPKT();
@@ -34,16 +50,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   for (const store of stores) {
     try {
-      const expAmt = Number(store.expenses_amount) || 0;
-      const expType = store.expenses_type ?? "monthly";
+      const { monthly, perOrder } = expByStore.get(store.store_id) ?? { monthly: 0, perOrder: 0 };
 
       const { data: stats } = await adminClient.rpc("get_dashboard_stats", {
-        p_store_id:        store.store_id,
-        p_from_date:       todayStr,
-        p_to_date:         todayStr,
-        p_expenses_amount: expAmt,
-        p_expenses_type:   expType,
-        p_days_in_period:  daysInPeriod,
+        p_store_id:           store.store_id,
+        p_from_date:          todayStr,
+        p_to_date:            todayStr,
+        p_monthly_expenses:   monthly,
+        p_per_order_expenses: perOrder,
+        p_days_in_period:     daysInPeriod,
       });
 
       const s = stats?.[0];
