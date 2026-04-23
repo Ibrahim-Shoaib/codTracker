@@ -234,12 +234,24 @@ DECLARE
   v_gross_profit          numeric;
   v_net_profit            numeric;
   v_sellable_returns_pct  numeric;
+  v_month_count           integer;
 BEGIN
   -- Read sellable returns % from store config (default 85 if missing)
   SELECT COALESCE(s.sellable_returns_pct, 85)
   INTO v_sellable_returns_pct
   FROM stores s
   WHERE s.store_id = p_store_id;
+
+  -- Count how many month-starts (1st of month) fall within the period.
+  -- Monthly expenses are charged once per month, on the 1st.
+  SELECT COUNT(*)::integer
+  INTO v_month_count
+  FROM generate_series(
+    date_trunc('month', p_from_date)::date,
+    date_trunc('month', p_to_date)::date,
+    '1 month'::interval
+  ) AS ms
+  WHERE ms::date BETWEEN p_from_date AND p_to_date;
 
   -- Aggregate order metrics
   SELECT
@@ -289,15 +301,9 @@ BEGIN
 
   -- Monthly expenses: full amount on the 1st of each month, zero all other days.
   -- Per-order expenses: always multiplied by delivered orders.
-  v_expenses :=
-    CASE WHEN
-      date_trunc('month', p_from_date)::date BETWEEN p_from_date AND p_to_date
-      OR
-      date_trunc('month', p_to_date)::date   BETWEEN p_from_date AND p_to_date
-    THEN p_monthly_expenses
-    ELSE 0
-    END
-    + p_per_order_expenses * v_orders;
+  -- Monthly expenses × number of month-starts in window; per-order × delivered orders
+  v_expenses := (p_monthly_expenses * v_month_count)
+              + (p_per_order_expenses * v_orders);
 
   v_gross_profit := v_sales - v_delivery_cost - v_cogs;
   v_net_profit   := v_gross_profit - v_ad_spend - v_expenses;
