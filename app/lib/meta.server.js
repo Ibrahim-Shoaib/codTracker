@@ -85,6 +85,26 @@ export async function fetchSpend(accessToken, adAccountId, sinceDate, untilDate)
   return Number(data.data?.[0]?.spend ?? 0);
 }
 
+// Returns per-day spend array for a date range — one Meta API call for the whole period.
+// Returns [{ date: 'YYYY-MM-DD', spend: number }, ...]
+export async function fetchDailySpend(accessToken, adAccountId, sinceDate, untilDate) {
+  const timeRange = JSON.stringify({ since: sinceDate, until: untilDate });
+  const params = new URLSearchParams({
+    fields:         'spend',
+    time_range:     timeRange,
+    time_increment: '1',
+    level:          'account',
+    access_token:   accessToken,
+  });
+  const res = await fetch(`${GRAPH_BASE}/${adAccountId}/insights?${params}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Meta fetchDailySpend failed: ${err.error?.message ?? res.status}`);
+  }
+  const data = await res.json();
+  return (data.data ?? []).map(d => ({ date: d.date_start, spend: Number(d.spend ?? 0) }));
+}
+
 // ─── Token expiry helpers ─────────────────────────────────────────────────────
 
 export function isTokenExpired(metaTokenExpiresAt) {
