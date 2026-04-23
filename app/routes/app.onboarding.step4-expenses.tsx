@@ -6,7 +6,7 @@ import {
   Form,
   useNavigation,
 } from "@remix-run/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Card,
   BlockStack,
@@ -54,7 +54,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!["monthly", "per_order"].includes(type)) return json({ error: "Invalid expense type." });
 
     await supabase.from("store_expenses").insert({ store_id: shop, name, amount, type });
-    return json({ error: null });
+    return json({ intent: "add_expense", error: null });
   }
 
   if (intent === "delete_expense") {
@@ -84,6 +84,14 @@ export default function Step4Expenses() {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("0");
   const [expType, setExpType] = useState<"monthly" | "per_order">("monthly");
+
+  useEffect(() => {
+    if ((actionData as any)?.intent === "add_expense" && (actionData as any)?.error === null) {
+      setName("");
+      setAmount("0");
+      setExpType("monthly");
+    }
+  }, [actionData]);
 
   return (
     <Card>

@@ -223,9 +223,8 @@ export default function SettingsPage() {
     }
   }, [pendingToken, pendingAccounts, metaJustConnected]);
 
-  // Clear add-expense form after a successful add
   useEffect(() => {
-    if (actionData && "intent" in actionData && actionData.intent === "expense_add" && "success" in actionData) {
+    if ((actionData as any)?.intent === "expense_add" && (actionData as any)?.success) {
       setNewExpName("");
       setNewExpAmount("0");
       setNewExpType("monthly");
