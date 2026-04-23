@@ -6,6 +6,7 @@ import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { getProductsForCOGS } from "../lib/shopify.server.js";
+import { retroactiveCOGSMatch } from "../lib/sync.server.js";
 import COGSTable from "../components/COGSTable.jsx";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -66,6 +67,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       .from("product_costs")
       .upsert(rows, { onConflict: "store_id,shopify_variant_id" });
   }
+
+  void retroactiveCOGSMatch(supabase, shop, session);
 
   return json({ success: true });
 };

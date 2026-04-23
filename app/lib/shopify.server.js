@@ -133,7 +133,7 @@ export async function getProductsForCOGS(session) {
 export async function getOrderByName(session, orderRefNumber) {
   const { shop, accessToken } = session;
   const res = await fetch(
-    adminUrl(shop, `orders.json?name=${encodeURIComponent(orderRefNumber)}&status=any`),
+    adminUrl(shop, `orders.json?name=${encodeURIComponent('#' + orderRefNumber)}&status=any`),
     { headers: adminHeaders(accessToken) }
   );
   if (!res.ok) throw new Error(`Shopify getOrderByName failed: ${res.status}`);

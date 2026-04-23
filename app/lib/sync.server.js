@@ -55,6 +55,7 @@ export async function matchCOGS(supabase, storeId, session, orderRefNumber, trac
     const { data: cost } = await supabase
       .from('product_costs')
       .select('unit_cost')
+      .eq('store_id', storeId)
       .eq('shopify_variant_id', item.variant_id)
       .single();
 
@@ -77,6 +78,7 @@ export async function retroactiveCOGSMatch(supabase, storeId, session) {
   const { data: unmatched } = await supabase
     .from('orders')
     .select('order_ref_number, tracking_number')
+    .eq('store_id', storeId)
     .eq('cogs_matched', false);
 
   if (!unmatched?.length) return;
