@@ -42,10 +42,7 @@ const shopify = shopifyApp({
       );
     },
   },
-  future: {
-    unstable_newEmbeddedAuthStrategy: true,
-    expiringOfflineAccessTokens: true,
-  },
+  future: {},
   ...(process.env.SHOP_CUSTOM_DOMAIN
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
     : {}),
