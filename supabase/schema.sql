@@ -231,9 +231,16 @@ DECLARE
   v_cogs           numeric;
   v_ad_spend       numeric;
   v_expenses       numeric;
-  v_gross_profit   numeric;
-  v_net_profit     numeric;
+  v_gross_profit          numeric;
+  v_net_profit            numeric;
+  v_sellable_returns_pct  numeric;
 BEGIN
+  -- Read sellable returns % from store config (default 85 if missing)
+  SELECT COALESCE(s.sellable_returns_pct, 85)
+  INTO v_sellable_returns_pct
+  FROM stores s
+  WHERE s.store_id = p_store_id;
+
   -- Aggregate order metrics
   SELECT
     COALESCE(SUM(CASE WHEN o.is_delivered THEN o.invoice_payment ELSE 0 END), 0),
@@ -255,9 +262,14 @@ BEGIN
         ELSE 0
       END
     ), 0),
-    -- cogs: delivered + returned (product left the warehouse)
+    -- cogs: full for delivered; only unsellable portion for returned
+    -- (85% resellable → only 15% of returned COGS is a real loss)
     COALESCE(SUM(
-      CASE WHEN o.is_delivered OR o.is_returned THEN o.cogs_total ELSE 0 END
+      CASE
+        WHEN o.is_delivered THEN o.cogs_total
+        WHEN o.is_returned  THEN o.cogs_total * (1 - v_sellable_returns_pct / 100.0)
+        ELSE 0
+      END
     ), 0)
   INTO
     v_sales, v_orders, v_units, v_returns, v_in_transit,
