@@ -2,7 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
-import { syncStore } from "../lib/sync.server.js";
+import { syncStore, retroactiveCOGSMatch } from "../lib/sync.server.js";
 import { sessionStorage } from "../shopify.server";
 
 // Railway cron: 0 1,13 * * * (UTC) = 6 AM + 6 PM PKT
@@ -34,6 +34,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const supabase = await getSupabaseForStore(store.store_id);
       const offlineSession = await sessionStorage.loadSession(`offline_${store.store_id}`);
       await syncStore(store, offlineSession, supabase);
+      // Self-healing: match any orders that still have no COGS after the sync
+      void retroactiveCOGSMatch(supabase, store.store_id, offlineSession);
       synced++;
     } catch (err) {
       console.error(`PostEx sync failed for ${store.store_id}:`, err);
