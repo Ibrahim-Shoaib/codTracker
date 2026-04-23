@@ -42,16 +42,45 @@ export async function getProductsForCOGS(session) {
   const { shop, accessToken } = session;
   const headers = adminHeaders(accessToken);
 
-  // 1. Paginate through all active products — include images in the same call
-  const rawProducts = [];
-  let url = adminUrl(shop, `products.json?status=active&limit=250&fields=id,title,variants,images`);
-  while (url) {
-    const res = await fetch(url, { headers });
-    if (!res.ok) throw new Error(`Shopify products fetch failed: ${res.status}`);
-    const data = await res.json();
-    rawProducts.push(...data.products);
-    url = parseNextUrl(res.headers.get('Link'));
+  // Paginate products and tally 90-day sales in parallel — both are independent
+  async function fetchProducts() {
+    const list = [];
+    let url = adminUrl(shop, `products.json?status=active&limit=250&fields=id,title,variants,images`);
+    while (url) {
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error(`Shopify products fetch failed: ${res.status}`);
+      const data = await res.json();
+      list.push(...data.products);
+      url = parseNextUrl(res.headers.get('Link'));
+    }
+    return list;
   }
+
+  async function fetchSales() {
+    const sales = {}; // product_id (number) → total quantity sold
+    const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    let url = adminUrl(shop, `orders.json?status=any&created_at_min=${since}&limit=250&fields=line_items`);
+    while (url) {
+      const res = await fetch(url, { headers });
+      if (!res.ok) break; // non-fatal — fall back to unsorted
+      const data = await res.json();
+      for (const order of data.orders ?? []) {
+        for (const item of order.line_items ?? []) {
+          if (item.product_id) {
+            sales[item.product_id] = (sales[item.product_id] || 0) + item.quantity;
+          }
+        }
+      }
+      url = parseNextUrl(res.headers.get('Link'));
+    }
+    return sales;
+  }
+
+  // 1. Fetch products and 90-day sales counts at the same time
+  const [rawProducts, salesByProductId] = await Promise.all([fetchProducts(), fetchSales()]);
+
+  // Sort bestsellers first; products with no sales go to the bottom
+  rawProducts.sort((a, b) => (salesByProductId[b.id] ?? 0) - (salesByProductId[a.id] ?? 0));
 
   // 2. Collect every inventory_item_id across all variants
   const invItemIds = [];
