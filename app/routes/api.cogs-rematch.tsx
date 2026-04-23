@@ -27,18 +27,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   let matched = 0;
-  let errors = 0;
+  const errors: Array<{ store: string; error: string }> = [];
 
   for (const store of stores) {
     try {
       const supabase = await getSupabaseForStore(store.store_id);
       const offlineSession = await sessionStorage.loadSession(`offline_${store.store_id}`);
-      if (!offlineSession) continue;
+      if (!offlineSession) {
+        errors.push({ store: store.store_id, error: "no offline session found" });
+        continue;
+      }
       await retroactiveCOGSMatch(supabase, store.store_id, offlineSession);
       matched++;
     } catch (err) {
-      console.error(`COGS rematch failed for ${store.store_id}:`, err);
-      errors++;
+      errors.push({ store: store.store_id, error: String(err) });
     }
   }
 
