@@ -275,10 +275,17 @@ BEGIN
     AND a.spend_date >= p_from_date
     AND a.spend_date <= p_to_date;
 
-  -- Expenses: monthly prorated + per-order multiplied by delivered orders
+  -- Monthly expenses: full amount on the 1st of each month, zero all other days.
+  -- Per-order expenses: always multiplied by delivered orders.
   v_expenses :=
-    p_monthly_expenses   * (p_days_in_period::numeric / 30.0) +
-    p_per_order_expenses * v_orders;
+    CASE WHEN
+      date_trunc('month', p_from_date)::date BETWEEN p_from_date AND p_to_date
+      OR
+      date_trunc('month', p_to_date)::date   BETWEEN p_from_date AND p_to_date
+    THEN p_monthly_expenses
+    ELSE 0
+    END
+    + p_per_order_expenses * v_orders;
 
   v_gross_profit := v_sales - v_delivery_cost - v_cogs;
   v_net_profit   := v_gross_profit - v_ad_spend - v_expenses;
