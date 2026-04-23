@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
-import { json, redirect } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import { json } from "@remix-run/node";
+import { Navigate, useLoaderData } from "@remix-run/react";
 import { useState } from "react";
 import {
   Page,
@@ -78,12 +78,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     .eq("store_id", shop)
     .single();
 
-  // Routing guards (same as before)
-  if (!store) return redirect("/app/onboarding/step1-postex");
+  // Client-side redirects preserve App Bridge auth context; server-side 302s strip it
+  if (!store) return json({ redirectTo: "/app/onboarding/step1-postex" });
   if (!store.onboarding_complete) {
-    return redirect(
-      STEP_ROUTES[store.onboarding_step] ?? "/app/onboarding/step1-postex"
-    );
+    return json({ redirectTo: STEP_ROUTES[store.onboarding_step] ?? "/app/onboarding/step1-postex" });
   }
 
   const expAmt = Number(store.expenses_amount) || 0;
@@ -197,6 +195,10 @@ type PeriodKey = typeof PERIOD_KEYS[number];
 export default function Dashboard() {
   const data = useLoaderData<typeof loader>();
   const [openDetail, setOpenDetail] = useState<PeriodKey | null>(null);
+
+  if ("redirectTo" in data) {
+    return <Navigate to={(data as { redirectTo: string }).redirectTo} replace />;
+  }
 
   const { periods, sellableReturnsPct, unmatchedCOGSCount,
           metaConnected, isMetaExpired, isMetaExpiringSoon, metaExpiresAt,
