@@ -12,7 +12,6 @@ CREATE TABLE stores (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   store_id text UNIQUE NOT NULL,           -- .myshopify.com domain
   postex_token text,
-  postex_merchant_id text,
   meta_access_token text,
   meta_ad_account_id text,
   meta_token_expires_at timestamptz,       -- Meta long-lived tokens expire after 60 days

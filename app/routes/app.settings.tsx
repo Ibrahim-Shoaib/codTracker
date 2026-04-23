@@ -52,7 +52,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     supabase
       .from("stores")
       .select(
-        "postex_token, postex_merchant_id, meta_access_token, meta_ad_account_id, meta_token_expires_at, expenses_amount, expenses_type"
+        "postex_token, meta_access_token, meta_ad_account_id, meta_token_expires_at, expenses_amount, expenses_type"
       )
       .eq("store_id", shop)
       .single(),
@@ -92,8 +92,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   // ── Section 1: PostEx ──────────────────────────────────────────────────────
   if (intent === "postex") {
-    const token      = String(formData.get("postex_token")      ?? "").trim();
-    const merchantId = String(formData.get("postex_merchant_id") ?? "").trim();
+    const token = String(formData.get("postex_token") ?? "").trim();
 
     if (!token) {
       return json({ intent, error: "PostEx API Token is required." });
@@ -104,7 +103,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     await supabase
       .from("stores")
-      .update({ postex_token: token, postex_merchant_id: merchantId })
+      .update({ postex_token: token })
       .eq("store_id", shop);
     return json({ intent, success: true });
   }
@@ -212,8 +211,7 @@ export default function SettingsPage() {
   const currentIntent = navigation.formData?.get("intent") as string | undefined;
 
   // Controlled state for text inputs (Polaris requires value + onChange)
-  const [postexToken,      setPostexToken]      = useState(store?.postex_token      ?? "");
-  const [postexMerchantId, setPostexMerchantId] = useState(store?.postex_merchant_id ?? "");
+  const [postexToken, setPostexToken] = useState(store?.postex_token ?? "");
   const [expAmount,        setExpAmount]        = useState(String(store?.expenses_amount ?? "0"));
   const [expType,          setExpType]          = useState<"monthly" | "per_order">(
     (store?.expenses_type ?? "monthly") as "monthly" | "per_order"
@@ -286,13 +284,6 @@ export default function SettingsPage() {
                     value={postexToken}
                     onChange={setPostexToken}
                     type="password"
-                    autoComplete="off"
-                  />
-                  <TextField
-                    label="Merchant ID"
-                    name="postex_merchant_id"
-                    value={postexMerchantId}
-                    onChange={setPostexMerchantId}
                     autoComplete="off"
                   />
                   <Button

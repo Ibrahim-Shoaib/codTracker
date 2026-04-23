@@ -27,13 +27,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const { data: store } = await supabase
     .from("stores")
-    .select("postex_token, postex_merchant_id")
+    .select("postex_token")
     .eq("store_id", session.shop)
     .single();
 
   return json({
     postexToken: store?.postex_token ?? "",
-    postexMerchantId: store?.postex_merchant_id ?? "",
   });
 };
 
@@ -42,7 +41,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const shop = session.shop;
   const formData = await request.formData();
   const token = String(formData.get("postex_token") ?? "").trim();
-  const merchantId = String(formData.get("postex_merchant_id") ?? "").trim();
 
   if (!token) {
     return json({ error: "PostEx API Token is required." });
@@ -56,7 +54,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const supabase = await getSupabaseForStore(shop);
   await supabase
     .from("stores")
-    .update({ postex_token: token, postex_merchant_id: merchantId, onboarding_step: 2 })
+    .update({ postex_token: token, onboarding_step: 2 })
     .eq("store_id", shop);
 
   // Fire-and-forget historical backfill — do NOT await
@@ -66,12 +64,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Step1PostEx() {
-  const { postexToken, postexMerchantId } = useLoaderData<typeof loader>();
+  const { postexToken } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const saving = navigation.state === "submitting";
   const [token, setToken] = useState(postexToken);
-  const [merchantId, setMerchantId] = useState(postexMerchantId);
 
   return (
     <Card>
@@ -100,14 +97,6 @@ export default function Step1PostEx() {
               autoComplete="off"
               type="password"
               helpText="Found in your PostEx merchant portal under API settings."
-            />
-            <TextField
-              label="Merchant ID"
-              name="postex_merchant_id"
-              value={merchantId}
-              onChange={setMerchantId}
-              autoComplete="off"
-              helpText="Your PostEx merchant ID."
             />
             <Button submit variant="primary" loading={saving}>
               Save & Continue

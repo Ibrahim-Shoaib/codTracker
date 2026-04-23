@@ -18,7 +18,20 @@
       "mcp__plugin_supabase_supabase__execute_sql",
       "mcp__plugin_supabase_supabase__get_project_url",
       "mcp__plugin_supabase_supabase__get_publishable_keys",
-      "Bash(openssl rand *)"
+      "Bash(openssl rand *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(where pdftotext *)",
+      "Bash(where mutool *)",
+      "Bash(pip show *)",
+      "Bash(\"C:/Program Files/Git/mingw64/bin/pdftotext.exe\" \"PostEx-COD_API_Integration_Guide_V4.1.9.pdf\" -)",
+      "Bash(del extract_pdf.js)",
+      "Bash(git -C \"C:/Users/ibrah/projects/codTracker\" status)",
+      "Bash(git -C \"C:/Users/ibrah/projects/codTracker\" diff)",
+      "Bash(git -C \"C:/Users/ibrah/projects/codTracker\" add app/shopify.server.ts)",
+      "Bash(git -C C:/Users/ibrah/projects/codTracker commit -m ' *)",
+      "Bash(git *)"
     ]
   }
 }
