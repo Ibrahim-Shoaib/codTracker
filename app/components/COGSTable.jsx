@@ -6,15 +6,15 @@ import {
   Banner,
   BlockStack,
   Box,
-  InlineStack,
   Button,
   Collapsible,
+  Thumbnail,
 } from "@shopify/polaris";
 
-// Shared COGS table — used in onboarding step 3 and Settings COGS section.
+// Shared COGS table — used in onboarding step 3 and /app/cogs settings page.
 // Renders inside a parent <Form>. Hidden inputs carry all variant data on submit.
 // Props:
-//   products:  [{ shopify_product_id, product_title, variants: [{ shopify_variant_id,
+//   products:  [{ shopify_product_id, product_title, image_url, variants: [{ shopify_variant_id,
 //               shopify_product_id, product_title, variant_title, sku, shopify_cost }] }]
 //   costsMap:  { [shopify_variant_id]: unit_cost }  — previously saved costs from DB
 export default function COGSTable({ products, costsMap }) {
@@ -32,8 +32,7 @@ export default function COGSTable({ products, costsMap }) {
     return map;
   });
 
-  // Products whose per-variant rows are expanded. Auto-expand when variants have
-  // different costs (e.g. Shopify already has distinct costs per variant).
+  // Auto-expand products whose variants already have differing costs.
   const [expanded, setExpanded] = useState(() => {
     const set = new Set();
     for (const product of products) {
@@ -55,7 +54,6 @@ export default function COGSTable({ products, costsMap }) {
     });
   };
 
-  // Apply one cost to every variant of a product (bulk input)
   const applyToAll = (product, val) => {
     setCosts(prev => {
       const next = { ...prev };
@@ -67,7 +65,6 @@ export default function COGSTable({ products, costsMap }) {
   const updateOne = (variantId, val) =>
     setCosts(prev => ({ ...prev, [variantId]: val }));
 
-  // If all variants of a product share the same cost, return it; otherwise ""
   const productCostValue = (product) => {
     const vals = product.variants.map(v => costs[v.shopify_variant_id] ?? "");
     return new Set(vals).size === 1 ? vals[0] : "";
@@ -76,7 +73,6 @@ export default function COGSTable({ products, costsMap }) {
   const isMixed = (product) =>
     new Set(product.variants.map(v => costs[v.shopify_variant_id] ?? "")).size > 1;
 
-  // Count products where at least one variant was pre-filled from Shopify (not from DB)
   const preFillCount = products.filter(p =>
     p.variants.some(v => v.shopify_cost != null && costsMap[v.shopify_variant_id] == null)
   ).length;
@@ -92,6 +88,10 @@ export default function COGSTable({ products, costsMap }) {
     );
   }
 
+  // Thumbnail is 40px wide; gap between thumb and title is 12px → 52px total indent
+  // used to align expanded variant rows with the product title.
+  const VARIANT_INDENT = 52;
+
   return (
     <BlockStack gap="400">
       {preFillCount > 0 && (
@@ -103,9 +103,9 @@ export default function COGSTable({ products, costsMap }) {
 
       <BlockStack gap="200">
         {products.map((product) => {
-          const isExpanded  = expanded.has(product.shopify_product_id);
-          const mixed       = isMixed(product);
-          const bulkVal     = productCostValue(product);
+          const isExpanded   = expanded.has(product.shopify_product_id);
+          const mixed        = isMixed(product);
+          const bulkVal      = productCostValue(product);
           const multiVariant = product.variants.length > 1;
           const anyShopifyCost = product.variants.some(v => v.shopify_cost != null);
 
@@ -119,26 +119,44 @@ export default function COGSTable({ products, costsMap }) {
               padding="400"
             >
               <BlockStack gap="300">
-                {/* ── Product header row ── */}
-                <InlineStack align="space-between" blockAlign="center" gap="400" wrap={false}>
-                  <InlineStack gap="200" blockAlign="center">
-                    <Text fontWeight="semibold" variant="bodyMd">
-                      {product.product_title}
-                    </Text>
-                    {multiVariant && (
-                      <Badge>
-                        {product.variants.length} variants
-                      </Badge>
-                    )}
-                    {anyShopifyCost && !multiVariant && (
-                      <Badge tone="info">Pre-filled</Badge>
-                    )}
-                    {anyShopifyCost && multiVariant && !isExpanded && (
-                      <Badge tone="info">Pre-filled</Badge>
-                    )}
-                  </InlineStack>
 
-                  <InlineStack gap="300" blockAlign="center" wrap={false}>
+                {/* ── Product header row ── */}
+                <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+
+                  {/* Left: thumbnail + title block — shrinks and truncates */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1, minWidth: 0 }}>
+                    <div style={{ flexShrink: 0 }}>
+                      <Thumbnail
+                        source={product.image_url || ""}
+                        size="small"
+                        alt={product.product_title}
+                      />
+                    </div>
+
+                    <div style={{ minWidth: 0 }}>
+                      {/* Title — truncates with ellipsis when narrow */}
+                      <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <Text fontWeight="semibold" variant="bodyMd" as="span">
+                          {product.product_title}
+                        </Text>
+                      </div>
+
+                      {/* Badges row */}
+                      {(multiVariant || anyShopifyCost) && (
+                        <div style={{ display: "flex", gap: "4px", marginTop: "4px", flexWrap: "wrap" }}>
+                          {multiVariant && (
+                            <Badge>{product.variants.length} variants</Badge>
+                          )}
+                          {anyShopifyCost && (
+                            <Badge tone="info">Pre-filled</Badge>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right: cost input + expand button — never shrinks */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", flexShrink: 0 }}>
                     <div style={{ width: 160 }}>
                       <TextField
                         label={`Cost for ${product.product_title}`}
@@ -154,15 +172,17 @@ export default function COGSTable({ products, costsMap }) {
                       />
                     </div>
                     {multiVariant && (
-                      <Button
-                        variant="plain"
-                        onClick={() => toggleExpanded(product.shopify_product_id)}
-                      >
-                        {isExpanded ? "Collapse" : "Per variant"}
-                      </Button>
+                      <div style={{ minWidth: 80 }}>
+                        <Button
+                          variant="plain"
+                          onClick={() => toggleExpanded(product.shopify_product_id)}
+                        >
+                          {isExpanded ? "Collapse" : "Per variant"}
+                        </Button>
+                      </div>
                     )}
-                  </InlineStack>
-                </InlineStack>
+                  </div>
+                </div>
 
                 {/* ── Expanded per-variant rows ── */}
                 {multiVariant && (
@@ -181,29 +201,36 @@ export default function COGSTable({ products, costsMap }) {
                           const displayTitle =
                             v.variant_title === "Default Title" ? "Default" : v.variant_title;
                           return (
-                            <InlineStack
+                            <div
                               key={v.shopify_variant_id}
-                              align="space-between"
-                              blockAlign="center"
-                              gap="400"
-                              wrap={false}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "16px",
+                                paddingLeft: VARIANT_INDENT,
+                              }}
                             >
-                              <InlineStack gap="200" blockAlign="center">
-                                <Box paddingInlineStart="400">
-                                  <Text variant="bodySm">{displayTitle}</Text>
-                                </Box>
-                                {v.sku && (
-                                  <Text variant="bodySm" tone="subdued">
-                                    {v.sku}
-                                  </Text>
-                                )}
+                              {/* Left: variant title + SKU (truncates) + badge */}
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, minWidth: 0 }}>
+                                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flexShrink: 1 }}>
+                                  <Text variant="bodySm" as="span">{displayTitle}</Text>
+                                  {v.sku && (
+                                    <Text variant="bodySm" tone="subdued" as="span">
+                                      {" · "}{v.sku}
+                                    </Text>
+                                  )}
+                                </div>
                                 {v.shopify_cost != null && (
-                                  <Badge tone="info" size="small">
-                                    Shopify: PKR {v.shopify_cost}
-                                  </Badge>
+                                  <div style={{ flexShrink: 0 }}>
+                                    <Badge tone="info" size="small">
+                                      Shopify: PKR {v.shopify_cost}
+                                    </Badge>
+                                  </div>
                                 )}
-                              </InlineStack>
-                              <div style={{ width: 160 }}>
+                              </div>
+
+                              {/* Right: cost input */}
+                              <div style={{ width: 160, flexShrink: 0 }}>
                                 <TextField
                                   label={displayTitle}
                                   labelHidden
@@ -216,7 +243,7 @@ export default function COGSTable({ products, costsMap }) {
                                   autoComplete="off"
                                 />
                               </div>
-                            </InlineStack>
+                            </div>
                           );
                         })}
                       </BlockStack>
@@ -225,7 +252,7 @@ export default function COGSTable({ products, costsMap }) {
                 )}
               </BlockStack>
 
-              {/* Hidden inputs — always present so every variant is submitted */}
+              {/* Hidden inputs — always rendered so every variant is submitted */}
               {product.variants.map((v) => (
                 <span key={v.shopify_variant_id}>
                   <input type="hidden" name={`cost_${v.shopify_variant_id}`}    value={costs[v.shopify_variant_id] ?? "0"} />

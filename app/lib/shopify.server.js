@@ -23,17 +23,28 @@ function parseNextUrl(linkHeader) {
 
 // ─── Products ─────────────────────────────────────────────────────────────────
 
+// Converts a full-size Shopify CDN image URL to the _small (100×100) variant.
+function shopifyImageSmall(src) {
+  if (!src) return null;
+  const [path, query] = src.split('?');
+  const dot = path.lastIndexOf('.');
+  if (dot === -1) return src;
+  const small = path.slice(0, dot) + '_small' + path.slice(dot);
+  return query ? `${small}?${query}` : small;
+}
+
 // Returns active products grouped by product, with shopify_cost pre-filled from
-// Shopify's native "Cost per item" field (InventoryItem.cost).
-// Shape: [{ shopify_product_id, product_title, variants: [{ shopify_variant_id,
+// Shopify's native "Cost per item" field (InventoryItem.cost) and a _small
+// image URL for display.
+// Shape: [{ shopify_product_id, product_title, image_url, variants: [{ shopify_variant_id,
 //   shopify_product_id, product_title, variant_title, sku, shopify_cost }] }]
 export async function getProductsForCOGS(session) {
   const { shop, accessToken } = session;
   const headers = adminHeaders(accessToken);
 
-  // 1. Paginate through all active products
+  // 1. Paginate through all active products — include images in the same call
   const rawProducts = [];
-  let url = adminUrl(shop, `products.json?status=active&limit=250&fields=id,title,variants`);
+  let url = adminUrl(shop, `products.json?status=active&limit=250&fields=id,title,variants,images`);
   while (url) {
     const res = await fetch(url, { headers });
     if (!res.ok) throw new Error(`Shopify products fetch failed: ${res.status}`);
@@ -50,26 +61,31 @@ export async function getProductsForCOGS(session) {
     }
   }
 
-  // 3. Batch-fetch inventory items (Shopify max = 100 per request)
-  const costByInvItemId = {};
+  // 3. Build batches and fire all inventory-item requests in parallel
+  const batches = [];
   for (let i = 0; i < invItemIds.length; i += 100) {
-    const batch = invItemIds.slice(i, i + 100);
-    const res = await fetch(
-      adminUrl(shop, `inventory_items.json?ids=${batch.join(',')}&fields=id,cost`),
-      { headers }
-    );
-    if (res.ok) {
-      const data = await res.json();
-      for (const item of data.inventory_items ?? []) {
-        costByInvItemId[item.id] = item.cost != null ? parseFloat(item.cost) : null;
-      }
+    batches.push(invItemIds.slice(i, i + 100));
+  }
+  const batchResults = await Promise.all(
+    batches.map(batch =>
+      fetch(
+        adminUrl(shop, `inventory_items.json?ids=${batch.join(',')}&fields=id,cost`),
+        { headers }
+      ).then(r => r.ok ? r.json() : { inventory_items: [] })
+    )
+  );
+  const costByInvItemId = {};
+  for (const data of batchResults) {
+    for (const item of data.inventory_items ?? []) {
+      costByInvItemId[item.id] = item.cost != null ? parseFloat(item.cost) : null;
     }
   }
 
   // 4. Build grouped structure
   return rawProducts.map(p => ({
     shopify_product_id: String(p.id),
-    product_title: p.title,
+    product_title:      p.title,
+    image_url:          shopifyImageSmall(p.images?.[0]?.src ?? null),
     variants: p.variants.map(v => ({
       shopify_variant_id: String(v.id),
       shopify_product_id: String(p.id),
