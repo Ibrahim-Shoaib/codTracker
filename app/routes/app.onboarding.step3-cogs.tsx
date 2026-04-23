@@ -77,7 +77,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   // Fire-and-forget retroactive COGS matching on all existing unmatched orders
-  void retroactiveCOGSMatch(supabase, shop, session);
+  void retroactiveCOGSMatch(supabase, shop);
 
   await supabase
     .from("stores")

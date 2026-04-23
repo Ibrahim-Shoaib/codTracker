@@ -68,7 +68,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       .upsert(rows, { onConflict: "store_id,shopify_variant_id" });
   }
 
-  void retroactiveCOGSMatch(supabase, shop, session);
+  void retroactiveCOGSMatch(supabase, shop);
 
   return json({ success: true });
 };

@@ -1,9 +1,9 @@
 import { fetchOrders, mapOrder } from './postex.server.js';
-import { getOrderByName, getOrdersLineItemMap } from './shopify.server.js';
 import { getLast30DaysPKT } from './dates.server.js';
+import { buildCostMap, computeCOGS } from './cogs.server.js';
 
 // Regular 30-day rolling sync. Called by cron and on-demand.
-export async function syncStore(storeRow, session, supabase) {
+export async function syncStore(storeRow, supabase) {
   const { start, end } = getLast30DaysPKT();
   const rawOrders = await fetchOrders(storeRow.postex_token, start, end);
   const mapped = rawOrders.map(o => mapOrder(o, storeRow.store_id));
@@ -19,14 +19,13 @@ export async function syncStore(storeRow, session, supabase) {
       .from('orders')
       .upsert(order, { onConflict: 'store_id,tracking_number' });
 
-    // If status changed to a final state and COGS not yet matched: match now
     const statusChanged =
       existing &&
       (order.is_delivered !== existing.is_delivered ||
         order.is_returned !== existing.is_returned);
+
     if (statusChanged && !existing.cogs_matched) {
-      // Best-effort — don't let a COGS failure break the PostEx sync
-      matchCOGS(supabase, storeRow.store_id, session, order.order_ref_number, order.tracking_number)
+      matchCOGS(supabase, storeRow.store_id, order.tracking_number, order.order_detail)
         .catch(err => console.error(`matchCOGS failed for ${order.tracking_number}:`, err));
     }
   }
@@ -37,30 +36,15 @@ export async function syncStore(storeRow, session, supabase) {
     .eq('store_id', storeRow.store_id);
 }
 
-// Looks up Shopify line items for one order and computes + writes cogs_total.
-export async function matchCOGS(supabase, storeId, session, orderRefNumber, trackingNumber) {
-  if (!orderRefNumber) return;
+// Looks up COGS for one order using orderDetail text — no Shopify API call needed.
+export async function matchCOGS(supabase, storeId, trackingNumber, orderDetail) {
+  const { data: costs } = await supabase
+    .from('product_costs')
+    .select('product_title, variant_title, unit_cost')
+    .eq('store_id', storeId);
 
-  const lineItems = await getOrderByName(session, orderRefNumber);
-  if (!lineItems || lineItems.length === 0) return;
-
-  let cogsTotal = 0;
-  let allMatched = true;
-
-  for (const item of lineItems) {
-    const { data: cost } = await supabase
-      .from('product_costs')
-      .select('unit_cost')
-      .eq('store_id', storeId)
-      .eq('shopify_variant_id', item.variant_id)
-      .single();
-
-    if (cost) {
-      cogsTotal += cost.unit_cost * item.quantity;
-    } else {
-      allMatched = false;
-    }
-  }
+  const costMap = buildCostMap(costs);
+  const { cogsTotal, allMatched } = computeCOGS(orderDetail, costMap);
 
   await supabase
     .from('orders')
@@ -69,62 +53,29 @@ export async function matchCOGS(supabase, storeId, session, orderRefNumber, trac
     .eq('tracking_number', trackingNumber);
 }
 
-// Batch retroactive COGS match for all unmatched orders.
-// Fetches all Shopify orders in bulk (one paginated scan) to avoid per-order API calls.
-// Returns stats object for debugging.
-export async function retroactiveCOGSMatch(supabase, storeId, session) {
+// Batch retroactive COGS match for all unmatched orders — pure DB operation, no external APIs.
+export async function retroactiveCOGSMatch(supabase, storeId) {
   const { data: unmatched } = await supabase
     .from('orders')
-    .select('order_ref_number, tracking_number, transaction_date')
+    .select('tracking_number, order_detail')
     .eq('store_id', storeId)
     .eq('cogs_matched', false);
 
-  if (!unmatched?.length) return { unmatched: 0, shopifyOrders: 0, updates: 0 };
+  if (!unmatched?.length) return { unmatched: 0, updates: 0 };
 
-  // Fetch ALL Shopify orders — no date filter. PostEx ref numbers are Shopify order
-  // numbers that can be months/years old (the merchant books PostEx long after the order).
-  const lineItemMap = await getOrdersLineItemMap(session, null);
-
-  // Fetch all product costs for this store once
   const { data: costs } = await supabase
     .from('product_costs')
-    .select('shopify_variant_id, unit_cost')
+    .select('product_title, variant_title, unit_cost')
     .eq('store_id', storeId);
 
-  const costMap = new Map((costs ?? []).map(c => [c.shopify_variant_id, Number(c.unit_cost)]));
+  const costMap = buildCostMap(costs);
 
-  // Match each unmatched order against the in-memory maps — no more API calls
   const updates = [];
   for (const order of unmatched) {
-    if (!order.order_ref_number) {
-      // No ref at all — permanently unmatchable, silence the warning
-      updates.push({ tracking_number: order.tracking_number, cogsTotal: 0, allMatched: true });
-      continue;
-    }
-
-    const lineItems = lineItemMap.get(`#${order.order_ref_number}`);
-    if (!lineItems?.length) {
-      // Ref not found in Shopify after a full scan — pre-Shopify order or bad ref.
-      // Mark as matched so it stops triggering the "missing COGS" warning.
-      updates.push({ tracking_number: order.tracking_number, cogsTotal: 0, allMatched: true });
-      continue;
-    }
-
-    let cogsTotal = 0;
-    let allMatched = true;
-    for (const item of lineItems) {
-      const unitCost = costMap.get(item.variant_id);
-      if (unitCost != null) {
-        cogsTotal += unitCost * item.quantity;
-      } else {
-        allMatched = false;
-      }
-    }
-
+    const { cogsTotal, allMatched } = computeCOGS(order.order_detail, costMap);
     updates.push({ tracking_number: order.tracking_number, cogsTotal, allMatched });
   }
 
-  // Write all updates to the DB
   for (const u of updates) {
     await supabase
       .from('orders')
@@ -133,5 +84,5 @@ export async function retroactiveCOGSMatch(supabase, storeId, session) {
       .eq('tracking_number', u.tracking_number);
   }
 
-  return { unmatched: unmatched.length, shopifyOrders: lineItemMap.size, costVariants: costMap.size, updates: updates.length };
+  return { unmatched: unmatched.length, updates: updates.length };
 }
