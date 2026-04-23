@@ -83,11 +83,13 @@ export async function retroactiveCOGSMatch(supabase, storeId, session) {
 
   if (!unmatched?.length) return;
 
-  // Find earliest order date to minimise Shopify pages fetched
-  const earliest = unmatched
+  // Find earliest order date, then offset 60 days back — Shopify orders are created
+  // when the customer places the order, which can be weeks before the PostEx booking.
+  const earliestRaw = unmatched
     .map(o => o.transaction_date)
     .filter(Boolean)
     .sort()[0] ?? '2020-01-01T00:00:00Z';
+  const earliest = new Date(new Date(earliestRaw).getTime() - 60 * 24 * 60 * 60 * 1000).toISOString();
 
   // Single paginated Shopify scan → name→lineItems map (~4–6 API calls total)
   const lineItemMap = await getOrdersLineItemMap(session, earliest);
