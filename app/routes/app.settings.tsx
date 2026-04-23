@@ -231,6 +231,13 @@ export default function SettingsPage() {
     }
   }, [actionData]);
 
+  // Scroll to Meta Ads section after OAuth return (account selector) or after save (success banner)
+  useEffect(() => {
+    if ((pendingToken && pendingAccounts) || metaJustConnected) {
+      document.getElementById("meta-ads-section")?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [pendingToken, pendingAccounts, metaJustConnected]);
+
   // Shorthand for per-section action result
   const ad = actionData as { intent?: string; error?: string; success?: boolean; metaAuthUrl?: string } | null;
   const forSection = (section: string) => ad?.intent === section ? ad : null;
@@ -304,6 +311,7 @@ export default function SettingsPage() {
         </Layout.Section>
 
         {/* ── Section 2: Meta Ads ───────────────────────────────────────── */}
+        <div id="meta-ads-section" />
         <Layout.Section>
           <Card>
             <BlockStack gap="400">
