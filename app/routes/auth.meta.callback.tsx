@@ -1,10 +1,33 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
-import { redirect } from "@remix-run/node";
 import { exchangeCodeForToken, getAdAccounts } from "../lib/meta.server.js";
 import { metaOAuthSession } from "../lib/meta-session.server.js";
 
-// Handles Meta OAuth callback. Not inside the Shopify app layout — no authenticate.admin().
-// Meta redirects here after the merchant grants ads_read scope.
+// Returns an HTML page that:
+//  - Broadcasts the result to any same-origin BroadcastChannel listener (the app iframe)
+//  - Closes itself if it was opened as a popup (window.name === "meta_oauth_window")
+//  - Redirects to returnTo if it ended up as a full-page navigation (popup blocked fallback)
+function htmlResponse(
+  payload: Record<string, string>,
+  returnTo: string,
+  setCookie: string
+) {
+  return new Response(
+    `<!DOCTYPE html><html><body><script>
+      (function () {
+        var ch = new BroadcastChannel("meta_oauth");
+        ch.postMessage(${JSON.stringify(payload)});
+        ch.close();
+        if (window.name === "meta_oauth_window") {
+          window.close();
+        } else {
+          window.location.href = ${JSON.stringify(returnTo)};
+        }
+      })();
+    </script></body></html>`,
+    { headers: { "Content-Type": "text/html", "Set-Cookie": setCookie } }
+  );
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
@@ -14,16 +37,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const cookieHeader = request.headers.get("Cookie");
   const oauthSession = await metaOAuthSession.getSession(cookieHeader);
   const savedState: string | null = oauthSession.get("state") ?? null;
-
-  // returnTo is set by the initiating route (onboarding step 2 or settings)
   const returnTo: string =
-    oauthSession.get("returnTo") ?? "/app/onboarding/step2-meta";
+    oauthSession.get("returnTo") ?? "https://admin.shopify.com";
 
-  // On error or state mismatch: clear session and send back to the originating route
   if (error || !code || !savedState || state !== savedState) {
     console.error("Meta OAuth callback failed:", { error, stateMatch: state === savedState });
     const setCookie = await metaOAuthSession.destroySession(oauthSession);
-    return redirect(returnTo, { headers: { "Set-Cookie": setCookie } });
+    return htmlResponse(
+      { type: "meta_oauth_error", reason: error ?? "state_mismatch" },
+      returnTo,
+      setCookie
+    );
   }
 
   try {
@@ -35,10 +59,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     oauthSession.set("meta_ad_accounts", adAccounts);
 
     const setCookie = await metaOAuthSession.commitSession(oauthSession);
-    return redirect(returnTo, { headers: { "Set-Cookie": setCookie } });
+    return htmlResponse({ type: "meta_oauth_complete" }, returnTo, setCookie);
   } catch (err) {
     console.error("Meta OAuth token exchange failed:", err);
     const setCookie = await metaOAuthSession.destroySession(oauthSession);
-    return redirect(returnTo, { headers: { "Set-Cookie": setCookie } });
+    return htmlResponse(
+      { type: "meta_oauth_error", reason: "token_exchange" },
+      returnTo,
+      setCookie
+    );
   }
 };

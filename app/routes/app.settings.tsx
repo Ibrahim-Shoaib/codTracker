@@ -5,6 +5,7 @@ import {
   useActionData,
   Form,
   useNavigation,
+  useRevalidator,
 } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { randomBytes } from "crypto";
@@ -224,12 +225,34 @@ export default function SettingsPage() {
     pendingAccounts?.[0]?.id ?? ""
   );
 
-  // Break out of Shopify iframe to reach Meta OAuth
+  const revalidator = useRevalidator();
+  const [metaOAuthFailed, setMetaOAuthFailed] = useState(false);
+
+  // Once the server returns the OAuth URL, navigate the already-open popup to it.
   useEffect(() => {
     if (actionData && "metaAuthUrl" in actionData && actionData.metaAuthUrl) {
-      (window.top ?? window).location.href = actionData.metaAuthUrl as string;
+      const popup = window.open("", "meta_oauth_window");
+      if (popup) {
+        popup.location.href = actionData.metaAuthUrl as string;
+      } else {
+        (window.top ?? window).location.href = actionData.metaAuthUrl as string;
+      }
     }
   }, [actionData]);
+
+  // Listen for popup completion — reload loader data in-place, preserving scroll position.
+  useEffect(() => {
+    const channel = new BroadcastChannel("meta_oauth");
+    channel.onmessage = (event) => {
+      if (event.data?.type === "meta_oauth_complete") {
+        revalidator.revalidate();
+      } else if (event.data?.type === "meta_oauth_error") {
+        setMetaOAuthFailed(true);
+      }
+      channel.close();
+    };
+    return () => channel.close();
+  }, [revalidator]);
 
   // Scroll to Meta Ads section after OAuth return (account selector) or after save (success banner)
   useEffect(() => {
@@ -326,6 +349,10 @@ export default function SettingsPage() {
                 <Banner tone="success">Meta Ads connected successfully.</Banner>
               )}
 
+              {metaOAuthFailed && (
+                <Banner tone="critical">Meta Ads connection failed. Please try again.</Banner>
+              )}
+
               {/* Connection status */}
               <InlineStack gap="300" blockAlign="center">
                 <Text as="span" variant="bodyMd">Status:</Text>
@@ -366,6 +393,9 @@ export default function SettingsPage() {
                     submit
                     variant="primary"
                     loading={submitting && currentIntent === "meta_connect"}
+                    onClick={() => {
+                      window.open("about:blank", "meta_oauth_window", "width=600,height=700,scrollbars=yes,resizable=yes");
+                    }}
                   >
                     Reconnect Meta Ads
                   </Button>

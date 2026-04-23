@@ -5,6 +5,7 @@ import {
   useActionData,
   Form,
   useNavigation,
+  useRevalidator,
 } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { randomBytes } from "crypto";
@@ -115,16 +116,38 @@ export default function Step2Meta() {
   const navigation = useNavigation();
   const saving = navigation.state === "submitting";
 
+  const revalidator = useRevalidator();
+  const [metaOAuthFailed, setMetaOAuthFailed] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(
     pendingAccounts?.[0]?.id ?? ""
   );
 
-  // Break out of Shopify iframe to reach Meta OAuth
+  // Once the server returns the OAuth URL, navigate the already-open popup to it.
+  // Fallback: if popup was blocked, navigate window.top (existing behaviour).
   useEffect(() => {
     if (actionData && "metaAuthUrl" in actionData && actionData.metaAuthUrl) {
-      (window.top ?? window).location.href = actionData.metaAuthUrl as string;
+      const popup = window.open("", "meta_oauth_window");
+      if (popup) {
+        popup.location.href = actionData.metaAuthUrl as string;
+      } else {
+        (window.top ?? window).location.href = actionData.metaAuthUrl as string;
+      }
     }
   }, [actionData]);
+
+  // Listen for the popup to signal completion, then reload loader data in-place.
+  useEffect(() => {
+    const channel = new BroadcastChannel("meta_oauth");
+    channel.onmessage = (event) => {
+      if (event.data?.type === "meta_oauth_complete") {
+        revalidator.revalidate();
+      } else if (event.data?.type === "meta_oauth_error") {
+        setMetaOAuthFailed(true);
+      }
+      channel.close();
+    };
+    return () => channel.close();
+  }, [revalidator]);
 
   const accountOptions = (pendingAccounts ?? []).map(acc => ({
     label: `${acc.name} (${acc.id})`,
@@ -185,14 +208,25 @@ export default function Step2Meta() {
           </Banner>
         )}
 
-        {"error" in (actionData ?? {}) && (
-          <Banner tone="critical">{(actionData as { error: string }).error}</Banner>
+        {(metaOAuthFailed || "error" in (actionData ?? {})) && (
+          <Banner tone="critical">
+            {metaOAuthFailed
+              ? "Meta Ads connection failed. Please try again."
+              : (actionData as { error: string }).error}
+          </Banner>
         )}
 
         <InlineStack gap="300">
           <Form method="post">
             <input type="hidden" name="intent" value="connect" />
-            <Button submit variant="primary" loading={saving}>
+            <Button
+              submit
+              variant="primary"
+              loading={saving}
+              onClick={() => {
+                window.open("about:blank", "meta_oauth_window", "width=600,height=700,scrollbars=yes,resizable=yes");
+              }}
+            >
               Connect Meta Ads
             </Button>
           </Form>
