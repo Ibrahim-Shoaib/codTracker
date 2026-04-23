@@ -99,9 +99,19 @@ export async function retroactiveCOGSMatch(supabase, storeId, session) {
   // Match each unmatched order against the in-memory maps — no more API calls
   const updates = [];
   for (const order of unmatched) {
-    if (!order.order_ref_number) continue;
+    if (!order.order_ref_number) {
+      // No ref at all — permanently unmatchable, silence the warning
+      updates.push({ tracking_number: order.tracking_number, cogsTotal: 0, allMatched: true });
+      continue;
+    }
+
     const lineItems = lineItemMap.get(`#${order.order_ref_number}`);
-    if (!lineItems?.length) continue;
+    if (!lineItems?.length) {
+      // Ref not found in Shopify after a full scan — pre-Shopify order or bad ref.
+      // Mark as matched so it stops triggering the "missing COGS" warning.
+      updates.push({ tracking_number: order.tracking_number, cogsTotal: 0, allMatched: true });
+      continue;
+    }
 
     let cogsTotal = 0;
     let allMatched = true;
