@@ -146,9 +146,8 @@ export async function getOrderByName(session, orderRefNumber) {
   }));
 }
 
-// Fetches all Shopify orders created on or after createdAtMin and returns a
-// Map of order_name (e.g. "#8509") → [{ variant_id, quantity }].
-// Uses cursor pagination — typically 4–6 API calls for a few hundred orders.
+// Fetches all Shopify orders and returns a Map of order_name → [{ variant_id, quantity }].
+// Respects Shopify's Retry-After header on 429 — retries up to 5 times per page.
 export async function getOrdersLineItemMap(session, createdAtMin) {
   const { shop, accessToken } = session;
   const headers = adminHeaders(accessToken);
@@ -161,7 +160,13 @@ export async function getOrdersLineItemMap(session, createdAtMin) {
   );
 
   while (url) {
-    const res = await fetch(url, { headers });
+    let res;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      res = await fetch(url, { headers });
+      if (res.status !== 429) break;
+      const retryAfter = parseFloat(res.headers.get('retry-after') ?? '2');
+      await new Promise(r => setTimeout(r, retryAfter * 1000));
+    }
     if (!res.ok) throw new Error(`Shopify getOrdersLineItemMap failed: ${res.status}`);
     const { orders } = await res.json();
 
