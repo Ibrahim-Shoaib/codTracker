@@ -6,8 +6,8 @@ export const metaOAuthSession = createCookieSessionStorage({
   cookie: {
     name: "meta_oauth",
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: true,
+    sameSite: "none",
     maxAge: 600, // 10 minutes — OAuth round-trip
     secrets: [process.env.SESSION_SECRET],
   },
