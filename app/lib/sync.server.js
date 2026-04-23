@@ -25,13 +25,9 @@ export async function syncStore(storeRow, session, supabase) {
       (order.is_delivered !== existing.is_delivered ||
         order.is_returned !== existing.is_returned);
     if (statusChanged && !existing.cogs_matched) {
-      await matchCOGS(
-        supabase,
-        storeRow.store_id,
-        session,
-        order.order_ref_number,
-        order.tracking_number
-      );
+      // Best-effort — don't let a COGS failure break the PostEx sync
+      matchCOGS(supabase, storeRow.store_id, session, order.order_ref_number, order.tracking_number)
+        .catch(err => console.error(`matchCOGS failed for ${order.tracking_number}:`, err));
     }
   }
 
@@ -69,6 +65,7 @@ export async function matchCOGS(supabase, storeId, session, orderRefNumber, trac
   await supabase
     .from('orders')
     .update({ cogs_total: cogsTotal, cogs_matched: allMatched })
+    .eq('store_id', storeId)
     .eq('tracking_number', trackingNumber);
 }
 
