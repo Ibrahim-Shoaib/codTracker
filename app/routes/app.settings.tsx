@@ -377,11 +377,6 @@ export default function SettingsPage() {
             <BlockStack gap="400">
               <Text as="h2" variant="headingMd">Cost of Goods (COGS)</Text>
 
-              <Banner tone="warning">
-                Updated costs apply to future calculations only. Historical
-                snapshots will not be recalculated.
-              </Banner>
-
               <InlineStack>
                 <Button url="/app/cogs" variant="primary">
                   Edit COGS
