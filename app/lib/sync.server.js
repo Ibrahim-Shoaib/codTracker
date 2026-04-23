@@ -84,16 +84,9 @@ export async function retroactiveCOGSMatch(supabase, storeId, session) {
 
   if (!unmatched?.length) return { unmatched: 0, shopifyOrders: 0, updates: 0 };
 
-  // Find earliest order date, then offset 60 days back — Shopify orders are created
-  // when the customer places the order, which can be weeks before the PostEx booking.
-  const earliestRaw = unmatched
-    .map(o => o.transaction_date)
-    .filter(Boolean)
-    .sort()[0] ?? '2020-01-01T00:00:00Z';
-  const earliest = new Date(new Date(earliestRaw).getTime() - 60 * 24 * 60 * 60 * 1000).toISOString();
-
-  // Single paginated Shopify scan → name→lineItems map (~4–6 API calls total)
-  const lineItemMap = await getOrdersLineItemMap(session, earliest);
+  // Fetch ALL Shopify orders — no date filter. PostEx ref numbers are Shopify order
+  // numbers that can be months/years old (the merchant books PostEx long after the order).
+  const lineItemMap = await getOrdersLineItemMap(session, null);
 
   // Fetch all product costs for this store once
   const { data: costs } = await supabase
@@ -133,5 +126,5 @@ export async function retroactiveCOGSMatch(supabase, storeId, session) {
       .eq('tracking_number', u.tracking_number);
   }
 
-  return { unmatched: unmatched.length, shopifyOrders: lineItemMap.size, costVariants: costMap.size, updates: updates.length, earliest };
+  return { unmatched: unmatched.length, shopifyOrders: lineItemMap.size, costVariants: costMap.size, updates: updates.length };
 }

@@ -154,9 +154,10 @@ export async function getOrdersLineItemMap(session, createdAtMin) {
   const headers = adminHeaders(accessToken);
   const map = new Map();
 
+  const dateParam = createdAtMin ? `&created_at_min=${encodeURIComponent(createdAtMin)}` : '';
   let url = adminUrl(
     shop,
-    `orders.json?status=any&limit=250&fields=name,line_items&created_at_min=${encodeURIComponent(createdAtMin)}`
+    `orders.json?status=any&limit=250&fields=name,line_items${dateParam}`
   );
 
   while (url) {
