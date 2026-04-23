@@ -12,6 +12,7 @@ import {
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
+import { metaOAuthSession } from "../lib/meta-session.server.js";
 import {
   getTodayPKT,
   getYesterdayPKT,
@@ -82,6 +83,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (!store) return json({ redirectTo: "/app/onboarding/step1-postex" });
   if (!store.onboarding_complete) {
     return json({ redirectTo: STEP_ROUTES[store.onboarding_step] ?? "/app/onboarding/step1-postex" });
+  }
+
+  // After Meta OAuth from settings, the callback redirects here (app root).
+  // If a pending token is in the cookie, send the user to settings to complete the connection.
+  const cookieHeader = request.headers.get("Cookie");
+  const oauthSession = await metaOAuthSession.getSession(cookieHeader);
+  if (oauthSession.get("meta_access_token")) {
+    return json({ redirectTo: "/app/settings" });
   }
 
   const expAmt = Number(store.expenses_amount) || 0;

@@ -119,7 +119,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     oauthSession.set("state", state);
     oauthSession.set("shop", shop);
     const shopHandle = shop.replace(".myshopify.com", "");
-    oauthSession.set("returnTo", `https://admin.shopify.com/store/${shopHandle}/apps/${process.env.SHOPIFY_API_KEY}/settings`);
+    oauthSession.set("returnTo", `https://admin.shopify.com/store/${shopHandle}/apps/${process.env.SHOPIFY_API_KEY}`);
     const metaAuthUrl = getMetaAuthUrl(state);
     const setCookie = await metaOAuthSession.commitSession(oauthSession);
     return json(
