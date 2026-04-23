@@ -474,7 +474,7 @@ export default function SettingsPage() {
                     <Text as="p" variant="bodyMd">Expense Type</Text>
                     <RadioButton
                       label="Per Month"
-                      helpText="Prorated across each time period."
+                      helpText="Full amount charged on the 1st of each month."
                       id="new_expenses_monthly"
                       name="type"
                       value="monthly"

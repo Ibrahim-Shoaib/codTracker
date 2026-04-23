@@ -94,7 +94,7 @@ export default function Step4Expenses() {
           </Text>
           <Text as="p" variant="bodyMd" tone="subdued">
             Add your fixed business expenses (e.g. rent, salaries, packaging).
-            Monthly expenses are prorated across each time period. Per Order expenses
+            Monthly expenses are charged in full on the 1st of each month. Per Order expenses
             multiply by the number of delivered orders.
           </Text>
         </BlockStack>
@@ -169,7 +169,7 @@ export default function Step4Expenses() {
               <Text as="p" variant="bodyMd">Expense Type</Text>
               <RadioButton
                 label="Per Month"
-                helpText="Prorated across each time period (e.g. today = 1/30 of monthly amount)."
+                helpText="Full amount charged on the 1st of each month."
                 id="add_monthly"
                 name="type"
                 value="monthly"
