@@ -28,6 +28,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   let matched = 0;
   const errors: Array<{ store: string; error: string }> = [];
+  const allStats: Array<{ store: string; stats: unknown }> = [];
 
   for (const store of stores) {
     try {
@@ -37,12 +38,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         errors.push({ store: store.store_id, error: "no offline session found" });
         continue;
       }
-      await retroactiveCOGSMatch(supabase, store.store_id, offlineSession);
+      const stats = await retroactiveCOGSMatch(supabase, store.store_id, offlineSession);
+      allStats.push({ store: store.store_id, stats });
       matched++;
     } catch (err) {
       errors.push({ store: store.store_id, error: String(err) });
     }
   }
 
-  return json({ stores_processed: matched, errors });
+  return json({ stores_processed: matched, errors, allStats });
 };

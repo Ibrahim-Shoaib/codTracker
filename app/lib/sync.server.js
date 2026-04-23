@@ -74,6 +74,7 @@ export async function matchCOGS(supabase, storeId, session, orderRefNumber, trac
 
 // Batch retroactive COGS match for all unmatched orders.
 // Fetches all Shopify orders in bulk (one paginated scan) to avoid per-order API calls.
+// Returns stats object for debugging.
 export async function retroactiveCOGSMatch(supabase, storeId, session) {
   const { data: unmatched } = await supabase
     .from('orders')
@@ -81,7 +82,7 @@ export async function retroactiveCOGSMatch(supabase, storeId, session) {
     .eq('store_id', storeId)
     .eq('cogs_matched', false);
 
-  if (!unmatched?.length) return;
+  if (!unmatched?.length) return { unmatched: 0, shopifyOrders: 0, updates: 0 };
 
   // Find earliest order date, then offset 60 days back — Shopify orders are created
   // when the customer places the order, which can be weeks before the PostEx booking.
@@ -131,4 +132,6 @@ export async function retroactiveCOGSMatch(supabase, storeId, session) {
       .eq('store_id', storeId)
       .eq('tracking_number', u.tracking_number);
   }
+
+  return { unmatched: unmatched.length, shopifyOrders: lineItemMap.size, costVariants: costMap.size, updates: updates.length, earliest };
 }
