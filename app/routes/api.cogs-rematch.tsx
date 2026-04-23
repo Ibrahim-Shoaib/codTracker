@@ -44,5 +44,5 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
-  return json({ matched, errors });
+  return json({ stores_processed: matched, errors });
 };

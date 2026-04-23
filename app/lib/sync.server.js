@@ -1,5 +1,5 @@
 import { fetchOrders, mapOrder } from './postex.server.js';
-import { getOrderByName } from './shopify.server.js';
+import { getOrderByName, getOrdersLineItemMap } from './shopify.server.js';
 import { getLast30DaysPKT } from './dates.server.js';
 
 // Regular 30-day rolling sync. Called by cron and on-demand.
@@ -73,24 +73,60 @@ export async function matchCOGS(supabase, storeId, session, orderRefNumber, trac
 }
 
 // Batch retroactive COGS match for all unmatched orders.
-// Called fire-and-forget from onboarding step 3 after product costs are saved.
+// Fetches all Shopify orders in bulk (one paginated scan) to avoid per-order API calls.
 export async function retroactiveCOGSMatch(supabase, storeId, session) {
   const { data: unmatched } = await supabase
     .from('orders')
-    .select('order_ref_number, tracking_number')
+    .select('order_ref_number, tracking_number, transaction_date')
     .eq('store_id', storeId)
     .eq('cogs_matched', false);
 
   if (!unmatched?.length) return;
 
-  // Sequential to avoid Shopify rate limits
+  // Find earliest order date to minimise Shopify pages fetched
+  const earliest = unmatched
+    .map(o => o.transaction_date)
+    .filter(Boolean)
+    .sort()[0] ?? '2020-01-01T00:00:00Z';
+
+  // Single paginated Shopify scan → name→lineItems map (~4–6 API calls total)
+  const lineItemMap = await getOrdersLineItemMap(session, earliest);
+
+  // Fetch all product costs for this store once
+  const { data: costs } = await supabase
+    .from('product_costs')
+    .select('shopify_variant_id, unit_cost')
+    .eq('store_id', storeId);
+
+  const costMap = new Map((costs ?? []).map(c => [c.shopify_variant_id, Number(c.unit_cost)]));
+
+  // Match each unmatched order against the in-memory maps — no more API calls
+  const updates = [];
   for (const order of unmatched) {
-    await matchCOGS(
-      supabase,
-      storeId,
-      session,
-      order.order_ref_number,
-      order.tracking_number
-    );
+    if (!order.order_ref_number) continue;
+    const lineItems = lineItemMap.get(`#${order.order_ref_number}`);
+    if (!lineItems?.length) continue;
+
+    let cogsTotal = 0;
+    let allMatched = true;
+    for (const item of lineItems) {
+      const unitCost = costMap.get(item.variant_id);
+      if (unitCost != null) {
+        cogsTotal += unitCost * item.quantity;
+      } else {
+        allMatched = false;
+      }
+    }
+
+    updates.push({ tracking_number: order.tracking_number, cogsTotal, allMatched });
+  }
+
+  // Write all updates to the DB
+  for (const u of updates) {
+    await supabase
+      .from('orders')
+      .update({ cogs_total: u.cogsTotal, cogs_matched: u.allMatched })
+      .eq('store_id', storeId)
+      .eq('tracking_number', u.tracking_number);
   }
 }

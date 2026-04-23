@@ -146,6 +146,37 @@ export async function getOrderByName(session, orderRefNumber) {
   }));
 }
 
+// Fetches all Shopify orders created on or after createdAtMin and returns a
+// Map of order_name (e.g. "#8509") → [{ variant_id, quantity }].
+// Uses cursor pagination — typically 4–6 API calls for a few hundred orders.
+export async function getOrdersLineItemMap(session, createdAtMin) {
+  const { shop, accessToken } = session;
+  const headers = adminHeaders(accessToken);
+  const map = new Map();
+
+  let url = adminUrl(
+    shop,
+    `orders.json?status=any&limit=250&fields=name,line_items&created_at_min=${encodeURIComponent(createdAtMin)}`
+  );
+
+  while (url) {
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new Error(`Shopify getOrdersLineItemMap failed: ${res.status}`);
+    const { orders } = await res.json();
+
+    for (const order of orders ?? []) {
+      map.set(order.name, order.line_items.map(item => ({
+        variant_id: String(item.variant_id),
+        quantity:   item.quantity,
+      })));
+    }
+
+    url = parseNextUrl(res.headers.get('link'));
+  }
+
+  return map;
+}
+
 // ─── Webhooks ─────────────────────────────────────────────────────────────────
 
 // Registers app/uninstalled webhook. Safe to call on every install — 422 means already registered.
