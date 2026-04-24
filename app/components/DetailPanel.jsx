@@ -67,14 +67,17 @@ export default function DetailPanel({
 
   // Compute per-expense amounts for this period
   const expenses = expensesList ?? [];
-  // Count how many 1st-of-months fall within the date range — mirrors the SQL v_month_count logic
+  // Count how many 1st-of-months fall within the date range — mirrors the SQL v_month_count logic.
+  // Pure string comparison on YYYY-MM-DD avoids UTC vs local timezone mismatch.
   function countMonthStarts(from, to) {
     let count = 0;
-    const toDate = new Date(to);
-    const cursor = new Date(new Date(from).getFullYear(), new Date(from).getMonth(), 1);
-    while (cursor <= toDate) {
-      if (cursor >= new Date(from)) count++;
-      cursor.setMonth(cursor.getMonth() + 1);
+    let [y, m] = from.split('-').map(Number);
+    while (true) {
+      const first = `${y}-${String(m).padStart(2, '0')}-01`;
+      if (first > to) break;
+      if (first >= from) count++;
+      m++;
+      if (m > 12) { m = 1; y++; }
     }
     return count;
   }
