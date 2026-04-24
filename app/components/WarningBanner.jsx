@@ -2,7 +2,6 @@ import { Banner, BlockStack } from "@shopify/polaris";
 
 // Props:
 //   unmatchedCOGSCount  number  — orders with cogs_match_source = 'none'
-//   estimatedCOGSCount  number  — orders matched via fuzzy / sibling_avg / fallback_avg
 //   metaConnected       boolean
 //   isMetaExpired       boolean
 //   isMetaExpiringSoon  boolean
@@ -10,7 +9,6 @@ import { Banner, BlockStack } from "@shopify/polaris";
 //   backfillInProgress  boolean
 export default function WarningBanner({
   unmatchedCOGSCount,
-  estimatedCOGSCount,
   metaConnected,
   isMetaExpired,
   isMetaExpiringSoon,
@@ -24,16 +22,6 @@ export default function WarningBanner({
       <Banner key="cogs-none" tone="warning">
         {unmatchedCOGSCount} order{unmatchedCOGSCount > 1 ? "s have" : " has"} missing
         COGS. Update your product costs in Settings.
-      </Banner>
-    );
-  }
-
-  if (estimatedCOGSCount > 0) {
-    banners.push(
-      <Banner key="cogs-estimated" tone="info">
-        COGS for {estimatedCOGSCount} order{estimatedCOGSCount > 1 ? "s is" : " is"} estimated
-        because the exact product couldn't be resolved from the order text.
-        Review your COGS in Settings to confirm the averages are reasonable.
       </Banner>
     );
   }
