@@ -20,8 +20,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const metaConnected = url.searchParams.get("meta") === "connected";
 
   const [productsResult, supabase] = await Promise.all([
-    getProductsForCOGS(session).then(p => ({ ok: true as const, data: p, error: null as string | null })).catch((err: Error) => {
-      console.error("getProductsForCOGS failed — shop:", shop, "accessToken present:", !!session.accessToken, "error:", err.message);
+    getProductsForCOGS(session).then(p => ({ ok: true as const, data: p, error: null as string | null })).catch(async (err: Error) => {
+      if (err.message === 'SHOPIFY_401') {
+        // Stale/revoked access token — delete session and force re-auth
+        const { sessionStorage } = await import("../shopify.server");
+        await sessionStorage.deleteSession(`offline_${shop}`);
+        throw new Response(null, { status: 302, headers: { Location: `/auth?shop=${shop}` } });
+      }
+      console.error("getProductsForCOGS failed:", err.message);
       return { ok: false as const, data: [] as Awaited<ReturnType<typeof getProductsForCOGS>>, error: err.message };
     }),
     getSupabaseForStore(shop),

@@ -48,6 +48,7 @@ export async function getProductsForCOGS(session) {
     let url = adminUrl(shop, `products.json?status=active&limit=250&fields=id,title,variants,images`);
     while (url) {
       const res = await fetch(url, { headers });
+      if (res.status === 401) throw new Error('SHOPIFY_401');
       if (!res.ok) throw new Error(`Shopify products fetch failed: ${res.status}`);
       const data = await res.json();
       list.push(...data.products);

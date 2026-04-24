@@ -13,8 +13,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
 
-  const [products, supabase] = await Promise.all([
-    getProductsForCOGS(session),
+  const [productsResult, supabase] = await Promise.all([
+    getProductsForCOGS(session).then(p => ({ ok: true as const, data: p })).catch(async (err: Error) => {
+      if (err.message === 'SHOPIFY_401') {
+        const { sessionStorage } = await import("../shopify.server");
+        await sessionStorage.deleteSession(`offline_${shop}`);
+        throw new Response(null, { status: 302, headers: { Location: `/auth?shop=${shop}` } });
+      }
+      console.error("getProductsForCOGS failed:", err.message);
+      return { ok: false as const, data: [] as Awaited<ReturnType<typeof getProductsForCOGS>> };
+    }),
     getSupabaseForStore(shop),
   ]);
 
@@ -27,7 +35,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     costsMap[row.shopify_variant_id] = row.unit_cost;
   }
 
-  return json({ products, costsMap });
+  return json({ products: productsResult.data, costsMap });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
