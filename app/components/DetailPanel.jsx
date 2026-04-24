@@ -67,17 +67,24 @@ export default function DetailPanel({
 
   // Compute per-expense amounts for this period
   const expenses = expensesList ?? [];
-  const daysInPeriod = dateRange
-    ? Math.round(
-        (new Date(dateRange.to) - new Date(dateRange.from)) / 86_400_000
-      ) + 1
-    : 30;
+  // Count how many 1st-of-months fall within the date range — mirrors the SQL v_month_count logic
+  function countMonthStarts(from, to) {
+    let count = 0;
+    const toDate = new Date(to);
+    const cursor = new Date(new Date(from).getFullYear(), new Date(from).getMonth(), 1);
+    while (cursor <= toDate) {
+      if (cursor >= new Date(from)) count++;
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+    return count;
+  }
+  const monthCount = dateRange ? countMonthStarts(dateRange.from, dateRange.to) : 0;
 
   const expBreakdown = expenses.map((exp) => ({
     name: exp.name,
     value:
       exp.type === "monthly"
-        ? Number(exp.amount) * (daysInPeriod / 30)
+        ? Number(exp.amount) * monthCount
         : Number(exp.amount) * Number(stats.orders ?? 0),
   }));
 
