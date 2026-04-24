@@ -84,17 +84,6 @@ function computePresets() {
 
   const mtdFrom = toDateStr(firstDay(y, m));
 
-  const cq = Math.ceil((m + 1) / 3);
-  const qFrom = (yr, q) => toDateStr(firstDay(yr, (q - 1) * 3));
-  const qTo   = (yr, q) => toDateStr(lastDay(yr, q * 3 - 1));
-
-  const lqNum  = cq === 1 ? 4 : cq - 1;
-  const lqYear = cq === 1 ? y - 1 : y;
-  const q2Num  = lqNum === 1 ? 4 : lqNum - 1;
-  const q2Year = lqNum === 1 ? lqYear - 1 : lqYear;
-  const q3Num  = q2Num === 1 ? 4 : q2Num - 1;
-  const q3Year = q2Num === 1 ? q2Year - 1 : q2Year;
-
   return [
     { label: "Today",           from: today,           to: today           },
     { label: "Yesterday",       from: toDateStr(yest), to: toDateStr(yest) },
@@ -102,10 +91,6 @@ function computePresets() {
     { label: "2 months ago",    from: m2From,          to: m2To            },
     { label: "3 months ago",    from: m3From,          to: m3To            },
     { label: "Month to date",   from: mtdFrom,         to: today           },
-    { label: "Quarter to date", from: qFrom(y, cq),   to: today           },
-    { label: "Last quarter",    from: qFrom(lqYear, lqNum), to: qTo(lqYear, lqNum) },
-    { label: "2 quarters ago",  from: qFrom(q2Year, q2Num), to: qTo(q2Year, q2Num) },
-    { label: "3 quarters ago",  from: qFrom(q3Year, q3Num), to: qTo(q3Year, q3Num) },
     { label: "Year to date",    from: `${y}-01-01`,    to: today           },
     { label: "Custom range",    from: null,            to: null            },
   ];
