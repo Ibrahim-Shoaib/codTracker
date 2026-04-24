@@ -1,31 +1,63 @@
-import { getMonthlyChunks } from './dates.server.js';
 import { fetchOrders, mapOrder } from './postex.server.js';
 import { getSupabaseForStore } from './supabase.server.js';
 
-// Fetches all orders from Jan 1 of current year to today, chunked by month.
-// Called fire-and-forget from onboarding step 1 — do NOT await at call site.
-export async function runHistoricalBackfill(storeRow) {
-  const supabase = await getSupabaseForStore(storeRow.store_id);
-  const year = new Date().getFullYear();
-  const chunks = getMonthlyChunks(`${year}-01-01`);
+const CHUNK_DAYS = 60;
+const STOP_AFTER_EMPTY = 2;
 
-  for (const chunk of chunks) {
+function todayPKT() {
+  const pkt = new Date(Date.now() + 5 * 60 * 60 * 1000);
+  const y = pkt.getUTCFullYear();
+  const m = String(pkt.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(pkt.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function subtractDays(dateStr, days) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+// Pulls PostEx order history backwards in 60-day chunks.
+// Stops after 2 consecutive empty chunks — signals start of merchant's PostEx history.
+// Fire-and-forget: called without await during onboarding.
+export async function runHistoricalBackfill({ store_id, postex_token }) {
+  const supabase = await getSupabaseForStore(store_id);
+
+  let end = todayPKT();
+  let start = subtractDays(end, CHUNK_DAYS - 1);
+  let consecutiveEmpty = 0;
+  let totalOrders = 0;
+  let totalChunks = 0;
+
+  while (true) {
     try {
-      const rawOrders = await fetchOrders(storeRow.postex_token, chunk.start, chunk.end);
-      const mapped = rawOrders.map(o => mapOrder(o, storeRow.store_id));
-      if (mapped.length > 0) {
+      const raw = await fetchOrders(postex_token, start, end);
+      totalChunks++;
+
+      if (raw.length === 0) {
+        consecutiveEmpty++;
+        if (consecutiveEmpty >= STOP_AFTER_EMPTY) break;
+      } else {
+        consecutiveEmpty = 0;
+        const mapped = raw.map(o => mapOrder(o, store_id));
         await supabase
           .from('orders')
           .upsert(mapped, { onConflict: 'store_id,tracking_number' });
+        totalOrders += raw.length;
       }
     } catch (err) {
-      console.error(`Backfill chunk ${chunk.start}–${chunk.end} failed for ${storeRow.store_id}:`, err);
+      console.error(`Backfill chunk ${start}–${end} failed for ${store_id}:`, err);
     }
+
+    end   = subtractDays(start, 1);
+    start = subtractDays(end, CHUNK_DAYS - 1);
   }
 
-  // Mark backfill complete — dashboard uses last_postex_sync_at IS NULL as "still syncing" signal
   await supabase
     .from('stores')
     .update({ last_postex_sync_at: new Date().toISOString() })
-    .eq('store_id', storeRow.store_id);
+    .eq('store_id', store_id);
+
+  console.log(`Backfill done for ${store_id}: ${totalOrders} orders across ${totalChunks} chunks`);
 }
