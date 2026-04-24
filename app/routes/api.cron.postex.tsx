@@ -3,6 +3,8 @@ import { json } from "@remix-run/node";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { syncStore, retroactiveCOGSMatch } from "../lib/sync.server.js";
+import { fixZeroInvoicePayments } from "../lib/invoice-fix.server.js";
+import { sessionStorage } from "../shopify.server";
 
 const CONCURRENCY = 5;
 
@@ -29,7 +31,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   let synced = 0;
   let errors = 0;
 
-  // Process in batches of CONCURRENCY — limits simultaneous PostEx + Supabase connections
   for (let i = 0; i < stores.length; i += CONCURRENCY) {
     const batch = stores.slice(i, i + CONCURRENCY);
     const results = await Promise.allSettled(
@@ -37,6 +38,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const supabase = await getSupabaseForStore(store.store_id);
         await syncStore(store, supabase);
         void retroactiveCOGSMatch(supabase, store.store_id);
+        const offlineSession = await sessionStorage.loadSession(`offline_${store.store_id}`);
+        if (offlineSession) {
+          void fixZeroInvoicePayments(supabase, store.store_id, offlineSession);
+        }
       })
     );
 

@@ -20,6 +20,7 @@ import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { validateToken } from "../lib/postex.server.js";
 import { runHistoricalBackfill } from "../lib/backfill.server.js";
+import { fixZeroInvoicePayments } from "../lib/invoice-fix.server.js";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -57,8 +58,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     .update({ postex_token: token, onboarding_step: 2 })
     .eq("store_id", shop);
 
-  // Fire-and-forget historical backfill — do NOT await
   void runHistoricalBackfill({ store_id: shop, postex_token: token });
+  void fixZeroInvoicePayments(await getSupabaseForStore(shop), shop, session);
 
   return redirect("/app/onboarding/step2-meta");
 };
