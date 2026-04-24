@@ -99,7 +99,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       })
       .eq("store_id", shop);
 
-    void runMetaHistoricalBackfill({ store_id: shop, access_token: accessToken, ad_account_id: adAccountId });
+    runMetaHistoricalBackfill({ store_id: shop, access_token: accessToken, ad_account_id: adAccountId }).catch(
+      (err) => console.error("Meta historical backfill failed:", err)
+    );
 
     const cookieHeader = request.headers.get("Cookie");
     const oauthSession = await metaOAuthSession.getSession(cookieHeader);

@@ -99,6 +99,8 @@ export async function runMetaHistoricalBackfill({ store_id, access_token, ad_acc
       }
     } catch (err) {
       console.error(`Meta backfill chunk ${start}–${end} failed for ${store_id}:`, err);
+      consecutiveEmpty++;
+      if (consecutiveEmpty >= STOP_AFTER_EMPTY) break;
     }
 
     end   = subtractDays(start, 1);

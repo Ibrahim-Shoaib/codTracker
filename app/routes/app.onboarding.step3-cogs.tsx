@@ -19,8 +19,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const metaConnected = url.searchParams.get("meta") === "connected";
 
-  const [products, supabase] = await Promise.all([
-    getProductsForCOGS(session),
+  const [productsResult, supabase] = await Promise.all([
+    getProductsForCOGS(session).then(p => ({ ok: true as const, data: p })).catch((err: Error) => {
+      console.error("getProductsForCOGS failed:", err.message);
+      return { ok: false as const, data: [] as Awaited<ReturnType<typeof getProductsForCOGS>> };
+    }),
     getSupabaseForStore(shop),
   ]);
 
@@ -33,7 +36,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     costsMap[row.shopify_variant_id] = row.unit_cost;
   }
 
-  return json({ products, costsMap, metaConnected });
+  return json({ products: productsResult.data, productsError: !productsResult.ok, costsMap, metaConnected });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -88,7 +91,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Step3COGS() {
-  const { products, costsMap, metaConnected } = useLoaderData<typeof loader>();
+  const { products, costsMap, metaConnected, productsError } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const saving = navigation.state === "submitting";
@@ -109,6 +112,13 @@ export default function Step3COGS() {
 
         {metaConnected && (
           <Banner tone="success">Meta Ads connected successfully.</Banner>
+        )}
+
+        {productsError && (
+          <Banner tone="critical">
+            Could not load products from Shopify. Please refresh the page to try again. If the issue
+            persists, check your Shopify API scopes or contact support.
+          </Banner>
         )}
 
         {actionData && "error" in actionData && (

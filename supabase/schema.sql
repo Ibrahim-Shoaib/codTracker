@@ -196,8 +196,8 @@ CREATE OR REPLACE FUNCTION get_dashboard_stats(
   p_from_date             date,
   p_to_date               date,
   p_monthly_expenses      numeric,
-  p_per_order_expenses    numeric,
-  p_days_in_period        integer
+  p_per_order_expenses    numeric
+  -- Note: p_days_in_period was removed; monthly cost uses v_month_count instead
 )
 RETURNS TABLE (
   sales          numeric,
