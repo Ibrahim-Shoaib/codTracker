@@ -7,7 +7,6 @@ import {
   Button,
   Divider,
 } from "@shopify/polaris";
-import DrillDownTable from "./DrillDownTable.jsx";
 
 const fmtPKR = (n) =>
   n == null ? "N/A" : `PKR ${Math.round(Number(n)).toLocaleString()}`;
@@ -51,7 +50,6 @@ function Row({ label, value, onClick }) {
 //   period           'today'|'yesterday'|'mtd'|'lastMonth'
 //   stats            object from get_dashboard_stats RPC
 //   dateRange        { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }
-//   sellableReturnsPct  number
 //   expensesList     Array<{ id, name, amount, type }>
 //   open             boolean
 //   onClose          () => void
@@ -59,17 +57,13 @@ export default function DetailPanel({
   period,
   stats,
   dateRange,
-  sellableReturnsPct,
   expensesList,
   open,
   onClose,
 }) {
-  const [drillFilter, setDrillFilter] = useState(null);
   const [showExpBreakdown, setShowExpBreakdown] = useState(false);
 
   if (!stats) return null;
-
-  const drill = (filter) => setDrillFilter(filter);
 
   // Compute per-expense amounts for this period
   const expenses = expensesList ?? [];
@@ -96,36 +90,12 @@ export default function DetailPanel({
       >
         <Modal.Section>
           <BlockStack gap="200">
-            <Row
-              label="Sales"
-              value={fmtPKR(stats.sales)}
-              onClick={() => drill("delivered")}
-            />
-            <Row
-              label="Orders"
-              value={fmtNum(stats.orders)}
-              onClick={() => drill("delivered")}
-            />
-            <Row
-              label="Units Sold"
-              value={fmtNum(stats.units)}
-              onClick={() => drill("delivered")}
-            />
-            <Row
-              label="Returns"
-              value={fmtNum(stats.returns)}
-              onClick={() => drill("returned")}
-            />
-            <Row
-              label="In Transit"
-              value={fmtNum(stats.in_transit)}
-              onClick={() => drill("in_transit")}
-            />
-            <Row
-              label="Advertising cost"
-              value={fmtCost(stats.ad_spend)}
-              onClick={() => drill("all")}
-            />
+            <Row label="Sales" value={fmtPKR(stats.sales)} />
+            <Row label="Orders" value={fmtNum(stats.orders)} />
+            <Row label="Units Sold" value={fmtNum(stats.units)} />
+            <Row label="Returns" value={fmtNum(stats.returns)} />
+            <Row label="In Transit" value={fmtNum(stats.in_transit)} />
+            <Row label="Advertising cost" value={fmtCost(stats.ad_spend)} />
             <Row
               label="Shipping costs"
               value={fmtCost(
@@ -133,18 +103,10 @@ export default function DetailPanel({
                   ? stats.delivery_cost - stats.reversal_cost
                   : stats.delivery_cost
               )}
-              onClick={() => drill("all")}
             />
-            <Row
-              label="Reversal costs"
-              value={fmtCost(stats.reversal_cost)}
-              onClick={() => drill("returned")}
-            />
-            <Row
-              label="Cost of goods"
-              value={fmtCost(stats.cogs)}
-              onClick={() => drill("all")}
-            />
+            <Row label="Reversal costs" value={fmtCost(stats.reversal_cost)} />
+            <Row label="Tax" value={fmtCost(stats.tax)} />
+            <Row label="Cost of goods" value={fmtCost(stats.cogs)} />
 
             {/* Expenses row — expandable when there are named items */}
             <Row
@@ -178,26 +140,13 @@ export default function DetailPanel({
             <Row label="Blended ROAS" value={fmtRatio(stats.roas)} />
             <Row label="Blended POAS" value={fmtRatio(stats.poas)} />
             <Row label="CAC" value={fmtPKR(stats.cac)} />
-            <Row label="% Refunds" value={fmtPct(stats.refund_pct)} />
-            <Row
-              label="Sellable returns"
-              value={`${sellableReturnsPct ?? 100}%`}
-            />
+            <Row label="% Returns" value={fmtPct(stats.refund_pct)} />
             <Row label="Margin" value={fmtPct(stats.margin_pct)} />
             <Row label="ROI" value={fmtPct(stats.roi_pct)} />
           </BlockStack>
         </Modal.Section>
       </Modal>
 
-      {drillFilter && (
-        <DrillDownTable
-          fromDate={dateRange?.from}
-          toDate={dateRange?.to}
-          statusFilter={drillFilter}
-          open={!!drillFilter}
-          onClose={() => setDrillFilter(null)}
-        />
-      )}
     </>
   );
 }

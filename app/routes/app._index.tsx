@@ -171,7 +171,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return json({
     expensesList: expenses,
-    sellableReturnsPct: store.sellable_returns_pct ?? 100,
     metaConnected:      !!store.meta_access_token,
     isMetaExpired:      isTokenExpired(store.meta_token_expires_at),
     isMetaExpiringSoon: isTokenExpiringSoon(store.meta_token_expires_at),
@@ -218,7 +217,7 @@ export default function Dashboard() {
     return <Navigate to={(data as { redirectTo: string }).redirectTo} replace />;
   }
 
-  const { periods, expensesList, sellableReturnsPct, unmatchedCOGSCount,
+  const { periods, expensesList, unmatchedCOGSCount,
           metaConnected, isMetaExpired, isMetaExpiringSoon, metaExpiresAt,
           backfillInProgress } = data;
 
@@ -279,7 +278,6 @@ export default function Dashboard() {
           period={openDetail}
           stats={periods[openDetail].stats}
           dateRange={periods[openDetail].dateRange}
-          sellableReturnsPct={sellableReturnsPct}
           expensesList={expensesList}
           open={!!openDetail}
           onClose={() => setOpenDetail(null)}
