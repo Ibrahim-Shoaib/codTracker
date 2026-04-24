@@ -14,9 +14,10 @@ function htmlResponse(
   return new Response(
     `<!DOCTYPE html><html><body><script>
       (function () {
-        var ch = new BroadcastChannel("meta_oauth");
-        ch.postMessage(${JSON.stringify(payload)});
-        ch.close();
+        var msg = ${JSON.stringify(payload)};
+        if (window.opener) {
+          window.opener.postMessage(msg, window.location.origin);
+        }
         if (window.name === "meta_oauth_window") {
           window.close();
         } else {

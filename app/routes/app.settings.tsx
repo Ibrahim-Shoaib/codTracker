@@ -205,16 +205,16 @@ export default function SettingsPage() {
   }, [actionData]);
 
   useEffect(() => {
-    const channel = new BroadcastChannel("meta_oauth");
-    channel.onmessage = (event) => {
+    const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
       if (event.data?.type === "meta_oauth_complete") {
         revalidator.revalidate();
       } else if (event.data?.type === "meta_oauth_error") {
         setMetaOAuthFailed(true);
       }
-      channel.close();
     };
-    return () => channel.close();
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
   }, [revalidator]);
 
   useEffect(() => {

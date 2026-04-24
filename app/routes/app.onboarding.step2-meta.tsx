@@ -141,17 +141,19 @@ export default function Step2Meta() {
   }, [actionData]);
 
   // Listen for the popup to signal completion, then reload loader data in-place.
+  // postMessage works across storage partitions (BroadcastChannel does not in Chrome's
+  // third-party iframe context where the app is embedded inside admin.shopify.com).
   useEffect(() => {
-    const channel = new BroadcastChannel("meta_oauth");
-    channel.onmessage = (event) => {
+    const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
       if (event.data?.type === "meta_oauth_complete") {
         revalidator.revalidate();
       } else if (event.data?.type === "meta_oauth_error") {
         setMetaOAuthFailed(true);
       }
-      channel.close();
     };
-    return () => channel.close();
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
   }, [revalidator]);
 
   const accountOptions = (pendingAccounts ?? []).map(acc => ({
