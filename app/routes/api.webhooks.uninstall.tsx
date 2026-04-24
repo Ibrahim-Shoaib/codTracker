@@ -19,7 +19,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   try {
     await supabase.from("stores").delete().eq("store_id", shop);
-    // ON DELETE CASCADE handles orders, product_costs, ad_spend, daily_snapshots
+    // ON DELETE CASCADE handles orders, product_costs, ad_spend
   } catch (err) {
     console.error(`Uninstall cleanup failed for ${shop}:`, err);
   }
