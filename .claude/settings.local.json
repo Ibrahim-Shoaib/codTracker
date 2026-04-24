@@ -31,7 +31,9 @@
       "Bash(git -C \"C:/Users/ibrah/projects/codTracker\" diff)",
       "Bash(git -C \"C:/Users/ibrah/projects/codTracker\" add app/shopify.server.ts)",
       "Bash(git -C C:/Users/ibrah/projects/codTracker commit -m ' *)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(python -m json.tool)",
+      "Bash(python *)"
     ]
   }
 }

@@ -19,7 +19,6 @@ import {
   getMTDPKT,
   getLastMonthPKT,
   getMTDComparisonPKT,
-  getDaysInPeriod,
   formatPKTDate,
 } from "../lib/dates.server.js";
 import { calcPctChange } from "../lib/calculations.server.js";
@@ -36,14 +35,13 @@ const STEP_ROUTES: Record<number, string> = {
 };
 
 
-function statsRpc(supabase: ReturnType<typeof getSupabaseForStore> extends Promise<infer T> ? T : never, shop: string, from: string, to: string, monthlyExp: number, perOrderExp: number, days: number) {
+function statsRpc(supabase: ReturnType<typeof getSupabaseForStore> extends Promise<infer T> ? T : never, shop: string, from: string, to: string, monthlyExp: number, perOrderExp: number) {
   return (supabase as any).rpc("get_dashboard_stats", {
     p_store_id:           shop,
     p_from_date:          from,
     p_to_date:            to,
     p_monthly_expenses:   monthlyExp,
     p_per_order_expenses: perOrderExp,
-    p_days_in_period:     days,
   });
 }
 
@@ -121,12 +119,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     lastMonthRes,
     { count: unmatchedCount },
   ] = await Promise.all([
-    statsRpc(supabase, shop, todayFrom,   todayTo,   monthlyExp, perOrderExp, getDaysInPeriod(today.start,      today.end)),
-    statsRpc(supabase, shop, yestFrom,    yestTo,    monthlyExp, perOrderExp, getDaysInPeriod(yesterday.start,  yesterday.end)),
-    statsRpc(supabase, shop, dayBefFrom,  dayBefTo,  monthlyExp, perOrderExp, getDaysInPeriod(dayBefore.start,  dayBefore.end)),
-    statsRpc(supabase, shop, mtdFrom,     mtdTo,     monthlyExp, perOrderExp, getDaysInPeriod(mtd.start,        mtd.end)),
-    statsRpc(supabase, shop, mtdCompFrom, mtdCompTo, monthlyExp, perOrderExp, getDaysInPeriod(mtdComp.start,    mtdComp.end)),
-    statsRpc(supabase, shop, lmFrom,      lmTo,      monthlyExp, perOrderExp, getDaysInPeriod(lastMonth.start,  lastMonth.end)),
+    statsRpc(supabase, shop, todayFrom,   todayTo,   monthlyExp, perOrderExp),
+    statsRpc(supabase, shop, yestFrom,    yestTo,    monthlyExp, perOrderExp),
+    statsRpc(supabase, shop, dayBefFrom,  dayBefTo,  monthlyExp, perOrderExp),
+    statsRpc(supabase, shop, mtdFrom,     mtdTo,     monthlyExp, perOrderExp),
+    statsRpc(supabase, shop, mtdCompFrom, mtdCompTo, monthlyExp, perOrderExp),
+    statsRpc(supabase, shop, lmFrom,      lmTo,      monthlyExp, perOrderExp),
     supabase
       .from("orders")
       .select("id", { count: "exact", head: true })
@@ -169,7 +167,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 const PERIOD_KEYS = ["today", "yesterday", "mtd", "lastMonth"] as const;
-type PeriodKey = typeof PERIOD_KEYS[number];
 
 export default function Dashboard() {
   const data = useLoaderData<typeof loader>();

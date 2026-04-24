@@ -77,14 +77,6 @@ export function getMTDComparisonPKT() {
   return { start: startOfDayUTC(firstOfLastMonth), end: endOfDayUTC(endOfComparison) };
 }
 
-// Count PKT calendar days between two UTC timestamps
-export function getDaysInPeriod(startUTC, endUTC) {
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const startDay = Math.floor((new Date(startUTC).getTime() + PKT_OFFSET_MS) / msPerDay);
-  const endDay   = Math.floor((new Date(endUTC).getTime()   + PKT_OFFSET_MS) / msPerDay);
-  return endDay - startDay + 1;
-}
-
 // Returns 'YYYY-MM-DD' string in PKT — used for PostEx API calls and ad_spend date keys
 export function formatPKTDate(dateUTC) {
   const pkt = new Date(new Date(dateUTC).getTime() + PKT_OFFSET_MS);

@@ -41,12 +41,12 @@ function Row({ label, value, onClick }) {
 }
 
 // Props:
-//   period           'today'|'yesterday'|'mtd'|'lastMonth'
-//   stats            object from get_dashboard_stats RPC
-//   dateRange        { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }
-//   expensesList     Array<{ id, name, amount, type }>
-//   open             boolean
-//   onClose          () => void
+//   title        string — modal heading
+//   stats        object from get_dashboard_stats RPC
+//   dateRange    { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }
+//   expensesList Array<{ id, name, amount, type }>
+//   open         boolean
+//   onClose      () => void
 export default function DetailPanel({
   title,
   stats,

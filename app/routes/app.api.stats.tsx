@@ -30,7 +30,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     p_to_date:            to,
     p_monthly_expenses:   monthlyExp,
     p_per_order_expenses: perOrderExp,
-    p_days_in_period:     1,
   });
 
   return json({ stats: data?.[0] ?? null });
