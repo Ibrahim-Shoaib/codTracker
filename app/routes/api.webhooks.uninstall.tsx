@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { createClient } from "@supabase/supabase-js";
-import { authenticate } from "../shopify.server";
+import { authenticate, sessionStorage } from "../shopify.server";
 
 // Handles Shopify app/uninstalled webhook.
 // authenticate.webhook verifies the HMAC signature and throws a 401 Response if invalid.
@@ -18,8 +18,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   );
 
   try {
+    // Delete app data — CASCADE removes orders, product_costs, ad_spend, etc.
     await supabase.from("stores").delete().eq("store_id", shop);
-    // ON DELETE CASCADE handles orders, product_costs, ad_spend
+
+    // Delete Shopify session so a future reinstall always gets a fresh OAuth token
+    // rather than reusing the revoked access token and hitting 401s.
+    await sessionStorage.deleteSession(`offline_${shop}`);
   } catch (err) {
     console.error(`Uninstall cleanup failed for ${shop}:`, err);
   }
