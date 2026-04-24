@@ -1,10 +1,10 @@
 import { fetchOrders, mapOrder } from './postex.server.js';
-import { getLast30DaysPKT } from './dates.server.js';
+import { getLastNDaysPKT } from './dates.server.js';
 import { buildCostMap, computeCOGS } from './cogs.server.js';
 
 // Regular 30-day rolling sync. Called by cron and on-demand.
 export async function syncStore(storeRow, supabase) {
-  const { start, end } = getLast30DaysPKT();
+  const { start, end } = getLastNDaysPKT(20);
   const rawOrders = await fetchOrders(storeRow.postex_token, start, end);
   const mapped = rawOrders.map(o => mapOrder(o, storeRow.store_id));
 

@@ -95,11 +95,11 @@ export function formatPKTDate(dateUTC) {
 }
 
 // Returns { start, end } as 'YYYY-MM-DD' PKT strings for PostEx rolling 30-day sync window
-export function getLast30DaysPKT() {
+export function getLastNDaysPKT(n = 20) {
   const pkt = nowPKT();
-  const thirtyAgo = subtractDaysPKT(pkt, 30);
+  const nAgo = subtractDaysPKT(pkt, n);
   return {
-    start: formatPKTDate(startOfDayUTC(thirtyAgo)),
+    start: formatPKTDate(startOfDayUTC(nAgo)),
     end:   formatPKTDate(endOfDayUTC(pkt)),
   };
 }
