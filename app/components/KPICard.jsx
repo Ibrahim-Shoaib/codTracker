@@ -279,7 +279,7 @@ export default function KPICard({
                     year={customMonth.year}
                     onChange={setCustomSel}
                     onMonthChange={(month, year) => setCustomMonth({ month, year })}
-                    selected={customSel}
+                    selected={customSel.start ? customSel : undefined}
                     allowRange
                   />
                   <Button
