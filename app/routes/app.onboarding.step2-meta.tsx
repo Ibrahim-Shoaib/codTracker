@@ -23,6 +23,7 @@ import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { getMetaAuthUrl } from "../lib/meta.server.js";
 import { metaOAuthSession } from "../lib/meta-session.server.js";
+import { runMetaHistoricalBackfill } from "../lib/backfill.server.js";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -97,6 +98,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         onboarding_step: 3,
       })
       .eq("store_id", shop);
+
+    void runMetaHistoricalBackfill({ store_id: shop, access_token: accessToken, ad_account_id: adAccountId });
 
     const cookieHeader = request.headers.get("Cookie");
     const oauthSession = await metaOAuthSession.getSession(cookieHeader);
