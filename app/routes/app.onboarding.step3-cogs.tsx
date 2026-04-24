@@ -22,7 +22,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const [productsResult, supabase] = await Promise.all([
     getProductsForCOGS(session).then(p => ({ ok: true as const, data: p, error: null as string | null })).catch(async (err: Error) => {
       if (err.message === 'SHOPIFY_401') {
-        // Stale/revoked access token — delete session and force re-auth
         const { sessionStorage } = await import("../shopify.server");
         await sessionStorage.deleteSession(`offline_${shop}`);
         throw new Response(null, { status: 302, headers: { Location: `/auth?shop=${shop}` } });
@@ -52,7 +51,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const supabase = await getSupabaseForStore(shop);
 
-  // Collect all cost_<variantId> fields and build upsert rows
   const rows: Array<{
     store_id: string;
     shopify_variant_id: string;
@@ -66,7 +64,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   for (const [key, value] of formData.entries()) {
     if (!key.startsWith("cost_")) continue;
-    const variantId = key.slice(5); // strip "cost_"
+    const variantId = key.slice(5);
     rows.push({
       store_id: shop,
       shopify_variant_id: variantId,
@@ -79,14 +77,46 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
   }
 
+  // ---- persist + verify BEFORE running the matcher ----
   if (rows.length > 0) {
-    await supabase
+    const { error: upsertErr, data: upserted } = await supabase
       .from("product_costs")
-      .upsert(rows, { onConflict: "store_id,shopify_variant_id" });
+      .upsert(rows, { onConflict: "store_id,shopify_variant_id" })
+      .select("shopify_variant_id");
+
+    if (upsertErr) {
+      console.error("[onboarding step3] upsert failed:", upsertErr);
+      return json({ error: "Could not save product costs. Please try again." }, { status: 500 });
+    }
+    if ((upserted?.length ?? 0) !== rows.length) {
+      console.error(
+        `[onboarding step3] row-count mismatch: sent=${rows.length} received=${upserted?.length ?? 0}`
+      );
+      return json({ error: "Some costs didn't save. Please try again." }, { status: 500 });
+    }
+
+    // Paranoia readback before matching.
+    const variantIds = rows.map(r => r.shopify_variant_id);
+    const { data: readback, error: readErr } = await supabase
+      .from("product_costs")
+      .select("shopify_variant_id")
+      .eq("store_id", shop)
+      .in("shopify_variant_id", variantIds);
+
+    if (readErr || (readback?.length ?? 0) !== rows.length) {
+      console.error(
+        `[onboarding step3] readback mismatch: expected=${rows.length} got=${readback?.length}`,
+        readErr
+      );
+      return json({ error: "Save verification failed. Please try again." }, { status: 500 });
+    }
   }
 
-  // Fire-and-forget retroactive COGS matching on all existing unmatched orders
-  void retroactiveCOGSMatch(supabase, shop);
+  // ---- ONLY NOW: run the matcher ----
+  // On first onboarding there are usually few (or zero) historical orders,
+  // so this finishes quickly. We await it so the merchant sees up-to-date
+  // counts the moment they land on the dashboard.
+  await retroactiveCOGSMatch(supabase, shop);
 
   await supabase
     .from("stores")
@@ -98,7 +128,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function Step3COGS() {
   const { products, costsMap, metaConnected, productsError } = useLoaderData<typeof loader>();
-  // productsError is the raw error message string (null when products loaded OK)
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const saving = navigation.state === "submitting";

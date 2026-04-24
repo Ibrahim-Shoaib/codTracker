@@ -108,7 +108,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const lmFrom       = formatPKTDate(lastMonth.start);
   const lmTo         = formatPKTDate(lastMonth.end);
 
-  // 3. Parallel RPC calls — 6 stats + 1 count
+  // 3. Parallel RPC calls — 6 stats + 2 banner counts
   //    yesterday doubles as Today's comparison period
   const [
     todayRes,
@@ -118,6 +118,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     mtdCompRes,
     lastMonthRes,
     { count: unmatchedCount },
+    { count: fuzzyCount },
   ] = await Promise.all([
     statsRpc(supabase, shop, todayFrom,   todayTo,   monthlyExp, perOrderExp),
     statsRpc(supabase, shop, yestFrom,    yestTo,    monthlyExp, perOrderExp),
@@ -128,7 +129,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     supabase
       .from("orders")
       .select("id", { count: "exact", head: true })
-      .eq("cogs_matched", false),
+      .eq("cogs_match_source", "none"),
+    supabase
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .in("cogs_match_source", ["fuzzy", "sibling_avg", "fallback_avg"]),
   ]);
 
   const s = {
@@ -157,6 +162,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     metaExpiresAt:      store.meta_token_expires_at,
     backfillInProgress: !store.last_postex_sync_at,
     unmatchedCOGSCount: unmatchedCount ?? 0,
+    estimatedCOGSCount: fuzzyCount ?? 0,
     periods: {
       today:     { stats: s.today,     comparison: pct(s.today,     s.yesterday), dateRange: { from: todayFrom, to: todayTo } },
       yesterday: { stats: s.yesterday, comparison: pct(s.yesterday, s.dayBefore), dateRange: { from: yestFrom,  to: yestTo  } },
@@ -178,7 +184,7 @@ export default function Dashboard() {
     return <Navigate to={(data as { redirectTo: string }).redirectTo} replace />;
   }
 
-  const { periods, expensesList, unmatchedCOGSCount,
+  const { periods, expensesList, unmatchedCOGSCount, estimatedCOGSCount,
           metaConnected, isMetaExpired, isMetaExpiringSoon, metaExpiresAt,
           backfillInProgress } = data;
 
@@ -195,6 +201,7 @@ export default function Dashboard() {
       <BlockStack gap="400">
         <WarningBanner
           unmatchedCOGSCount={unmatchedCOGSCount}
+          estimatedCOGSCount={estimatedCOGSCount}
           metaConnected={metaConnected}
           isMetaExpired={isMetaExpired}
           isMetaExpiringSoon={isMetaExpiringSoon}

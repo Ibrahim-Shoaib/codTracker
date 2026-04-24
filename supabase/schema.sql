@@ -22,6 +22,8 @@ CREATE TABLE stores (
   onboarding_step integer DEFAULT 1,       -- 1=postex, 2=meta, 3=cogs, 4=expenses
   last_postex_sync_at timestamptz,
   last_meta_sync_at timestamptz,
+  cogs_match_in_progress boolean DEFAULT false,
+  cogs_match_started_at timestamptz,
   created_at timestamptz DEFAULT now()
 );
 
@@ -56,6 +58,8 @@ CREATE TABLE orders (
   shopify_order_id text,
   cogs_total numeric DEFAULT 0,            -- SUM(unit_cost × quantity) for all line items
   cogs_matched boolean DEFAULT false,      -- true = matched to Shopify; false = defaulted to 0
+  cogs_match_source text DEFAULT 'none'    -- 'none'|'sku'|'exact'|'fuzzy'|'sibling_avg'|'fallback_avg'
+    CHECK (cogs_match_source IN ('none','sku','exact','fuzzy','sibling_avg','fallback_avg')),
   is_delivered boolean DEFAULT false,      -- status_code = '0005'
   is_returned boolean DEFAULT false,       -- status_code IN ('0002','0006','0007')
   is_in_transit boolean DEFAULT true,      -- everything else
@@ -131,6 +135,7 @@ CREATE INDEX idx_orders_store_date    ON orders(store_id, transaction_date);
 CREATE INDEX idx_orders_store_flags   ON orders(store_id, is_delivered, is_returned, is_in_transit);
 CREATE INDEX idx_orders_ref           ON orders(store_id, order_ref_number);
 CREATE INDEX idx_orders_status        ON orders(store_id, status_code);
+CREATE INDEX idx_orders_store_match_source ON orders(store_id, cogs_match_source);
 CREATE INDEX idx_product_costs_variant  ON product_costs(store_id, shopify_variant_id);
 CREATE INDEX idx_ad_spend_store_date    ON ad_spend(store_id, spend_date);
 CREATE INDEX idx_snapshots_store_date   ON daily_snapshots(store_id, snapshot_date);
