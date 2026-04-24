@@ -20,9 +20,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const metaConnected = url.searchParams.get("meta") === "connected";
 
   const [productsResult, supabase] = await Promise.all([
-    getProductsForCOGS(session).then(p => ({ ok: true as const, data: p })).catch((err: Error) => {
-      console.error("getProductsForCOGS failed:", err.message);
-      return { ok: false as const, data: [] as Awaited<ReturnType<typeof getProductsForCOGS>> };
+    getProductsForCOGS(session).then(p => ({ ok: true as const, data: p, error: null as string | null })).catch((err: Error) => {
+      console.error("getProductsForCOGS failed — shop:", shop, "accessToken present:", !!session.accessToken, "error:", err.message);
+      return { ok: false as const, data: [] as Awaited<ReturnType<typeof getProductsForCOGS>>, error: err.message };
     }),
     getSupabaseForStore(shop),
   ]);
@@ -36,7 +36,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     costsMap[row.shopify_variant_id] = row.unit_cost;
   }
 
-  return json({ products: productsResult.data, productsError: !productsResult.ok, costsMap, metaConnected });
+  return json({ products: productsResult.data, productsError: productsResult.error, costsMap, metaConnected });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -92,6 +92,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function Step3COGS() {
   const { products, costsMap, metaConnected, productsError } = useLoaderData<typeof loader>();
+  // productsError is the raw error message string (null when products loaded OK)
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const saving = navigation.state === "submitting";
@@ -116,8 +117,8 @@ export default function Step3COGS() {
 
         {productsError && (
           <Banner tone="critical">
-            Could not load products from Shopify. Please refresh the page to try again. If the issue
-            persists, check your Shopify API scopes or contact support.
+            Could not load products from Shopify. Please refresh the page to try again.
+            {" "}({productsError})
           </Banner>
         )}
 
