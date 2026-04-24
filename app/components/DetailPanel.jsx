@@ -20,12 +20,6 @@ const fmtRatio = (n) => (n == null ? "N/A" : Number(n).toFixed(2));
 
 const fmtPct = (n) => (n == null ? "N/A" : `${Number(n).toFixed(2)}%`);
 
-const PERIOD_NAMES = {
-  today: "Today",
-  yesterday: "Yesterday",
-  mtd: "Month to Date",
-  lastMonth: "Last Month",
-};
 
 function Row({ label, value, onClick }) {
   return (
@@ -54,7 +48,7 @@ function Row({ label, value, onClick }) {
 //   open             boolean
 //   onClose          () => void
 export default function DetailPanel({
-  period,
+  title,
   stats,
   dateRange,
   expensesList,
@@ -96,7 +90,7 @@ export default function DetailPanel({
       <Modal
         open={open}
         onClose={onClose}
-        title={PERIOD_NAMES[period] ?? "Details"}
+        title={title ?? "Details"}
       >
         <Modal.Section>
           <BlockStack gap="200">

@@ -1,9 +1,25 @@
-import { Card, Box, BlockStack, InlineStack, Text, Badge, Button, Divider } from "@shopify/polaris";
+import { useState } from "react";
+import { useFetcher } from "@remix-run/react";
+import {
+  Card,
+  Box,
+  BlockStack,
+  InlineStack,
+  Text,
+  Badge,
+  Button,
+  Divider,
+  Popover,
+  ActionList,
+  Icon,
+  DatePicker,
+} from "@shopify/polaris";
+import { CalendarIcon } from "@shopify/polaris-icons";
 
+// ── Number formatters ─────────────────────────────────────────────────────────
 const fmtPKR = (n) => {
   if (n == null) return "N/A";
-  const v = Math.round(Number(n));
-  return `PKR ${v.toLocaleString()}`;
+  return `PKR ${Math.round(Number(n)).toLocaleString()}`;
 };
 
 const fmtCost = (n) => {
@@ -22,6 +38,80 @@ const fmtRatio = (n) =>
 const fmtPct = (n) =>
   n == null ? "N/A" : `${Number(n).toFixed(1)}%`;
 
+// ── Date label formatter ──────────────────────────────────────────────────────
+const MONTHS_LONG = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
+
+function padTwo(n) { return String(n).padStart(2, "0"); }
+
+function toDateStr(d) {
+  return `${d.getFullYear()}-${padTwo(d.getMonth() + 1)}-${padTwo(d.getDate())}`;
+}
+
+function fmtDateLabel(from, to) {
+  if (!from || !to) return "";
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  if (from === to)
+    return `${fd} ${MONTHS_LONG[fm - 1]} ${fy}`;
+  if (fm === tm && fy === ty)
+    return `${fd}–${td} ${MONTHS_LONG[fm - 1]} ${fy}`;
+  if (fy === ty)
+    return `${fd} ${MONTHS_LONG[fm - 1]} – ${td} ${MONTHS_LONG[tm - 1]} ${fy}`;
+  return `${fd} ${MONTHS_LONG[fm - 1]} ${fy} – ${td} ${MONTHS_LONG[tm - 1]} ${ty}`;
+}
+
+// ── Preset date ranges (browser local time — user is in PKT) ─────────────────
+function computePresets() {
+  const now  = new Date();
+  const today = toDateStr(now);
+  const yest  = new Date(now); yest.setDate(yest.getDate() - 1);
+
+  const y = now.getFullYear();
+  const m = now.getMonth(); // 0-indexed
+
+  const firstDay = (yr, mo) => new Date(yr, mo, 1);
+  const lastDay  = (yr, mo) => new Date(yr, mo + 1, 0);
+
+  const lmFrom = toDateStr(firstDay(y, m - 1));
+  const lmTo   = toDateStr(lastDay(y, m - 1));
+  const m2From = toDateStr(firstDay(y, m - 2));
+  const m2To   = toDateStr(lastDay(y, m - 2));
+  const m3From = toDateStr(firstDay(y, m - 3));
+  const m3To   = toDateStr(lastDay(y, m - 3));
+
+  const mtdFrom = toDateStr(firstDay(y, m));
+
+  const cq = Math.ceil((m + 1) / 3);
+  const qFrom = (yr, q) => toDateStr(firstDay(yr, (q - 1) * 3));
+  const qTo   = (yr, q) => toDateStr(lastDay(yr, q * 3 - 1));
+
+  const lqNum  = cq === 1 ? 4 : cq - 1;
+  const lqYear = cq === 1 ? y - 1 : y;
+  const q2Num  = lqNum === 1 ? 4 : lqNum - 1;
+  const q2Year = lqNum === 1 ? lqYear - 1 : lqYear;
+  const q3Num  = q2Num === 1 ? 4 : q2Num - 1;
+  const q3Year = q2Num === 1 ? q2Year - 1 : q2Year;
+
+  return [
+    { label: "Today",           from: today,           to: today           },
+    { label: "Yesterday",       from: toDateStr(yest), to: toDateStr(yest) },
+    { label: "Last month",      from: lmFrom,          to: lmTo            },
+    { label: "2 months ago",    from: m2From,          to: m2To            },
+    { label: "3 months ago",    from: m3From,          to: m3To            },
+    { label: "Month to date",   from: mtdFrom,         to: today           },
+    { label: "Quarter to date", from: qFrom(y, cq),   to: today           },
+    { label: "Last quarter",    from: qFrom(lqYear, lqNum), to: qTo(lqYear, lqNum) },
+    { label: "2 quarters ago",  from: qFrom(q2Year, q2Num), to: qTo(q2Year, q2Num) },
+    { label: "3 quarters ago",  from: qFrom(q3Year, q3Num), to: qTo(q3Year, q3Num) },
+    { label: "Year to date",    from: `${y}-01-01`,    to: today           },
+    { label: "Custom range",    from: null,            to: null            },
+  ];
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 function PctBadge({ value }) {
   if (value == null) return null;
   const up = value >= 0;
@@ -34,7 +124,7 @@ function PctBadge({ value }) {
 
 function MoneyText({ value, variant = "headingMd" }) {
   if (value == null) return <Text variant={variant}>N/A</Text>;
-  const v = Math.round(Number(value));
+  const v   = Math.round(Number(value));
   const neg = v < 0;
   return (
     <Text variant={variant} tone={neg ? "critical" : undefined}>
@@ -43,52 +133,193 @@ function MoneyText({ value, variant = "headingMd" }) {
   );
 }
 
-const PERIOD_NAMES = {
-  today:     "Today",
-  yesterday: "Yesterday",
-  mtd:       "MTD",
-  lastMonth: "Last Month",
+// ── Header colours (one per card slot) ───────────────────────────────────────
+const HEADER_COLORS = {
+  today:     "#2D6A4F",
+  yesterday: "#40916C",
+  mtd:       "#1A7C7C",
+  lastMonth: "#1E6E9E",
 };
 
-export default function KPICard({ period, stats, comparison, dateLabel, onMore }) {
-  const isGreen = period === "today" || period === "yesterday";
-  const headerBg = isGreen ? "bg-fill-success" : "bg-fill-info";
+const DEFAULT_NAMES = {
+  today:     "Today",
+  yesterday: "Yesterday",
+  mtd:       "Month to date",
+  lastMonth: "Last month",
+};
+
+// ── KPICard ───────────────────────────────────────────────────────────────────
+export default function KPICard({
+  period,
+  stats: defaultStats,
+  comparison,
+  dateRange: defaultDateRange,
+  onMore,
+}) {
+  const fetcher = useFetcher();
+
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [hovered,     setHovered]     = useState(false);
+  const [showCustom,  setShowCustom]  = useState(false);
+  const [customSel,   setCustomSel]   = useState({});
+  const [customMonth, setCustomMonth] = useState({
+    month: new Date().getMonth(),
+    year:  new Date().getFullYear(),
+  });
+
+  const [displayName,  setDisplayName]  = useState(DEFAULT_NAMES[period]);
+  const [currentLabel, setCurrentLabel] = useState(
+    fmtDateLabel(defaultDateRange?.from, defaultDateRange?.to)
+  );
+  const [currentFrom,  setCurrentFrom]  = useState(defaultDateRange?.from ?? "");
+  const [currentTo,    setCurrentTo]    = useState(defaultDateRange?.to   ?? "");
+  const [activePreset, setActivePreset] = useState(null);
+
+  const stats   = fetcher.data?.stats ?? defaultStats;
+  const loading = fetcher.state === "loading";
+  const presets = computePresets();
+
+  function applyPreset(preset) {
+    if (preset.label === "Custom range") {
+      setShowCustom(true);
+      return;
+    }
+    setDisplayName(preset.label);
+    setCurrentLabel(fmtDateLabel(preset.from, preset.to));
+    setCurrentFrom(preset.from);
+    setCurrentTo(preset.to);
+    setActivePreset(preset.label);
+    setPopoverOpen(false);
+    setShowCustom(false);
+    fetcher.load(`/app/api/stats?from=${preset.from}&to=${preset.to}`);
+  }
+
+  function applyCustom() {
+    if (!customSel.start) return;
+    const end  = customSel.end ?? customSel.start;
+    const from = toDateStr(customSel.start);
+    const to   = toDateStr(end);
+    setDisplayName("Custom range");
+    setCurrentLabel(fmtDateLabel(from, to));
+    setCurrentFrom(from);
+    setCurrentTo(to);
+    setActivePreset("Custom range");
+    setPopoverOpen(false);
+    setShowCustom(false);
+    fetcher.load(`/app/api/stats?from=${from}&to=${to}`);
+  }
+
+  function closePopover() {
+    setPopoverOpen(false);
+    setShowCustom(false);
+  }
+
+  const activator = (
+    <button
+      type="button"
+      style={{
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        padding: 0,
+        display: "flex",
+        alignItems: "center",
+        gap: "4px",
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={() => { setPopoverOpen((v) => !v); setShowCustom(false); }}
+    >
+      <span
+        style={{
+          fontSize: "13px",
+          fontFamily: "inherit",
+          color: "rgba(255,255,255,0.85)",
+          textDecoration: hovered ? "underline" : "none",
+        }}
+      >
+        {currentLabel}
+      </span>
+      {hovered && (
+        <span style={{ display: "flex", color: "rgba(255,255,255,0.85)" }}>
+          <Icon source={CalendarIcon} />
+        </span>
+      )}
+    </button>
+  );
 
   return (
     <Card padding="0">
-      {/* Header */}
-      <Box
-        background={headerBg}
-        paddingInline="400"
-        paddingBlock="300"
-        borderRadiusStartStart="300"
-        borderRadiusStartEnd="300"
+      {/* ── Header ── */}
+      <div
+        style={{
+          backgroundColor: HEADER_COLORS[period] ?? "#2D6A4F",
+          borderRadius: "12px 12px 0 0",
+          padding: "12px 16px",
+        }}
       >
-        <InlineStack align="space-between" blockAlign="center">
+        <BlockStack gap="050">
           <Text as="span" variant="headingSm" fontWeight="bold" tone="text-inverse">
-            {PERIOD_NAMES[period]}
+            {displayName}
           </Text>
-          <Text as="span" variant="bodySm" tone="text-inverse">
-            {dateLabel}
-          </Text>
-        </InlineStack>
-      </Box>
+          <Popover
+            active={popoverOpen}
+            activator={activator}
+            onClose={closePopover}
+            preferredAlignment="right"
+          >
+            {showCustom ? (
+              <Box padding="400">
+                <BlockStack gap="300">
+                  <Button variant="plain" onClick={() => setShowCustom(false)}>
+                    ← Back
+                  </Button>
+                  <DatePicker
+                    month={customMonth.month}
+                    year={customMonth.year}
+                    onChange={setCustomSel}
+                    onMonthChange={(month, year) => setCustomMonth({ month, year })}
+                    selected={customSel}
+                    allowRange
+                  />
+                  <Button
+                    variant="primary"
+                    disabled={!customSel.start}
+                    onClick={applyCustom}
+                  >
+                    Apply
+                  </Button>
+                </BlockStack>
+              </Box>
+            ) : (
+              <ActionList
+                items={presets.map((p) => ({
+                  content: p.label,
+                  active: p.label === activePreset,
+                  onAction: () => applyPreset(p),
+                }))}
+              />
+            )}
+          </Popover>
+        </BlockStack>
+      </div>
 
+      {/* ── Body ── */}
       <Box paddingInline="400" paddingBlock="400">
         <BlockStack gap="400">
 
-          {/* Sales — hero metric */}
+          {/* Sales */}
           <BlockStack gap="100">
             <InlineStack gap="200" blockAlign="center">
               <Text variant="bodySm" tone="subdued">Sales</Text>
-              {period !== "lastMonth" && <PctBadge value={comparison?.salesPctChange} />}
+              {comparison && <PctBadge value={comparison.salesPctChange} />}
             </InlineStack>
             <Text variant="headingLg" fontWeight="bold">{fmtPKR(stats?.sales)}</Text>
           </BlockStack>
 
           <Divider />
 
-          {/* Orders / Units  |  Returns */}
+          {/* Orders / Units | Returns */}
           <InlineStack align="space-between" blockAlign="start">
             <BlockStack gap="100">
               <Text variant="bodySm" tone="subdued">Orders / Units</Text>
@@ -102,7 +333,7 @@ export default function KPICard({ period, stats, comparison, dateLabel, onMore }
             </BlockStack>
           </InlineStack>
 
-          {/* Ad Spend  |  ROAS */}
+          {/* Ad Spend | ROAS */}
           <InlineStack align="space-between" blockAlign="start">
             <BlockStack gap="100">
               <Text variant="bodySm" tone="subdued">Ad Spend</Text>
@@ -116,12 +347,12 @@ export default function KPICard({ period, stats, comparison, dateLabel, onMore }
 
           <Divider />
 
-          {/* Net Profit  |  Margin */}
+          {/* Net Profit | Margin */}
           <InlineStack align="space-between" blockAlign="start">
             <BlockStack gap="100">
               <InlineStack gap="200" blockAlign="center">
                 <Text variant="bodySm" tone="subdued">Net Profit</Text>
-                {period !== "lastMonth" && <PctBadge value={comparison?.profitPctChange} />}
+                {comparison && <PctBadge value={comparison.profitPctChange} />}
               </InlineStack>
               <MoneyText value={stats?.net_profit} variant="headingSm" />
             </BlockStack>
@@ -130,7 +361,11 @@ export default function KPICard({ period, stats, comparison, dateLabel, onMore }
               <Text
                 variant="bodyMd"
                 fontWeight="semibold"
-                tone={stats?.margin_pct != null && Number(stats.margin_pct) < 0 ? "critical" : undefined}
+                tone={
+                  stats?.margin_pct != null && Number(stats.margin_pct) < 0
+                    ? "critical"
+                    : undefined
+                }
               >
                 {fmtPct(stats?.margin_pct)}
               </Text>
@@ -139,7 +374,15 @@ export default function KPICard({ period, stats, comparison, dateLabel, onMore }
 
           {/* More */}
           <InlineStack align="end">
-            <Button variant="plain" onClick={onMore}>More</Button>
+            <Button
+              variant="plain"
+              loading={loading}
+              onClick={() =>
+                onMore(stats, { from: currentFrom, to: currentTo }, displayName)
+              }
+            >
+              More
+            </Button>
           </InlineStack>
 
         </BlockStack>

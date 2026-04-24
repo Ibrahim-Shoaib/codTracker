@@ -35,24 +35,6 @@ const STEP_ROUTES: Record<number, string> = {
   4: "/app/onboarding/step4-expenses",
 };
 
-// Format "Apr 22"
-function fmtDay(dateStr: string) {
-  const [, m, d] = dateStr.split("-");
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  return `${months[parseInt(m, 10) - 1]} ${parseInt(d, 10)}`;
-}
-
-// Format "Apr 1–22" or "Mar 1–31"
-function fmtRange(fromStr: string, toStr: string) {
-  const [y1, m1, d1] = fromStr.split("-");
-  const [y2, m2, d2] = toStr.split("-");
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const mLabel = months[parseInt(m1, 10) - 1];
-  if (m1 === m2 && y1 === y2) {
-    return `${mLabel} ${parseInt(d1, 10)}–${parseInt(d2, 10)}`;
-  }
-  return `${mLabel} ${parseInt(d1, 10)} – ${months[parseInt(m2, 10) - 1]} ${parseInt(d2, 10)}`;
-}
 
 function statsRpc(supabase: ReturnType<typeof getSupabaseForStore> extends Promise<infer T> ? T : never, shop: string, from: string, to: string, monthlyExp: number, perOrderExp: number, days: number) {
   return (supabase as any).rpc("get_dashboard_stats", {
@@ -178,30 +160,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     backfillInProgress: !store.last_postex_sync_at,
     unmatchedCOGSCount: unmatchedCount ?? 0,
     periods: {
-      today: {
-        stats: s.today,
-        comparison: pct(s.today, s.yesterday),
-        dateLabel: fmtDay(todayFrom),
-        dateRange: { from: todayFrom, to: todayTo },
-      },
-      yesterday: {
-        stats: s.yesterday,
-        comparison: pct(s.yesterday, s.dayBefore),
-        dateLabel: fmtDay(yestFrom),
-        dateRange: { from: yestFrom, to: yestTo },
-      },
-      mtd: {
-        stats: s.mtd,
-        comparison: pct(s.mtd, s.mtdComp),
-        dateLabel: fmtRange(mtdFrom, mtdTo),
-        dateRange: { from: mtdFrom, to: mtdTo },
-      },
-      lastMonth: {
-        stats: s.lastMonth,
-        comparison: null,
-        dateLabel: fmtRange(lmFrom, lmTo),
-        dateRange: { from: lmFrom, to: lmTo },
-      },
+      today:     { stats: s.today,     comparison: pct(s.today,     s.yesterday), dateRange: { from: todayFrom, to: todayTo } },
+      yesterday: { stats: s.yesterday, comparison: pct(s.yesterday, s.dayBefore), dateRange: { from: yestFrom,  to: yestTo  } },
+      mtd:       { stats: s.mtd,       comparison: pct(s.mtd,       s.mtdComp),  dateRange: { from: mtdFrom,   to: mtdTo   } },
+      lastMonth: { stats: s.lastMonth, comparison: null,                          dateRange: { from: lmFrom,    to: lmTo    } },
     },
   });
 };
@@ -211,7 +173,9 @@ type PeriodKey = typeof PERIOD_KEYS[number];
 
 export default function Dashboard() {
   const data = useLoaderData<typeof loader>();
-  const [openDetail, setOpenDetail] = useState<PeriodKey | null>(null);
+  const [detail, setDetail] = useState<{
+    stats: any; dateRange: { from: string; to: string }; title: string;
+  } | null>(null);
 
   if ("redirectTo" in data) {
     return <Navigate to={(data as { redirectTo: string }).redirectTo} replace />;
@@ -264,23 +228,24 @@ export default function Dashboard() {
                 period={key}
                 stats={periods[key].stats}
                 comparison={periods[key].comparison}
-                dateLabel={periods[key].dateLabel}
-                onMore={() => setOpenDetail(key)}
+                dateRange={periods[key].dateRange}
+                onMore={(stats, dateRange, title) =>
+                  setDetail({ stats, dateRange, title })
+                }
               />
             ))}
           </InlineGrid>
         )}
       </BlockStack>
 
-      {/* Detail panel for whichever period is open */}
-      {openDetail && (
+      {detail && (
         <DetailPanel
-          period={openDetail}
-          stats={periods[openDetail].stats}
-          dateRange={periods[openDetail].dateRange}
+          title={detail.title}
+          stats={detail.stats}
+          dateRange={detail.dateRange}
           expensesList={expensesList}
-          open={!!openDetail}
-          onClose={() => setOpenDetail(null)}
+          open={!!detail}
+          onClose={() => setDetail(null)}
         />
       )}
     </Page>
