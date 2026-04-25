@@ -21,8 +21,8 @@ const fmtPct = (n) =>
   n == null ? "N/A" : `${Number(n).toFixed(1)}%`;
 
 // ── Card chrome ─────────────────────────────────────────────────────────────
-// One uniform card. Header strip is a soft neutral so the section reads as a
-// distinct row from the colourful KPI cards above without competing for focus.
+// Header strip is pinned to a fixed minHeight so the four cards stay vertically
+// aligned even when one label wraps to two lines on narrow viewports.
 function StatCard({ label, primary, footer, tooltip }) {
   return (
     <Card padding="0">
@@ -33,6 +33,7 @@ function StatCard({ label, primary, footer, tooltip }) {
           background="bg-surface-secondary"
           borderColor="border"
           borderBlockEndWidth="025"
+          minHeight="44px"
         >
           <Tooltip content={tooltip} dismissOnMouseOut>
             <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">
@@ -54,21 +55,22 @@ function StatCard({ label, primary, footer, tooltip }) {
 }
 
 // Footer for break-even cards: actual number with directional arrow.
-// `betterWhenLower` flips the colour rule for CAC (lower CAC vs ceiling = good).
-function ComparisonFooter({ actual, target, formatted, betterWhenLower }) {
+// `betterWhenLower` flips the colour rule for cost-per-purchase (lower
+// actual vs ceiling = good).
+function ComparisonFooter({ actual, target, formatted, betterWhenLower, windowLabel }) {
   if (actual == null || target == null) {
     return (
       <Text as="span" variant="bodySm" tone="subdued">
-        Last 30 days · N/A
+        {windowLabel} · N/A
       </Text>
     );
   }
   const actualBeatsTarget = betterWhenLower ? actual < target : actual > target;
   const isEqual = Math.abs(actual - target) < 1e-9;
   const tone = isEqual ? "subdued" : actualBeatsTarget ? "success" : "critical";
-  // Up arrow always means "good" — green up if actual is on the favourable side
-  // of break-even, red down if on the losing side. Direction is semantic, not
-  // numeric, so a CAC card under its ceiling reads as "↑" too.
+  // Up arrow always means "good" — green up if actual is on the favourable
+  // side of break-even, red down if on the losing side. Direction is
+  // semantic, not numeric.
   const ArrowIcon = isEqual ? null : actualBeatsTarget ? CaretUpIcon : CaretDownIcon;
 
   return (
@@ -82,13 +84,12 @@ function ComparisonFooter({ actual, target, formatted, betterWhenLower }) {
         {formatted}
       </Text>
       <Text as="span" variant="bodySm" tone="subdued">
-        last 30 days
+        {windowLabel}
       </Text>
     </InlineStack>
   );
 }
 
-// Footer for plain-metric cards (boxes 3 & 4).
 function PlainFooter({ text }) {
   return (
     <Text as="span" variant="bodySm" tone="subdued">
@@ -105,11 +106,14 @@ export default function BreakEvenSection({
   actualCac,
   deliverySuccessPct,
   costPerReturn,
+  windowDays,
 }) {
+  const windowLabel = `last ${windowDays ?? 30} days`;
+
   return (
     <InlineGrid columns={{ xs: 1, sm: 2, lg: 4 }} gap="400">
       <StatCard
-        label="Break-even ROAS (Meta)"
+        label="Break-even ROAS"
         tooltip="The Purchase ROAS your Meta Ads Manager must report — over the same window — for the business to break even. Already converted to Meta's units (booked value ÷ ad spend), so you can compare it directly to the ROAS column in Ads Manager. Includes shipping, COGS, returns, and the fixed expenses configured in Settings."
         primary={fmtRatio(breakEvenRoas)}
         footer={
@@ -118,12 +122,13 @@ export default function BreakEvenSection({
             target={breakEvenRoas}
             formatted={fmtRatio(actualRoas)}
             betterWhenLower={false}
+            windowLabel={windowLabel}
           />
         }
       />
 
       <StatCard
-        label="Break-even Cost per Purchase (Meta)"
+        label="Break-even Cost / Purchase"
         tooltip="The maximum Cost per Purchase your Meta Ads Manager can show for the business to break even — same window, same units (ad spend ÷ purchases). Compare it to the Cost per Purchase column in Ads Manager: under this number = profitable, over = losing money."
         primary={fmtPKR(breakEvenCac)}
         footer={
@@ -132,6 +137,7 @@ export default function BreakEvenSection({
             target={breakEvenCac}
             formatted={fmtPKR(actualCac)}
             betterWhenLower={true}
+            windowLabel={windowLabel}
           />
         }
       />
@@ -140,14 +146,14 @@ export default function BreakEvenSection({
         label="Delivery Success"
         tooltip="Share of bookings that actually got delivered (vs returned). The other side of the return-rate coin."
         primary={fmtPct(deliverySuccessPct)}
-        footer={<PlainFooter text="Last 30 days" />}
+        footer={<PlainFooter text={`Last ${windowDays ?? 30} days`} />}
       />
 
       <StatCard
         label="Cost per Return"
         tooltip="Average PKR loss on each returned order — forward shipping, reverse shipping, and the unsellable portion of inventory."
         primary={fmtPKR(costPerReturn)}
-        footer={<PlainFooter text="Last 30 days" />}
+        footer={<PlainFooter text={`Last ${windowDays ?? 30} days`} />}
       />
     </InlineGrid>
   );
