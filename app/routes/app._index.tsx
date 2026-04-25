@@ -225,11 +225,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     deriveBreakEven(win90Res.data?.[0], window90From, 90),
   ].filter(Boolean) as Array<NonNullable<ReturnType<typeof deriveBreakEven>>>;
 
-  // Pick the shortest window whose contribution clears fixed expenses; if
-  // none qualify, fall back to the 30-day window so the merchant at least
-  // sees the freshest delivery success and cost-per-return numbers.
-  const breakEven =
-    candidates.find((c) => c.contribAfterFixed > 0) ?? candidates[0] ?? null;
+  // Hybrid window: prefer the strict 30-day window. Only fall back to a
+  // longer window when 30 days can't clear fixed expenses, and surface
+  // `isFallback` so the section can show a small footer note explaining
+  // which window is on screen and why.
+  const win30 = candidates.find((c) => c.windowDays === 30);
+  const longerOK = candidates.find(
+    (c) => c.windowDays > 30 && c.contribAfterFixed > 0
+  );
+  const selected =
+    win30 != null && win30.contribAfterFixed > 0
+      ? win30
+      : longerOK ?? win30 ?? candidates[0] ?? null;
+  const breakEven = selected
+    ? { ...selected, isFallback: selected.windowDays !== 30 }
+    : null;
 
   return json({
     expensesList: expenses,

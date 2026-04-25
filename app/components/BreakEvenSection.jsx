@@ -107,54 +107,67 @@ export default function BreakEvenSection({
   deliverySuccessPct,
   costPerReturn,
   windowDays,
+  isFallback,
 }) {
-  const windowLabel = `last ${windowDays ?? 30} days`;
+  const days = windowDays ?? 30;
+  const windowLabel = `last ${days} days`;
 
   return (
-    <InlineGrid columns={{ xs: 1, sm: 2, lg: 4 }} gap="400">
-      <StatCard
-        label="Break-even ROAS"
-        tooltip="The Purchase ROAS your Meta Ads Manager must report — over the same window — for the business to break even. Already converted to Meta's units (booked value ÷ ad spend), so you can compare it directly to the ROAS column in Ads Manager. Includes shipping, COGS, returns, and the fixed expenses configured in Settings."
-        primary={fmtRatio(breakEvenRoas)}
-        footer={
-          <ComparisonFooter
-            actual={actualRoas}
-            target={breakEvenRoas}
-            formatted={fmtRatio(actualRoas)}
-            betterWhenLower={false}
-            windowLabel={windowLabel}
-          />
-        }
-      />
+    <BlockStack gap="200">
+      <InlineGrid columns={{ xs: 1, sm: 2, lg: 4 }} gap="400">
+        <StatCard
+          label="Break-even ROAS"
+          tooltip="The Purchase ROAS your Meta Ads Manager must report — over the same window — for the business to break even. Already converted to Meta's units (booked value ÷ ad spend), so you can compare it directly to the ROAS column in Ads Manager. Includes shipping, COGS, returns, and the fixed expenses configured in Settings."
+          primary={fmtRatio(breakEvenRoas)}
+          footer={
+            <ComparisonFooter
+              actual={actualRoas}
+              target={breakEvenRoas}
+              formatted={fmtRatio(actualRoas)}
+              betterWhenLower={false}
+              windowLabel={windowLabel}
+            />
+          }
+        />
 
-      <StatCard
-        label="Break-even Cost / Purchase"
-        tooltip="The maximum Cost per Purchase your Meta Ads Manager can show for the business to break even — same window, same units (ad spend ÷ purchases). Compare it to the Cost per Purchase column in Ads Manager: under this number = profitable, over = losing money."
-        primary={fmtPKR(breakEvenCac)}
-        footer={
-          <ComparisonFooter
-            actual={actualCac}
-            target={breakEvenCac}
-            formatted={fmtPKR(actualCac)}
-            betterWhenLower={true}
-            windowLabel={windowLabel}
-          />
-        }
-      />
+        <StatCard
+          label="Break-even Cost / Purchase"
+          tooltip="The maximum Cost per Purchase your Meta Ads Manager can show for the business to break even — same window, same units (ad spend ÷ purchases). Compare it to the Cost per Purchase column in Ads Manager: under this number = profitable, over = losing money."
+          primary={fmtPKR(breakEvenCac)}
+          footer={
+            <ComparisonFooter
+              actual={actualCac}
+              target={breakEvenCac}
+              formatted={fmtPKR(actualCac)}
+              betterWhenLower={true}
+              windowLabel={windowLabel}
+            />
+          }
+        />
 
-      <StatCard
-        label="Delivery Success"
-        tooltip="Share of bookings that actually got delivered (vs returned). The other side of the return-rate coin."
-        primary={fmtPct(deliverySuccessPct)}
-        footer={<PlainFooter text={`Last ${windowDays ?? 30} days`} />}
-      />
+        <StatCard
+          label="Delivery Success"
+          tooltip="Share of bookings that actually got delivered (vs returned). The other side of the return-rate coin."
+          primary={fmtPct(deliverySuccessPct)}
+          footer={<PlainFooter text={`Last ${days} days`} />}
+        />
 
-      <StatCard
-        label="Cost per Return"
-        tooltip="Average PKR loss on each returned order — forward shipping, reverse shipping, and the unsellable portion of inventory."
-        primary={fmtPKR(costPerReturn)}
-        footer={<PlainFooter text={`Last ${windowDays ?? 30} days`} />}
-      />
-    </InlineGrid>
+        <StatCard
+          label="Cost per Return"
+          tooltip="Average PKR loss on each returned order — forward shipping, reverse shipping, and the unsellable portion of inventory."
+          primary={fmtPKR(costPerReturn)}
+          footer={<PlainFooter text={`Last ${days} days`} />}
+        />
+      </InlineGrid>
+
+      {isFallback && (
+        <Box paddingInlineStart="100">
+          <Text as="p" variant="bodySm" tone="subdued">
+            Showing the last {days} days — your last 30 days didn&apos;t have
+            enough delivered orders to clear fixed expenses.
+          </Text>
+        </Box>
+      )}
+    </BlockStack>
   );
 }
