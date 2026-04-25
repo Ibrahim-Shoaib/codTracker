@@ -136,6 +136,8 @@ CREATE INDEX idx_orders_store_flags   ON orders(store_id, is_delivered, is_retur
 CREATE INDEX idx_orders_ref           ON orders(store_id, order_ref_number);
 CREATE INDEX idx_orders_status        ON orders(store_id, status_code);
 CREATE INDEX idx_orders_store_match_source ON orders(store_id, cogs_match_source);
+CREATE INDEX idx_orders_city_terminal ON orders(store_id, city_name)
+  WHERE is_delivered OR is_returned;
 CREATE INDEX idx_product_costs_variant  ON product_costs(store_id, shopify_variant_id);
 CREATE INDEX idx_ad_spend_store_date    ON ad_spend(store_id, spend_date);
 CREATE INDEX idx_snapshots_store_date   ON daily_snapshots(store_id, snapshot_date);
@@ -445,5 +447,67 @@ BEGIN
   ORDER BY o.transaction_date DESC
   LIMIT  p_limit
   OFFSET p_offset;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- City-level return-loss aggregation, used by the
+-- "Where you're losing money to returns" dashboard panel.
+-- Single GROUP BY over (store_id, transaction_date) — backed by
+-- idx_orders_city_terminal once a store has lots of orders.
+CREATE OR REPLACE FUNCTION get_city_breakdown(
+  p_store_id  text,
+  p_from_date date,
+  p_to_date   date
+)
+RETURNS TABLE (
+  city          text,
+  delivered     bigint,
+  returned      bigint,
+  total_orders  bigint,
+  return_loss   numeric,
+  return_pct    numeric
+) AS $$
+DECLARE
+  v_sellable_pct numeric;
+BEGIN
+  SELECT COALESCE(s.sellable_returns_pct, 85)
+  INTO v_sellable_pct
+  FROM stores s
+  WHERE s.store_id = p_store_id;
+
+  RETURN QUERY
+  WITH agg AS (
+    SELECT
+      COALESCE(NULLIF(INITCAP(TRIM(o.city_name)), ''), 'Unknown') AS city,
+      COUNT(*) FILTER (WHERE o.is_delivered)::bigint AS delivered,
+      COUNT(*) FILTER (WHERE o.is_returned)::bigint  AS returned,
+      COALESCE(SUM(
+        CASE WHEN o.is_returned
+          THEN (o.transaction_fee + o.transaction_tax + o.reversal_fee + o.reversal_tax)
+             + (o.cogs_total * (1 - v_sellable_pct / 100.0))
+          ELSE 0
+        END
+      ), 0) AS return_loss
+    FROM orders o
+    WHERE o.store_id = p_store_id
+      AND o.transaction_date >= p_from_date::timestamptz
+      AND o.transaction_date <  (p_to_date + 1)::timestamptz
+      AND (o.is_delivered OR o.is_returned)
+    GROUP BY 1
+  )
+  SELECT
+    agg.city,
+    agg.delivered,
+    agg.returned,
+    (agg.delivered + agg.returned) AS total_orders,
+    agg.return_loss,
+    CASE
+      WHEN (agg.delivered + agg.returned) = 0 THEN 0::numeric
+      ELSE (agg.returned::numeric / (agg.delivered + agg.returned)) * 100
+    END AS return_pct
+  FROM agg
+  ORDER BY (agg.delivered + agg.returned) DESC
+  LIMIT 50;
 END;
 $$ LANGUAGE plpgsql;

@@ -24,6 +24,7 @@ import { isTokenExpired, isTokenExpiringSoon } from "../lib/meta.server.js";
 import KPICard from "../components/KPICard.jsx";
 import WarningBanner from "../components/WarningBanner.jsx";
 import DetailPanel from "../components/DetailPanel.jsx";
+import CityLossPanel from "../components/CityLossPanel.jsx";
 
 const STEP_ROUTES: Record<number, string> = {
   1: "/app/onboarding/step1-postex",
@@ -97,13 +98,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const lmFrom       = formatPKTDate(lastMonth.start);
   const lmTo         = formatPKTDate(lastMonth.end);
 
-  // 3. Parallel RPC calls — 4 stats + 1 banner count
+  // City panel default window — last 30 days rolling, ending today (PKT).
+  // Computed from the same `today` Date so it stays in lockstep with the cards.
+  const cityToDate   = todayTo;
+  const cityFromDate = formatPKTDate(new Date(today.end.getTime() - 29 * 24 * 60 * 60 * 1000));
+
+  // 3. Parallel RPC calls — 4 stats + 1 banner count + 1 city breakdown
   const [
     todayRes,
     yesterdayRes,
     mtdRes,
     lastMonthRes,
     { count: unmatchedCount },
+    cityRes,
   ] = await Promise.all([
     statsRpc(supabase, shop, todayFrom, todayTo, monthlyExp, perOrderExp),
     statsRpc(supabase, shop, yestFrom,  yestTo,  monthlyExp, perOrderExp),
@@ -113,6 +120,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       .from("orders")
       .select("id", { count: "exact", head: true })
       .eq("cogs_match_source", "none"),
+    (supabase as any).rpc("get_city_breakdown", {
+      p_store_id:  shop,
+      p_from_date: cityFromDate,
+      p_to_date:   cityToDate,
+    }),
   ]);
 
   const s = {
@@ -136,6 +148,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       mtd:       { stats: s.mtd,       dateRange: { from: mtdFrom,   to: mtdTo   } },
       lastMonth: { stats: s.lastMonth, dateRange: { from: lmFrom,    to: lmTo    } },
     },
+    cityBreakdown: {
+      cities: cityRes.data ?? [],
+      from:   cityFromDate,
+      to:     cityToDate,
+    },
   });
 };
 
@@ -153,7 +170,7 @@ export default function Dashboard() {
 
   const { periods, expensesList, unmatchedCOGSCount,
           metaConnected, isMetaExpired, isMetaExpiringSoon, metaExpiresAt,
-          backfillInProgress } = data;
+          backfillInProgress, cityBreakdown } = data;
 
   // Empty state: no orders in any period
   const totalOrders = PERIOD_KEYS.reduce(
@@ -191,19 +208,28 @@ export default function Dashboard() {
             </Text>
           </EmptyState>
         ) : (
-          <InlineGrid columns={{ xs: 1, sm: 2, lg: 4 }} gap="400">
-            {PERIOD_KEYS.map((key) => (
-              <KPICard
-                key={key}
-                period={key}
-                stats={periods[key].stats}
-                dateRange={periods[key].dateRange}
-                onMore={(stats, dateRange, title) =>
-                  setDetail({ stats, dateRange, title })
-                }
-              />
-            ))}
-          </InlineGrid>
+          <>
+            <InlineGrid columns={{ xs: 1, sm: 2, lg: 4 }} gap="400">
+              {PERIOD_KEYS.map((key) => (
+                <KPICard
+                  key={key}
+                  period={key}
+                  stats={periods[key].stats}
+                  dateRange={periods[key].dateRange}
+                  onMore={(stats, dateRange, title) =>
+                    setDetail({ stats, dateRange, title })
+                  }
+                />
+              ))}
+            </InlineGrid>
+
+            <CityLossPanel
+              initialCities={cityBreakdown.cities}
+              initialFrom={cityBreakdown.from}
+              initialTo={cityBreakdown.to}
+              initialLabel="Last 30 days"
+            />
+          </>
         )}
       </BlockStack>
 
