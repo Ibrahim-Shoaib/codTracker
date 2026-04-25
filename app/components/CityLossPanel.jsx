@@ -47,12 +47,17 @@ function computePresets() {
 }
 
 // Pakistan COD averages 20–25% return rate; ≥35% is a "stop COD here"
-// signal, <10% is a healthy market.
+// signal, <10% is a healthy market. Bar colour mirrors the badge tone so
+// the visual maps consistently from the row's status to the bar.
+//   High    → red       (critical — block COD or require advance)
+//   Watch   → amber     (above average — monitor closely)
+//   Normal  → slate     (10–20%, no signal either way)
+//   Healthy → emerald   (matches the KPI-card "Today" gradient)
 function severity(returnPct) {
-  if (returnPct >= 35) return { tone: "critical", label: "High" };
-  if (returnPct >= 20) return { tone: "warning",  label: "Watch" };
-  if (returnPct < 10)  return { tone: "success",  label: "Healthy" };
-  return null;
+  if (returnPct >= 35) return { tone: "critical", label: "High",    barColor: "#DC2626" };
+  if (returnPct >= 20) return { tone: "warning",  label: "Watch",   barColor: "#D97706" };
+  if (returnPct < 10)  return { tone: "success",  label: "Healthy", barColor: "#059669" };
+  return            { tone: undefined,  label: null,      barColor: "#64748B" };
 }
 
 // ── A single city row ────────────────────────────────────────────────────────
@@ -69,7 +74,7 @@ function CityRow({ city, returnLoss, returned, total, returnPct, maxLoss }) {
           {/* City + severity */}
           <InlineStack gap="200" blockAlign="center" wrap={false}>
             <Text as="span" variant="bodyMd" fontWeight="semibold">{city}</Text>
-            {sev && <Badge tone={sev.tone} size="small">{sev.label}</Badge>}
+            {sev.label && <Badge tone={sev.tone} size="small">{sev.label}</Badge>}
           </InlineStack>
 
           {/* Loss amount — the single most important number */}
@@ -78,7 +83,7 @@ function CityRow({ city, returnLoss, returned, total, returnPct, maxLoss }) {
           </Text>
         </InlineStack>
 
-        {/* Sparkline-style thin bar — Polaris critical token, not custom red */}
+        {/* Sparkline-style thin bar — colour mirrors the row's severity */}
         <div
           style={{
             width: "100%",
@@ -93,8 +98,8 @@ function CityRow({ city, returnLoss, returned, total, returnPct, maxLoss }) {
               width: `${widthPct}%`,
               height: "100%",
               borderRadius: 999,
-              backgroundColor: "var(--p-color-bg-fill-critical, #E51C00)",
-              transition: "width 280ms ease",
+              backgroundColor: sev.barColor,
+              transition: "width 280ms ease, background-color 200ms ease",
             }}
           />
         </div>
