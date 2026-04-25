@@ -6,7 +6,6 @@ import {
   BlockStack,
   InlineStack,
   Text,
-  Badge,
   Button,
   Divider,
   Popover,
@@ -97,16 +96,6 @@ function computePresets() {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-function PctBadge({ value }) {
-  if (value == null) return null;
-  const up = value >= 0;
-  return (
-    <Badge tone={up ? "success" : "critical"}>
-      {up ? "+" : ""}{Number(value).toFixed(1)}%
-    </Badge>
-  );
-}
-
 function MoneyText({ value, variant = "headingMd" }) {
   if (value == null) return <Text variant={variant}>N/A</Text>;
   const v   = Math.round(Number(value));
@@ -137,7 +126,6 @@ const DEFAULT_NAMES = {
 export default function KPICard({
   period,
   stats: defaultStats,
-  comparison,
   dateRange: defaultDateRange,
   onMore,
 }) {
@@ -295,10 +283,7 @@ export default function KPICard({
 
           {/* Sales */}
           <BlockStack gap="100">
-            <InlineStack gap="200" blockAlign="center">
-              <Text variant="bodySm" tone="subdued">Sales</Text>
-              {comparison && <PctBadge value={comparison.salesPctChange} />}
-            </InlineStack>
+            <Text variant="bodySm" tone="subdued">Sales</Text>
             <Text variant="headingLg" fontWeight="bold">{fmtPKR(stats?.sales)}</Text>
           </BlockStack>
 
@@ -335,10 +320,7 @@ export default function KPICard({
           {/* Net Profit | Margin */}
           <InlineStack align="space-between" blockAlign="start">
             <BlockStack gap="100">
-              <InlineStack gap="200" blockAlign="center">
-                <Text variant="bodySm" tone="subdued">Net Profit</Text>
-                {comparison && <PctBadge value={comparison.profitPctChange} />}
-              </InlineStack>
+              <Text variant="bodySm" tone="subdued">Net Profit</Text>
               <MoneyText value={stats?.net_profit} variant="headingSm" />
             </BlockStack>
             <BlockStack gap="100">

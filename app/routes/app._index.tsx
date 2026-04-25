@@ -18,10 +18,8 @@ import {
   getYesterdayPKT,
   getMTDPKT,
   getLastMonthPKT,
-  getMTDComparisonPKT,
   formatPKTDate,
 } from "../lib/dates.server.js";
-import { calcPctChange } from "../lib/calculations.server.js";
 import { isTokenExpired, isTokenExpiringSoon } from "../lib/meta.server.js";
 import KPICard from "../components/KPICard.jsx";
 import WarningBanner from "../components/WarningBanner.jsx";
@@ -89,42 +87,28 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const yesterday = getYesterdayPKT();
   const mtd = getMTDPKT();
   const lastMonth = getLastMonthPKT();
-  const mtdComp = getMTDComparisonPKT();
-  const dayBefore = {
-    start: new Date(yesterday.start.getTime() - 86_400_000),
-    end:   new Date(yesterday.end.getTime()   - 86_400_000),
-  };
 
   const todayFrom    = formatPKTDate(today.start);
   const todayTo      = formatPKTDate(today.end);
   const yestFrom     = formatPKTDate(yesterday.start);
   const yestTo       = formatPKTDate(yesterday.end);
-  const dayBefFrom   = formatPKTDate(dayBefore.start);
-  const dayBefTo     = formatPKTDate(dayBefore.end);
   const mtdFrom      = formatPKTDate(mtd.start);
   const mtdTo        = formatPKTDate(mtd.end);
-  const mtdCompFrom  = formatPKTDate(mtdComp.start);
-  const mtdCompTo    = formatPKTDate(mtdComp.end);
   const lmFrom       = formatPKTDate(lastMonth.start);
   const lmTo         = formatPKTDate(lastMonth.end);
 
-  // 3. Parallel RPC calls — 6 stats + 1 banner count
-  //    yesterday doubles as Today's comparison period
+  // 3. Parallel RPC calls — 4 stats + 1 banner count
   const [
     todayRes,
-    yesterdayRes,   // also used as today's prior comparison
-    dayBeforeRes,
+    yesterdayRes,
     mtdRes,
-    mtdCompRes,
     lastMonthRes,
     { count: unmatchedCount },
   ] = await Promise.all([
-    statsRpc(supabase, shop, todayFrom,   todayTo,   monthlyExp, perOrderExp),
-    statsRpc(supabase, shop, yestFrom,    yestTo,    monthlyExp, perOrderExp),
-    statsRpc(supabase, shop, dayBefFrom,  dayBefTo,  monthlyExp, perOrderExp),
-    statsRpc(supabase, shop, mtdFrom,     mtdTo,     monthlyExp, perOrderExp),
-    statsRpc(supabase, shop, mtdCompFrom, mtdCompTo, monthlyExp, perOrderExp),
-    statsRpc(supabase, shop, lmFrom,      lmTo,      monthlyExp, perOrderExp),
+    statsRpc(supabase, shop, todayFrom, todayTo, monthlyExp, perOrderExp),
+    statsRpc(supabase, shop, yestFrom,  yestTo,  monthlyExp, perOrderExp),
+    statsRpc(supabase, shop, mtdFrom,   mtdTo,   monthlyExp, perOrderExp),
+    statsRpc(supabase, shop, lmFrom,    lmTo,    monthlyExp, perOrderExp),
     supabase
       .from("orders")
       .select("id", { count: "exact", head: true })
@@ -134,20 +118,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const s = {
     today:     todayRes.data?.[0]     ?? null,
     yesterday: yesterdayRes.data?.[0] ?? null,
-    dayBefore: dayBeforeRes.data?.[0] ?? null,
     mtd:       mtdRes.data?.[0]       ?? null,
-    mtdComp:   mtdCompRes.data?.[0]   ?? null,
     lastMonth: lastMonthRes.data?.[0] ?? null,
   };
-
-  // 4. % change — computed in JS from live RPC data
-  const pct = (cur: any, prior: any) =>
-    cur && prior
-      ? {
-          salesPctChange:  calcPctChange(Number(cur.sales),      Number(prior.sales)),
-          profitPctChange: calcPctChange(Number(cur.net_profit),  Number(prior.net_profit)),
-        }
-      : null;
 
   return json({
     expensesList: expenses,
@@ -158,10 +131,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     backfillInProgress: !store.last_postex_sync_at,
     unmatchedCOGSCount: unmatchedCount ?? 0,
     periods: {
-      today:     { stats: s.today,     comparison: pct(s.today,     s.yesterday), dateRange: { from: todayFrom, to: todayTo } },
-      yesterday: { stats: s.yesterday, comparison: pct(s.yesterday, s.dayBefore), dateRange: { from: yestFrom,  to: yestTo  } },
-      mtd:       { stats: s.mtd,       comparison: pct(s.mtd,       s.mtdComp),  dateRange: { from: mtdFrom,   to: mtdTo   } },
-      lastMonth: { stats: s.lastMonth, comparison: null,                          dateRange: { from: lmFrom,    to: lmTo    } },
+      today:     { stats: s.today,     dateRange: { from: todayFrom, to: todayTo } },
+      yesterday: { stats: s.yesterday, dateRange: { from: yestFrom,  to: yestTo  } },
+      mtd:       { stats: s.mtd,       dateRange: { from: mtdFrom,   to: mtdTo   } },
+      lastMonth: { stats: s.lastMonth, dateRange: { from: lmFrom,    to: lmTo    } },
     },
   });
 };
@@ -224,7 +197,6 @@ export default function Dashboard() {
                 key={key}
                 period={key}
                 stats={periods[key].stats}
-                comparison={periods[key].comparison}
                 dateRange={periods[key].dateRange}
                 onMore={(stats, dateRange, title) =>
                   setDetail({ stats, dateRange, title })
