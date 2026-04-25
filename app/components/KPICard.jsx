@@ -107,12 +107,15 @@ function MoneyText({ value, variant = "headingMd" }) {
   );
 }
 
-// ── Header colours (one per card slot) ───────────────────────────────────────
-const HEADER_COLORS = {
-  today:     "#2D6A4F",
-  yesterday: "#40916C",
-  mtd:       "#1A7C7C",
-  lastMonth: "#1E6E9E",
+// ── Header gradients ─────────────────────────────────────────────────────────
+// Recent → past reads as emerald → teal → cyan → indigo. Tailwind 600/700
+// levels keep the saturation balanced; deeper stop on the bottom-right gives
+// the header subtle depth without looking decorative.
+const HEADER_GRADIENTS = {
+  today:     "linear-gradient(135deg, #059669 0%, #047857 100%)",
+  yesterday: "linear-gradient(135deg, #0D9488 0%, #0F766E 100%)",
+  mtd:       "linear-gradient(135deg, #0891B2 0%, #0E7490 100%)",
+  lastMonth: "linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)",
 };
 
 const DEFAULT_NAMES = {
@@ -219,14 +222,31 @@ export default function KPICard({
     </button>
   );
 
+  // Date-hover (or open popover) gently lifts the card and brightens the
+  // header. Filter is used instead of a second gradient because background
+  // images can't be CSS-transitioned smoothly.
+  const isActive = hovered || popoverOpen;
+
   return (
+    <div
+      style={{
+        borderRadius: "12px",
+        transition: "transform 200ms ease, box-shadow 200ms ease",
+        transform: isActive ? "translateY(-2px)" : "translateY(0)",
+        boxShadow: isActive
+          ? "0 12px 28px rgba(15, 23, 42, 0.14)"
+          : "0 1px 3px rgba(15, 23, 42, 0.05)",
+      }}
+    >
     <Card padding="0">
       {/* ── Header ── */}
       <div
         style={{
-          backgroundColor: HEADER_COLORS[period] ?? "#2D6A4F",
+          backgroundImage: HEADER_GRADIENTS[period] ?? HEADER_GRADIENTS.today,
           borderRadius: "12px 12px 0 0",
           padding: "12px 16px",
+          transition: "filter 200ms ease",
+          filter: isActive ? "brightness(1.08) saturate(1.05)" : "none",
         }}
       >
         <BlockStack gap="050">
@@ -353,5 +373,6 @@ export default function KPICard({
         </BlockStack>
       </Box>
     </Card>
+    </div>
   );
 }
