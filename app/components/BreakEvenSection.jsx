@@ -109,8 +109,8 @@ export default function BreakEvenSection({
   return (
     <InlineGrid columns={{ xs: 1, sm: 2, lg: 4 }} gap="400">
       <StatCard
-        label="Break-even ROAS"
-        tooltip="Minimum ROAS where ads cover delivery + COGS. Above the line you keep money on every ad rupee; below it you're burning."
+        label="Break-even ROAS (Meta)"
+        tooltip="The Purchase ROAS your Meta Ads Manager must report — over the same window — for the business to break even. Already converted to Meta's units (booked value ÷ ad spend), so you can compare it directly to the ROAS column in Ads Manager. Includes shipping, COGS, returns, and the fixed expenses configured in Settings."
         primary={fmtRatio(breakEvenRoas)}
         footer={
           <ComparisonFooter
@@ -123,8 +123,8 @@ export default function BreakEvenSection({
       />
 
       <StatCard
-        label="Break-even CAC"
-        tooltip="Maximum ad cost per delivered order before profit goes negative. If your actual CAC is below this number, ads are paying for themselves."
+        label="Break-even Cost per Purchase (Meta)"
+        tooltip="The maximum Cost per Purchase your Meta Ads Manager can show for the business to break even — same window, same units (ad spend ÷ purchases). Compare it to the Cost per Purchase column in Ads Manager: under this number = profitable, over = losing money."
         primary={fmtPKR(breakEvenCac)}
         footer={
           <ComparisonFooter

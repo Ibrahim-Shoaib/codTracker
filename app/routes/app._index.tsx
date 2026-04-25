@@ -146,26 +146,67 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 
   // Derive the break-even card numbers from the 30-day window.
-  // Break-even ROAS = sales / gross_profit  (the ROAS at which ad spend equals
-  // the variable-cost cushion). Break-even CAC = gross_profit / delivered (max
-  // ad cost per delivered order before profit goes negative). Returns null
-  // when the inputs make the ratio meaningless.
+  //
+  // Two corrections vs the v1 formula:
+  //  1. STRICT — subtract fixed expenses from gross profit so the threshold
+  //     reflects everything ads have to cover, not just delivery + COGS. The
+  //     marketing-only formula was generous enough to hide a real loss in a
+  //     period where ROAS was above 4× but net profit was negative.
+  //  2. META-COMPARABLE — translate everything into the units Meta Ads
+  //     Manager uses (booked value / ad spend, ad spend / booking) so the
+  //     merchant can read the card and compare 1:1 with their reporting.
+  //
+  // Conversion: Meta counts every purchase event (delivered + returned),
+  // we count only delivered. delivery_success = delivered / orders is the
+  // bridge:
+  //   booked_value ≈ sales / delivery_success
+  //   meta_ROAS    = booked_value / ad_spend = our_ROAS / delivery_success
+  //   meta_CPA     = ad_spend / orders        = our_CAC × delivery_success
+  // A break-even threshold computed from contribution_after_fixed and
+  // expressed in Meta units is what the merchant should bid against.
   const last30 = s.last30;
   const breakEven = (() => {
     if (!last30) return null;
     const sales        = Number(last30.sales        ?? 0);
     const grossProfit  = Number(last30.gross_profit ?? 0);
+    const periodExp    = Number(last30.expenses     ?? 0);
     const ordersTotal  = Number(last30.orders       ?? 0);
     const returns      = Number(last30.returns      ?? 0);
     const returnLoss   = Number(last30.return_loss  ?? 0);
+    const adSpend      = Number(last30.ad_spend     ?? 0);
     const refundPct    = last30.refund_pct == null ? null : Number(last30.refund_pct);
     const delivered    = Math.max(0, ordersTotal - returns);
 
+    // What's left of gross profit after fixed/per-order expenses — this is
+    // the cushion ads can consume before profit goes negative. ≤ 0 means
+    // the period genuinely cannot break even at any ROAS, render N/A.
+    const contribAfterFixed = grossProfit - periodExp;
+
+    // Bridge from delivered-side to booked-side. Null when there are no
+    // booked orders yet (everything still in transit).
+    const deliverySuccess  = ordersTotal > 0 ? delivered / ordersTotal : null;
+    const bookedValue      = deliverySuccess != null && deliverySuccess > 0
+      ? sales / deliverySuccess
+      : null;
+
     return {
-      breakEvenRoas: grossProfit > 0 ? sales / grossProfit : null,
-      breakEvenCac:  delivered > 0 && grossProfit > 0 ? grossProfit / delivered : null,
-      actualRoas:    last30.roas == null ? null : Number(last30.roas),
-      actualCac:     last30.cac  == null ? null : Number(last30.cac),
+      // Meta-comparable break-even ROAS: booked_value / contribution_after_fixed.
+      breakEvenRoas:
+        contribAfterFixed > 0 && bookedValue != null
+          ? bookedValue / contribAfterFixed
+          : null,
+      // Meta-comparable break-even CPA: ad-spend ceiling per BOOKING (not per
+      // delivered order), so it lines up with Meta's "Cost per Purchase".
+      breakEvenCac:
+        contribAfterFixed > 0 && ordersTotal > 0
+          ? contribAfterFixed / ordersTotal
+          : null,
+      // Actuals also in Meta units, so the small comparison number is in the
+      // same currency as the big break-even number above it.
+      actualRoas:
+        adSpend > 0 && bookedValue != null ? bookedValue / adSpend : null,
+      actualCac:
+        adSpend > 0 && ordersTotal > 0 ? adSpend / ordersTotal : null,
       deliverySuccessPct: refundPct == null ? null : 100 - refundPct,
       costPerReturn: returns > 0 ? returnLoss / returns : null,
       from: last30From,
