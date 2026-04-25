@@ -85,7 +85,8 @@ export async function fetchSpend(accessToken, adAccountId, sinceDate, untilDate)
   return Number(data.data?.[0]?.spend ?? 0);
 }
 
-// Returns per-day spend array for a date range — one Meta API call for the whole period.
+// Returns per-day spend array for a date range.
+// Follows paging.next so chunks larger than Meta's default page size return fully.
 // Returns [{ date: 'YYYY-MM-DD', spend: number }, ...]
 export async function fetchDailySpend(accessToken, adAccountId, sinceDate, untilDate) {
   const timeRange = JSON.stringify({ since: sinceDate, until: untilDate });
@@ -94,15 +95,25 @@ export async function fetchDailySpend(accessToken, adAccountId, sinceDate, until
     time_range:     timeRange,
     time_increment: '1',
     level:          'account',
+    limit:          '500',
     access_token:   accessToken,
   });
-  const res = await fetch(`${GRAPH_BASE}/${adAccountId}/insights?${params}`);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(`Meta fetchDailySpend failed: ${err.error?.message ?? res.status}`);
+  let url = `${GRAPH_BASE}/${adAccountId}/insights?${params}`;
+  const out = [];
+  // Hard cap to prevent runaway pagination on a malformed cursor.
+  for (let page = 0; page < 50 && url; page++) {
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(`Meta fetchDailySpend failed: ${err.error?.message ?? res.status}`);
+    }
+    const data = await res.json();
+    for (const d of (data.data ?? [])) {
+      out.push({ date: d.date_start, spend: Number(d.spend ?? 0) });
+    }
+    url = data.paging?.next ?? null;
   }
-  const data = await res.json();
-  return (data.data ?? []).map(d => ({ date: d.date_start, spend: Number(d.spend ?? 0) }));
+  return out;
 }
 
 // ─── Token expiry helpers ─────────────────────────────────────────────────────

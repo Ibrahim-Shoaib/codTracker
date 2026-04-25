@@ -65,6 +65,8 @@ export async function runHistoricalBackfill({ store_id, postex_token }) {
 
 // Pulls Meta ad spend history backwards in 60-day chunks.
 // Stops after 2 consecutive empty chunks — signals start of merchant's ad history.
+// Errors are retried once with backoff; after that they abort the run rather than masquerade
+// as 'history ended' (which would leave a partial backfill and a stale last_meta_sync_at).
 // Fire-and-forget: called without await when Meta account is connected.
 export async function runMetaHistoricalBackfill({ store_id, access_token, ad_account_id }) {
   const supabase = await getSupabaseForStore(store_id);
@@ -74,43 +76,64 @@ export async function runMetaHistoricalBackfill({ store_id, access_token, ad_acc
   let consecutiveEmpty = 0;
   let totalDays = 0;
   let totalChunks = 0;
+  let aborted = false;
 
   while (true) {
-    try {
-      const daily = await fetchDailySpend(access_token, ad_account_id, start, end);
-      totalChunks++;
-
-      if (daily.length === 0) {
-        consecutiveEmpty++;
-        if (consecutiveEmpty >= STOP_AFTER_EMPTY) break;
-      } else {
-        consecutiveEmpty = 0;
-        const rows = daily.map(d => ({
-          store_id,
-          spend_date: d.date,
-          amount:     d.spend,
-          source:     'meta',
-          updated_at: new Date().toISOString(),
-        }));
-        await supabase
-          .from('ad_spend')
-          .upsert(rows, { onConflict: 'store_id,spend_date' });
-        totalDays += daily.length;
+    let daily = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        daily = await fetchDailySpend(access_token, ad_account_id, start, end);
+        break;
+      } catch (err) {
+        console.error(`Meta backfill chunk ${start}–${end} attempt ${attempt + 1} failed for ${store_id}:`, err);
+        if (attempt === 0) {
+          await new Promise(r => setTimeout(r, 2000));
+        }
       }
-    } catch (err) {
-      console.error(`Meta backfill chunk ${start}–${end} failed for ${store_id}:`, err);
+    }
+
+    if (daily === null) {
+      console.error(`Meta backfill aborted at chunk ${start}–${end} for ${store_id} after retries`);
+      aborted = true;
+      break;
+    }
+
+    totalChunks++;
+
+    if (daily.length === 0) {
       consecutiveEmpty++;
       if (consecutiveEmpty >= STOP_AFTER_EMPTY) break;
+    } else {
+      consecutiveEmpty = 0;
+      const rows = daily.map(d => ({
+        store_id,
+        spend_date: d.date,
+        amount:     d.spend,
+        source:     'meta',
+        updated_at: new Date().toISOString(),
+      }));
+      const { error: upsertErr } = await supabase
+        .from('ad_spend')
+        .upsert(rows, { onConflict: 'store_id,spend_date' });
+      if (upsertErr) {
+        console.error(`Meta backfill upsert failed at chunk ${start}–${end} for ${store_id}:`, upsertErr);
+        aborted = true;
+        break;
+      }
+      totalDays += daily.length;
     }
 
     end   = subtractDays(start, 1);
     start = subtractDays(end, CHUNK_DAYS - 1);
   }
 
-  await supabase
-    .from('stores')
-    .update({ last_meta_sync_at: new Date().toISOString() })
-    .eq('store_id', store_id);
+  // Only stamp last_meta_sync_at on a clean run, so an aborted backfill is visible/retriable.
+  if (!aborted) {
+    await supabase
+      .from('stores')
+      .update({ last_meta_sync_at: new Date().toISOString() })
+      .eq('store_id', store_id);
+  }
 
-  console.log(`Meta backfill done for ${store_id}: ${totalDays} days across ${totalChunks} chunks`);
+  console.log(`Meta backfill ${aborted ? 'aborted' : 'done'} for ${store_id}: ${totalDays} days across ${totalChunks} chunks`);
 }
