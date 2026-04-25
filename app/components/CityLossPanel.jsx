@@ -11,7 +11,6 @@ import {
   Badge,
   Popover,
   ActionList,
-  Icon,
   DatePicker,
   Divider,
   EmptyState,
@@ -41,12 +40,9 @@ function fmtDateLabel(from, to) {
   return `${fd} ${MONTHS_LONG[fm - 1]} ${fy} – ${td} ${MONTHS_LONG[tm - 1]} ${ty}`;
 }
 
-// Same preset family as the KPI cards plus a "Last 30 days" option,
-// which is the most actionable window for return-leak triage.
 function computePresets() {
   const now = new Date();
   const today = toDateStr(now);
-  const yest = new Date(now); yest.setDate(yest.getDate() - 1);
   const y = now.getFullYear();
   const m = now.getMonth();
 
@@ -71,76 +67,74 @@ function computePresets() {
   ];
 }
 
-// ── Severity styling for the return-rate badge ───────────────────────────────
-// Pakistan COD averages 20–25%; anything above 35% is a strong "stop COD here"
-// signal, anything below 10% is a healthy city.
+// Pakistan COD averages 20–25% return rate; ≥35% is a "stop COD here"
+// signal, <10% is a healthy market.
 function severity(returnPct) {
   if (returnPct >= 35) return { tone: "critical", label: "High" };
   if (returnPct >= 20) return { tone: "warning",  label: "Watch" };
   if (returnPct < 10)  return { tone: "success",  label: "Healthy" };
-  return { tone: undefined, label: null };
+  return null;
 }
 
 // ── A single city row ────────────────────────────────────────────────────────
+// Layout matches Shopify's analytics reports: dimension on the left, sparkline
+// bar in the middle taking remaining width, primary number right-aligned.
 function CityRow({ city, returnLoss, returned, total, returnPct, maxLoss }) {
   const widthPct = maxLoss > 0 ? Math.max(2, (returnLoss / maxLoss) * 100) : 0;
   const sev = severity(returnPct);
 
   return (
-    <BlockStack gap="150">
-      <InlineStack align="space-between" blockAlign="center" wrap={false}>
-        <InlineStack gap="200" blockAlign="center" wrap={false}>
-          <Text as="span" variant="bodyMd" fontWeight="semibold">
-            {city}
-          </Text>
-          {sev.label && (
-            <Badge tone={sev.tone} size="small">{sev.label}</Badge>
-          )}
-        </InlineStack>
-        <Text as="span" variant="bodyMd" fontWeight="semibold" tone="critical">
-          {fmtPKR(returnLoss)}
-        </Text>
-      </InlineStack>
+    <Box paddingInline="400" paddingBlock="300">
+      <BlockStack gap="150">
+        <InlineStack align="space-between" blockAlign="center" gap="400" wrap={false}>
+          {/* City + severity */}
+          <InlineStack gap="200" blockAlign="center" wrap={false}>
+            <Text as="span" variant="bodyMd" fontWeight="semibold">{city}</Text>
+            {sev && <Badge tone={sev.tone} size="small">{sev.label}</Badge>}
+          </InlineStack>
 
-      {/* Pure-CSS bar — no chart library, zero JS render cost */}
-      <div
-        style={{
-          width: "100%",
-          height: 8,
-          borderRadius: 999,
-          backgroundColor: "var(--p-color-bg-surface-secondary, #F1F1F1)",
-          overflow: "hidden",
-        }}
-      >
+          {/* Loss amount — the single most important number */}
+          <Text as="span" variant="bodyMd" fontWeight="semibold">
+            {fmtPKR(returnLoss)}
+          </Text>
+        </InlineStack>
+
+        {/* Sparkline-style thin bar — Polaris critical token, not custom red */}
         <div
           style={{
-            width: `${widthPct}%`,
-            height: "100%",
+            width: "100%",
+            height: 4,
             borderRadius: 999,
-            background: "linear-gradient(90deg, #FCA5A5 0%, #DC2626 100%)",
-            transition: "width 280ms ease",
+            backgroundColor: "var(--p-color-bg-surface-tertiary, #EBEBEB)",
+            overflow: "hidden",
           }}
-        />
-      </div>
+        >
+          <div
+            style={{
+              width: `${widthPct}%`,
+              height: "100%",
+              borderRadius: 999,
+              backgroundColor: "var(--p-color-bg-fill-critical, #E51C00)",
+              transition: "width 280ms ease",
+            }}
+          />
+        </div>
 
-      <InlineStack align="space-between" blockAlign="center">
-        <Text as="span" variant="bodySm" tone="subdued">
-          {fmtNum(returned)} returns out of {fmtNum(total)} orders
-        </Text>
-        <Text as="span" variant="bodySm" tone="subdued">
-          {fmtPct(returnPct)} return rate
-        </Text>
-      </InlineStack>
-    </BlockStack>
+        {/* Secondary stats */}
+        <InlineStack align="space-between" blockAlign="center">
+          <Text as="span" variant="bodySm" tone="subdued">
+            {fmtNum(returned)} of {fmtNum(total)} orders returned
+          </Text>
+          <Text as="span" variant="bodySm" tone="subdued">
+            {fmtPct(returnPct)} return rate
+          </Text>
+        </InlineStack>
+      </BlockStack>
+    </Box>
   );
 }
 
 // ── CityLossPanel ────────────────────────────────────────────────────────────
-// Props:
-//   initialCities   array from get_city_breakdown RPC
-//   initialFrom     'YYYY-MM-DD'
-//   initialTo       'YYYY-MM-DD'
-//   initialLabel    e.g. "Last 30 days"
 export default function CityLossPanel({
   initialCities,
   initialFrom,
@@ -157,21 +151,16 @@ export default function CityLossPanel({
     year:  new Date().getFullYear(),
   });
 
-  const [dateLabel, setDateLabel] = useState(
-    `${initialLabel} · ${fmtDateLabel(initialFrom, initialTo)}`
-  );
+  const [dateLabel, setDateLabel] = useState(initialLabel);
   const [activePreset, setActivePreset] = useState(initialLabel);
 
-  const [sortKey, setSortKey] = useState("loss"); // 'loss' | 'rate' | 'volume'
+  const [sortKey, setSortKey] = useState("loss");
   const [showAll, setShowAll] = useState(false);
 
   const presets = computePresets();
   const cities  = fetcher.data?.cities ?? initialCities ?? [];
   const loading = fetcher.state === "loading";
 
-  // ── Sort + filter ──────────────────────────────────────────────────────────
-  // For the "Money lost" list we drop cities with zero loss (no returns yet).
-  // For the other tabs we keep them — useful to spot healthy high-volume cities.
   const sorted = useMemo(() => {
     const copy = [...cities].map((c) => ({
       ...c,
@@ -187,8 +176,8 @@ export default function CityLossPanel({
         .sort((a, b) => b.return_loss - a.return_loss);
     }
     if (sortKey === "rate") {
-      // Filter out tiny-sample cities (< 5 orders) so a single return on a
-      // 1-order city doesn't dominate the list with a 100% return rate.
+      // Filter tiny-sample cities so 1 return on a 1-order city doesn't
+      // dominate at 100% return rate.
       return copy
         .filter((c) => c.total_orders >= 5)
         .sort((a, b) => b.return_pct - a.return_pct);
@@ -199,13 +188,12 @@ export default function CityLossPanel({
   const visible = showAll ? sorted : sorted.slice(0, 5);
   const maxLoss = visible.reduce((m, c) => Math.max(m, c.return_loss), 0);
 
-  // ── Date-range handling ────────────────────────────────────────────────────
   function applyPreset(preset) {
     if (preset.label === "Custom range") {
       setShowCustom(true);
       return;
     }
-    setDateLabel(`${preset.label} · ${fmtDateLabel(preset.from, preset.to)}`);
+    setDateLabel(preset.label);
     setActivePreset(preset.label);
     setPopoverOpen(false);
     setShowCustom(false);
@@ -216,7 +204,7 @@ export default function CityLossPanel({
     const end  = customSel.end ?? customSel.start;
     const from = toDateStr(customSel.start);
     const to   = toDateStr(end);
-    setDateLabel(`Custom · ${fmtDateLabel(from, to)}`);
+    setDateLabel(fmtDateLabel(from, to));
     setActivePreset("Custom range");
     setPopoverOpen(false);
     setShowCustom(false);
@@ -232,100 +220,96 @@ export default function CityLossPanel({
       icon={CalendarIcon}
       onClick={() => { setPopoverOpen((v) => !v); setShowCustom(false); }}
       disclosure
+      size="slim"
       variant="tertiary"
     >
       {dateLabel}
     </Button>
   );
 
-  // ── Empty / loading states ─────────────────────────────────────────────────
   const totalReturns = cities.reduce((s, c) => s + Number(c.returned), 0);
   const isEmpty = !loading && totalReturns === 0;
 
   return (
-    <Card>
-      <BlockStack gap="400">
-
-        {/* ── Header ── */}
-        <InlineStack align="space-between" blockAlign="start" gap="300" wrap={false}>
-          <BlockStack gap="050">
+    <Card padding="0">
+      {/* ── Header ── */}
+      <Box paddingInline="400" paddingBlockStart="400" paddingBlockEnd="300">
+        <BlockStack gap="300">
+          <InlineStack align="space-between" blockAlign="center" wrap={false} gap="300">
             <Text as="h2" variant="headingMd" fontWeight="semibold">
-              Where you're losing money to returns
+              Returns by city
             </Text>
-            <Text as="p" variant="bodySm" tone="subdued">
-              Cities ranked by the cost of returned shipments — wasted shipping both ways plus unsellable inventory.
-            </Text>
-          </BlockStack>
-          <Popover
-            active={popoverOpen}
-            activator={dateActivator}
-            onClose={closePopover}
-            preferredAlignment="right"
-          >
-            {showCustom ? (
-              <Box padding="400">
-                <BlockStack gap="300">
-                  <Button variant="plain" onClick={() => setShowCustom(false)}>← Back</Button>
-                  <DatePicker
-                    month={customMonth.month}
-                    year={customMonth.year}
-                    onChange={setCustomSel}
-                    onMonthChange={(month, year) => setCustomMonth({ month, year })}
-                    selected={customSel.start ? customSel : undefined}
-                    allowRange
-                  />
-                  <Button variant="primary" disabled={!customSel.start} onClick={applyCustom}>
-                    Apply
-                  </Button>
-                </BlockStack>
-              </Box>
-            ) : (
-              <ActionList
-                items={presets.map((p) => ({
-                  content: p.label,
-                  active: p.label === activePreset,
-                  onAction: () => applyPreset(p),
-                }))}
-              />
-            )}
-          </Popover>
-        </InlineStack>
+            <Popover
+              active={popoverOpen}
+              activator={dateActivator}
+              onClose={closePopover}
+              preferredAlignment="right"
+            >
+              {showCustom ? (
+                <Box padding="400">
+                  <BlockStack gap="300">
+                    <Button variant="plain" onClick={() => setShowCustom(false)}>← Back</Button>
+                    <DatePicker
+                      month={customMonth.month}
+                      year={customMonth.year}
+                      onChange={setCustomSel}
+                      onMonthChange={(month, year) => setCustomMonth({ month, year })}
+                      selected={customSel.start ? customSel : undefined}
+                      allowRange
+                    />
+                    <Button variant="primary" disabled={!customSel.start} onClick={applyCustom}>
+                      Apply
+                    </Button>
+                  </BlockStack>
+                </Box>
+              ) : (
+                <ActionList
+                  items={presets.map((p) => ({
+                    content: p.label,
+                    active: p.label === activePreset,
+                    onAction: () => applyPreset(p),
+                  }))}
+                />
+              )}
+            </Popover>
+          </InlineStack>
 
-        <Divider />
+          <InlineStack align="space-between" blockAlign="center" gap="300">
+            <ButtonGroup variant="segmented">
+              <Button pressed={sortKey === "loss"}   onClick={() => setSortKey("loss")}   size="slim">Money lost</Button>
+              <Button pressed={sortKey === "rate"}   onClick={() => setSortKey("rate")}   size="slim">Return rate</Button>
+              <Button pressed={sortKey === "volume"} onClick={() => setSortKey("volume")} size="slim">Volume</Button>
+            </ButtonGroup>
+            {loading && <Spinner size="small" accessibilityLabel="Loading" />}
+          </InlineStack>
+        </BlockStack>
+      </Box>
 
-        {/* ── Sort tabs ── */}
-        <InlineStack align="space-between" blockAlign="center">
-          <ButtonGroup variant="segmented">
-            <Button pressed={sortKey === "loss"}   onClick={() => setSortKey("loss")}>Money lost</Button>
-            <Button pressed={sortKey === "rate"}   onClick={() => setSortKey("rate")}>Return rate</Button>
-            <Button pressed={sortKey === "volume"} onClick={() => setSortKey("volume")}>Volume</Button>
-          </ButtonGroup>
-          {loading && <Spinner size="small" accessibilityLabel="Loading" />}
-        </InlineStack>
+      <Divider />
 
-        {/* ── Body ── */}
-        {isEmpty ? (
-          <EmptyState
-            heading="No returns in this period — nicely done."
-            image=""
-          >
+      {/* ── Body ── */}
+      {isEmpty ? (
+        <Box padding="600">
+          <EmptyState heading="No returns in this period — nicely done." image="">
             <Text as="p" tone="subdued">
               When orders start coming back, the cities driving the loss will surface here.
             </Text>
           </EmptyState>
-        ) : visible.length === 0 ? (
-          <Box paddingBlock="400">
-            <Text as="p" tone="subdued" alignment="center">
-              {sortKey === "rate"
-                ? "Need at least 5 orders in a city to rank it by return rate."
-                : "No cities match the current view."}
-            </Text>
-          </Box>
-        ) : (
-          <BlockStack gap="500">
-            {visible.map((c) => (
+        </Box>
+      ) : visible.length === 0 ? (
+        <Box padding="600">
+          <Text as="p" tone="subdued" alignment="center">
+            {sortKey === "rate"
+              ? "Need at least 5 orders in a city to rank it by return rate."
+              : "No cities match the current view."}
+          </Text>
+        </Box>
+      ) : (
+        <BlockStack gap="0">
+          {visible.map((c, i) => (
+            <div key={c.city}>
+              {i > 0 && <Divider borderColor="border-tertiary" />}
               <CityRow
-                key={c.city}
                 city={c.city}
                 returnLoss={c.return_loss}
                 returned={c.returned}
@@ -333,20 +317,24 @@ export default function CityLossPanel({
                 returnPct={c.return_pct}
                 maxLoss={maxLoss}
               />
-            ))}
-          </BlockStack>
-        )}
+            </div>
+          ))}
+        </BlockStack>
+      )}
 
-        {/* ── Show-all toggle ── */}
-        {!isEmpty && sorted.length > 5 && (
-          <InlineStack align="end">
-            <Button variant="plain" onClick={() => setShowAll((v) => !v)}>
-              {showAll ? "Show top 5" : `View all ${sorted.length} cities →`}
-            </Button>
-          </InlineStack>
-        )}
-
-      </BlockStack>
+      {/* ── Footer ── */}
+      {!isEmpty && sorted.length > 5 && (
+        <>
+          <Divider />
+          <Box paddingInline="400" paddingBlock="300">
+            <InlineStack align="end">
+              <Button variant="plain" onClick={() => setShowAll((v) => !v)}>
+                {showAll ? "Show top 5" : `View all ${sorted.length} cities`}
+              </Button>
+            </InlineStack>
+          </Box>
+        </>
+      )}
     </Card>
   );
 }
