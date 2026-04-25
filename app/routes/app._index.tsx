@@ -98,10 +98,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const lmFrom       = formatPKTDate(lastMonth.start);
   const lmTo         = formatPKTDate(lastMonth.end);
 
-  // City panel default window — last 30 days rolling, ending today (PKT).
-  // Computed from the same `today` Date so it stays in lockstep with the cards.
+  // City panel default window — "Maximum" (all-time). 2010-01-01 predates
+  // any Pakistani Shopify merchant, and the partial idx_orders_city_terminal
+  // index handles the wider range without a seq scan.
   const cityToDate   = todayTo;
-  const cityFromDate = formatPKTDate(new Date(today.end.getTime() - 29 * 24 * 60 * 60 * 1000));
+  const cityFromDate = "2010-01-01";
 
   // 3. Parallel RPC calls — 4 stats + 1 banner count + 1 city breakdown
   const [
@@ -227,7 +228,7 @@ export default function Dashboard() {
               initialCities={cityBreakdown.cities}
               initialFrom={cityBreakdown.from}
               initialTo={cityBreakdown.to}
-              initialLabel="Last 30 days"
+              initialLabel="Maximum"
             />
           </>
         )}

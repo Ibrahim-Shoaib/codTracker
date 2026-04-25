@@ -123,7 +123,7 @@ export default function CityLossPanel({
   initialCities,
   initialFrom,
   initialTo,
-  initialLabel = "Last 30 days",
+  initialLabel = "Maximum",
 }) {
   const fetcher = useFetcher();
 
