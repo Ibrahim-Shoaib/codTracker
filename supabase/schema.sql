@@ -227,7 +227,7 @@ RETURNS TABLE (
 ) AS $$
 DECLARE
   v_sales          numeric;
-  v_orders         bigint;
+  v_delivered      bigint;   -- delivered-only count; the displayed `orders` is delivered + returned
   v_units          bigint;
   v_returns        bigint;
   v_in_transit     bigint;
@@ -289,7 +289,7 @@ BEGIN
       END
     ), 0)
   INTO
-    v_sales, v_orders, v_units, v_returns, v_in_transit,
+    v_sales, v_delivered, v_units, v_returns, v_in_transit,
     v_delivery_cost, v_reversal_cost, v_cogs
   FROM orders o
   WHERE o.store_id = p_store_id
@@ -305,17 +305,20 @@ BEGIN
     AND a.spend_date <= p_to_date;
 
   -- Monthly expenses: full amount on the 1st of each month, zero all other days.
-  -- Per-order expenses: always multiplied by delivered orders.
+  -- Per-order expenses: always multiplied by delivered orders (a return doesn't
+  -- trigger the same per-order operating cost on a completed sale).
   -- Monthly expenses × number of month-starts in window; per-order × delivered orders
   v_expenses := (p_monthly_expenses * v_month_count)
-              + (p_per_order_expenses * v_orders);
+              + (p_per_order_expenses * v_delivered);
 
   v_gross_profit := v_sales - v_delivery_cost - v_cogs;
   v_net_profit   := v_gross_profit - v_ad_spend - v_expenses;
 
   RETURN QUERY SELECT
     v_sales,
-    v_orders,
+    -- Displayed orders count: delivered + returned. A return is still an
+    -- order the customer placed; the carrier just didn't complete it.
+    (v_delivered + v_returns)::bigint,
     v_units,
     v_returns,
     v_in_transit,
@@ -329,13 +332,13 @@ BEGIN
     -- ratio metrics: NULL when denominator = 0 (UI shows "N/A")
     CASE WHEN v_ad_spend = 0 THEN NULL ELSE v_sales / v_ad_spend END,
     CASE WHEN v_ad_spend = 0 THEN NULL ELSE v_net_profit / v_ad_spend END,
-    CASE WHEN v_ad_spend = 0 OR v_orders = 0 THEN NULL ELSE v_ad_spend / v_orders END,
-    CASE WHEN v_orders = 0 THEN NULL ELSE v_sales / v_orders END,
+    CASE WHEN v_ad_spend = 0 OR v_delivered = 0 THEN NULL ELSE v_ad_spend / v_delivered END,
+    CASE WHEN v_delivered = 0 THEN NULL ELSE v_sales / v_delivered END,
     CASE WHEN v_sales = 0 THEN NULL ELSE (v_net_profit / v_sales) * 100 END,
     CASE WHEN (v_cogs + v_ad_spend + v_delivery_cost) = 0 THEN NULL
          ELSE (v_net_profit / (v_cogs + v_ad_spend + v_delivery_cost)) * 100 END,
-    CASE WHEN (v_orders + v_returns) = 0 THEN 0::numeric
-         ELSE (v_returns::numeric / (v_orders + v_returns)) * 100 END;
+    CASE WHEN (v_delivered + v_returns) = 0 THEN 0::numeric
+         ELSE (v_returns::numeric / (v_delivered + v_returns)) * 100 END;
 END;
 $$ LANGUAGE plpgsql;
 

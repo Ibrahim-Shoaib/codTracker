@@ -77,12 +77,15 @@ export default function DetailPanel({
   }
   const monthCount = dateRange ? countMonthStarts(dateRange.from, dateRange.to) : 0;
 
+  // stats.orders now includes returns; per-order expenses in the SQL multiply
+  // by delivered count only, so the breakdown subtracts returns to match.
+  const deliveredCount = Math.max(0, Number(stats.orders ?? 0) - Number(stats.returns ?? 0));
   const expBreakdown = expenses.map((exp) => ({
     name: exp.name,
     value:
       exp.type === "monthly"
         ? Number(exp.amount) * monthCount
-        : Number(exp.amount) * Number(stats.orders ?? 0),
+        : Number(exp.amount) * deliveredCount,
   }));
 
   return (

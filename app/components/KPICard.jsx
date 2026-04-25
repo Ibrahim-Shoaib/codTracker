@@ -213,11 +213,9 @@ export default function KPICard({
       >
         {currentLabel}
       </span>
-      {hovered && (
-        <span style={{ display: "flex", color: "rgba(255,255,255,0.85)" }}>
-          <Icon source={CalendarIcon} />
-        </span>
-      )}
+      <span style={{ display: "flex", color: "rgba(255,255,255,0.85)" }}>
+        <Icon source={CalendarIcon} />
+      </span>
     </button>
   );
 
