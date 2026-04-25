@@ -11,7 +11,6 @@ import {
   Badge,
   Popover,
   ActionList,
-  DatePicker,
   Divider,
   EmptyState,
   Spinner,
@@ -22,48 +21,28 @@ const fmtPKR = (n) => `PKR ${Math.round(Number(n)).toLocaleString()}`;
 const fmtNum = (n) => Number(n).toLocaleString();
 const fmtPct = (n) => `${Number(n).toFixed(1)}%`;
 
-const MONTHS_LONG = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
 const padTwo = (n) => String(n).padStart(2, "0");
 const toDateStr = (d) =>
   `${d.getFullYear()}-${padTwo(d.getMonth() + 1)}-${padTwo(d.getDate())}`;
 
-function fmtDateLabel(from, to) {
-  if (!from || !to) return "";
-  const [fy, fm, fd] = from.split("-").map(Number);
-  const [ty, tm, td] = to.split("-").map(Number);
-  if (from === to) return `${fd} ${MONTHS_LONG[fm - 1]} ${fy}`;
-  if (fm === tm && fy === ty) return `${fd}–${td} ${MONTHS_LONG[fm - 1]} ${fy}`;
-  if (fy === ty) return `${fd} ${MONTHS_LONG[fm - 1]} – ${td} ${MONTHS_LONG[tm - 1]} ${fy}`;
-  return `${fd} ${MONTHS_LONG[fm - 1]} ${fy} – ${td} ${MONTHS_LONG[tm - 1]} ${ty}`;
-}
+// "Maximum" uses 2010-01-01 as a safe lower bound — predates any Pakistani
+// Shopify merchant, and Postgres uses the partial index either way so a wider
+// date range doesn't cost extra scans.
+const MAX_LOOKBACK_FROM = "2010-01-01";
 
 function computePresets() {
   const now = new Date();
   const today = toDateStr(now);
   const y = now.getFullYear();
-  const m = now.getMonth();
-
-  const firstDay = (yr, mo) => new Date(yr, mo, 1);
-  const lastDay  = (yr, mo) => new Date(yr, mo + 1, 0);
-
-  const lmFrom = toDateStr(firstDay(y, m - 1));
-  const lmTo   = toDateStr(lastDay(y, m - 1));
-  const m2From = toDateStr(firstDay(y, m - 2));
-  const m2To   = toDateStr(lastDay(y, m - 2));
-  const mtdFrom = toDateStr(firstDay(y, m));
 
   const last30 = new Date(now); last30.setDate(last30.getDate() - 29);
+  const last60 = new Date(now); last60.setDate(last60.getDate() - 59);
 
   return [
-    { label: "Last 30 days",  from: toDateStr(last30), to: today },
-    { label: "Month to date", from: mtdFrom,           to: today },
-    { label: "Last month",    from: lmFrom,            to: lmTo  },
-    { label: "2 months ago",  from: m2From,            to: m2To  },
-    { label: "Year to date",  from: `${y}-01-01`,      to: today },
-    { label: "Custom range",  from: null,              to: null  },
+    { label: "Last 30 days", from: toDateStr(last30), to: today },
+    { label: "Last 60 days", from: toDateStr(last60), to: today },
+    { label: "Year to date", from: `${y}-01-01`,      to: today },
+    { label: "Maximum",      from: MAX_LOOKBACK_FROM, to: today },
   ];
 }
 
@@ -144,13 +123,6 @@ export default function CityLossPanel({
   const fetcher = useFetcher();
 
   const [popoverOpen, setPopoverOpen] = useState(false);
-  const [showCustom,  setShowCustom]  = useState(false);
-  const [customSel,   setCustomSel]   = useState({});
-  const [customMonth, setCustomMonth] = useState({
-    month: new Date().getMonth(),
-    year:  new Date().getFullYear(),
-  });
-
   const [dateLabel, setDateLabel] = useState(initialLabel);
   const [activePreset, setActivePreset] = useState(initialLabel);
 
@@ -189,36 +161,16 @@ export default function CityLossPanel({
   const maxLoss = visible.reduce((m, c) => Math.max(m, c.return_loss), 0);
 
   function applyPreset(preset) {
-    if (preset.label === "Custom range") {
-      setShowCustom(true);
-      return;
-    }
     setDateLabel(preset.label);
     setActivePreset(preset.label);
     setPopoverOpen(false);
-    setShowCustom(false);
     fetcher.load(`/app/api/city-breakdown?from=${preset.from}&to=${preset.to}`);
-  }
-  function applyCustom() {
-    if (!customSel.start) return;
-    const end  = customSel.end ?? customSel.start;
-    const from = toDateStr(customSel.start);
-    const to   = toDateStr(end);
-    setDateLabel(fmtDateLabel(from, to));
-    setActivePreset("Custom range");
-    setPopoverOpen(false);
-    setShowCustom(false);
-    fetcher.load(`/app/api/city-breakdown?from=${from}&to=${to}`);
-  }
-  function closePopover() {
-    setPopoverOpen(false);
-    setShowCustom(false);
   }
 
   const dateActivator = (
     <Button
       icon={CalendarIcon}
-      onClick={() => { setPopoverOpen((v) => !v); setShowCustom(false); }}
+      onClick={() => setPopoverOpen((v) => !v)}
       disclosure
       size="slim"
       variant="tertiary"
@@ -242,35 +194,16 @@ export default function CityLossPanel({
             <Popover
               active={popoverOpen}
               activator={dateActivator}
-              onClose={closePopover}
+              onClose={() => setPopoverOpen(false)}
               preferredAlignment="right"
             >
-              {showCustom ? (
-                <Box padding="400">
-                  <BlockStack gap="300">
-                    <Button variant="plain" onClick={() => setShowCustom(false)}>← Back</Button>
-                    <DatePicker
-                      month={customMonth.month}
-                      year={customMonth.year}
-                      onChange={setCustomSel}
-                      onMonthChange={(month, year) => setCustomMonth({ month, year })}
-                      selected={customSel.start ? customSel : undefined}
-                      allowRange
-                    />
-                    <Button variant="primary" disabled={!customSel.start} onClick={applyCustom}>
-                      Apply
-                    </Button>
-                  </BlockStack>
-                </Box>
-              ) : (
-                <ActionList
-                  items={presets.map((p) => ({
-                    content: p.label,
-                    active: p.label === activePreset,
-                    onAction: () => applyPreset(p),
-                  }))}
-                />
-              )}
+              <ActionList
+                items={presets.map((p) => ({
+                  content: p.label,
+                  active: p.label === activePreset,
+                  onAction: () => applyPreset(p),
+                }))}
+              />
             </Popover>
           </InlineStack>
 
