@@ -106,8 +106,8 @@ export default function DetailPanel({
             <Row
               label="Shipping costs"
               value={fmtCost(
-                stats.delivery_cost != null && stats.reversal_cost != null
-                  ? stats.delivery_cost - stats.reversal_cost
+                stats.delivery_cost != null && stats.reversal_cost != null && stats.tax != null
+                  ? stats.delivery_cost - stats.reversal_cost - stats.tax
                   : stats.delivery_cost
               )}
             />

@@ -25,6 +25,7 @@ import KPICard from "../components/KPICard.jsx";
 import WarningBanner from "../components/WarningBanner.jsx";
 import DetailPanel from "../components/DetailPanel.jsx";
 import CityLossPanel from "../components/CityLossPanel.jsx";
+import BreakEvenSection from "../components/BreakEvenSection.jsx";
 
 const STEP_ROUTES: Record<number, string> = {
   1: "/app/onboarding/step1-postex",
@@ -104,12 +105,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const cityToDate   = todayTo;
   const cityFromDate = "2010-01-01";
 
-  // 3. Parallel RPC calls — 4 stats + 1 banner count + 1 city breakdown
+  // Break-even card section uses a rolling 30-day window (today − 29 .. today).
+  const last30Start = new Date(today.start);
+  last30Start.setUTCDate(last30Start.getUTCDate() - 29);
+  const last30From = formatPKTDate(last30Start);
+  const last30To   = todayTo;
+
+  // 3. Parallel RPC calls — 5 stats + 1 banner count + 1 city breakdown
   const [
     todayRes,
     yesterdayRes,
     mtdRes,
     lastMonthRes,
+    last30Res,
     { count: unmatchedCount },
     cityRes,
   ] = await Promise.all([
@@ -117,6 +125,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     statsRpc(supabase, shop, yestFrom,  yestTo,  monthlyExp, perOrderExp),
     statsRpc(supabase, shop, mtdFrom,   mtdTo,   monthlyExp, perOrderExp),
     statsRpc(supabase, shop, lmFrom,    lmTo,    monthlyExp, perOrderExp),
+    statsRpc(supabase, shop, last30From, last30To, monthlyExp, perOrderExp),
     supabase
       .from("orders")
       .select("id", { count: "exact", head: true })
@@ -133,7 +142,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     yesterday: yesterdayRes.data?.[0] ?? null,
     mtd:       mtdRes.data?.[0]       ?? null,
     lastMonth: lastMonthRes.data?.[0] ?? null,
+    last30:    last30Res.data?.[0]    ?? null,
   };
+
+  // Derive the break-even card numbers from the 30-day window.
+  // Break-even ROAS = sales / gross_profit  (the ROAS at which ad spend equals
+  // the variable-cost cushion). Break-even CAC = gross_profit / delivered (max
+  // ad cost per delivered order before profit goes negative). Returns null
+  // when the inputs make the ratio meaningless.
+  const last30 = s.last30;
+  const breakEven = (() => {
+    if (!last30) return null;
+    const sales        = Number(last30.sales        ?? 0);
+    const grossProfit  = Number(last30.gross_profit ?? 0);
+    const ordersTotal  = Number(last30.orders       ?? 0);
+    const returns      = Number(last30.returns      ?? 0);
+    const returnLoss   = Number(last30.return_loss  ?? 0);
+    const refundPct    = last30.refund_pct == null ? null : Number(last30.refund_pct);
+    const delivered    = Math.max(0, ordersTotal - returns);
+
+    return {
+      breakEvenRoas: grossProfit > 0 ? sales / grossProfit : null,
+      breakEvenCac:  delivered > 0 && grossProfit > 0 ? grossProfit / delivered : null,
+      actualRoas:    last30.roas == null ? null : Number(last30.roas),
+      actualCac:     last30.cac  == null ? null : Number(last30.cac),
+      deliverySuccessPct: refundPct == null ? null : 100 - refundPct,
+      costPerReturn: returns > 0 ? returnLoss / returns : null,
+      from: last30From,
+      to:   last30To,
+    };
+  })();
 
   return json({
     expensesList: expenses,
@@ -149,6 +187,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       mtd:       { stats: s.mtd,       dateRange: { from: mtdFrom,   to: mtdTo   } },
       lastMonth: { stats: s.lastMonth, dateRange: { from: lmFrom,    to: lmTo    } },
     },
+    breakEven,
     cityBreakdown: {
       cities: cityRes.data ?? [],
       from:   cityFromDate,
@@ -171,7 +210,7 @@ export default function Dashboard() {
 
   const { periods, expensesList, unmatchedCOGSCount,
           metaConnected, isMetaExpired, isMetaExpiringSoon, metaExpiresAt,
-          backfillInProgress, cityBreakdown } = data;
+          backfillInProgress, cityBreakdown, breakEven } = data;
 
   // Empty state: no orders in any period
   const totalOrders = PERIOD_KEYS.reduce(
@@ -223,6 +262,8 @@ export default function Dashboard() {
                 />
               ))}
             </InlineGrid>
+
+            {breakEven && <BreakEvenSection {...breakEven} />}
 
             <CityLossPanel
               initialCities={cityBreakdown.cities}

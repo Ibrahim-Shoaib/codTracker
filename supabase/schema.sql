@@ -212,13 +212,15 @@ RETURNS TABLE (
   units          bigint,
   returns        bigint,
   in_transit     bigint,
-  delivery_cost  numeric,
-  reversal_cost  numeric,
+  delivery_cost  numeric,   -- full total (fees + taxes) — drives profit math
+  reversal_cost  numeric,   -- reversal_fee only, returned (see migration 005)
+  tax            numeric,   -- transaction_tax + reversal_tax, delivered + returned
   cogs           numeric,
   ad_spend       numeric,
   expenses       numeric,
   gross_profit   numeric,
   net_profit     numeric,
+  return_loss    numeric,   -- total PKR cost of returned shipments (see migration 006)
   roas           numeric,
   poas           numeric,
   cac            numeric,
@@ -233,9 +235,11 @@ DECLARE
   v_units          bigint;
   v_returns        bigint;
   v_in_transit     bigint;
-  v_delivery_cost  numeric;
-  v_reversal_cost  numeric;
+  v_delivery_cost  numeric;   -- full total, used for profit calc
+  v_reversal_cost  numeric;   -- reversal_fee only (returned)
+  v_tax            numeric;   -- transaction_tax + reversal_tax (delivered + returned)
   v_cogs           numeric;
+  v_return_loss    numeric;   -- total return loss across returned shipments
   v_ad_spend       numeric;
   v_expenses       numeric;
   v_gross_profit          numeric;
@@ -267,17 +271,24 @@ BEGIN
     COALESCE(SUM(CASE WHEN o.is_delivered THEN o.items ELSE 0 END), 0),
     COALESCE(COUNT(*) FILTER (WHERE o.is_returned), 0),
     COALESCE(COUNT(*) FILTER (WHERE o.is_in_transit), 0),
-    -- delivery_cost: transaction_fee + transaction_tax for delivered + returned
+    -- delivery_cost: full shipping-side total (fees + taxes), unchanged
     COALESCE(SUM(
       CASE WHEN o.is_delivered OR o.is_returned
         THEN o.transaction_fee + o.transaction_tax + o.reversal_fee + o.reversal_tax
         ELSE 0
       END
     ), 0),
-    -- reversal_cost: reversal_fee + reversal_tax for returned only
+    -- reversal_cost: fees only on returned shipments (was fee + tax)
     COALESCE(SUM(
       CASE WHEN o.is_returned
-        THEN o.reversal_fee + o.reversal_tax
+        THEN o.reversal_fee
+        ELSE 0
+      END
+    ), 0),
+    -- tax: forward + reverse tax on every terminated shipment
+    COALESCE(SUM(
+      CASE WHEN o.is_delivered OR o.is_returned
+        THEN o.transaction_tax + o.reversal_tax
         ELSE 0
       END
     ), 0),
@@ -289,10 +300,21 @@ BEGIN
         WHEN o.is_returned  THEN o.cogs_total * (1 - v_sellable_returns_pct / 100.0)
         ELSE 0
       END
+    ), 0),
+    -- return_loss: total PKR cost on each returned shipment (forward shipping
+    -- wasted + reverse shipping paid + unsellable inventory). Same formula as
+    -- get_city_breakdown.return_loss, so the dashboard's Cost-per-Return card
+    -- and the city panel stay consistent.
+    COALESCE(SUM(
+      CASE WHEN o.is_returned
+        THEN (o.transaction_fee + o.transaction_tax + o.reversal_fee + o.reversal_tax)
+           + (o.cogs_total * (1 - v_sellable_returns_pct / 100.0))
+        ELSE 0
+      END
     ), 0)
   INTO
     v_sales, v_delivered, v_units, v_returns, v_in_transit,
-    v_delivery_cost, v_reversal_cost, v_cogs
+    v_delivery_cost, v_reversal_cost, v_tax, v_cogs, v_return_loss
   FROM orders o
   WHERE o.store_id = p_store_id
     AND o.transaction_date >= p_from_date::timestamptz
@@ -326,11 +348,13 @@ BEGIN
     v_in_transit,
     v_delivery_cost,
     v_reversal_cost,
+    v_tax,
     v_cogs,
     v_ad_spend,
     v_expenses,
     v_gross_profit,
     v_net_profit,
+    v_return_loss,
     -- ratio metrics: NULL when denominator = 0 (UI shows "N/A")
     CASE WHEN v_ad_spend = 0 THEN NULL ELSE v_sales / v_ad_spend END,
     CASE WHEN v_ad_spend = 0 THEN NULL ELSE v_net_profit / v_ad_spend END,
