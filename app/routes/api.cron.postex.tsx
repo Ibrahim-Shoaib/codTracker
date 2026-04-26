@@ -21,7 +21,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const { data: stores } = await adminClient
     .from("stores")
-    .select("store_id, postex_token")
+    .select("store_id, postex_token, line_items_backfilled_at")
     .not("postex_token", "is", null);
 
   if (!stores?.length) {

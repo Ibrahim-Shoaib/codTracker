@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   TextField,
   Text,
@@ -12,12 +12,23 @@ import {
 } from "@shopify/polaris";
 
 // Shared COGS table — used in onboarding step 3 and /app/cogs settings page.
-// Renders inside a parent <Form>. Hidden inputs carry all variant data on submit.
+// Renders inside a parent <Form>. Hidden inputs carry variant data on submit,
+// but ONLY for rows whose value differs from the saved baseline (costsMap).
+// This makes the form submission a clean diff: nothing posts unless changed.
+//
 // Props:
-//   products:  [{ shopify_product_id, product_title, image_url, variants: [{ shopify_variant_id,
-//               shopify_product_id, product_title, variant_title, sku, shopify_cost }] }]
-//   costsMap:  { [shopify_variant_id]: unit_cost }  — previously saved costs from DB
-export default function COGSTable({ products, costsMap }) {
+//   products:            [{ shopify_product_id, product_title, image_url, variants: [...] }]
+//   costsMap:            { [shopify_variant_id]: unit_cost } — saved baseline from DB
+//   onDirtyCountChange:  optional (count: number) => void, called whenever the
+//                        number of dirty rows changes. Parent uses this to
+//                        drive a SaveBar.
+/**
+ * @param {Object} props
+ * @param {Array<any>} props.products
+ * @param {Record<string, number>} props.costsMap
+ * @param {(count: number) => void} [props.onDirtyCountChange]
+ */
+export default function COGSTable({ products, costsMap, onDirtyCountChange }) {
   // Per-variant cost state. Priority: saved DB cost → Shopify cost field → empty.
   const [costs, setCosts] = useState(() => {
     const map = {};
@@ -46,6 +57,33 @@ export default function COGSTable({ products, costsMap }) {
     return set;
   });
 
+  // Returns true when this variant's current value differs from the saved
+  // baseline. Numeric compare so trailing zeros / "1860" vs 1860 don't show
+  // as dirty. costsMap[vid] === undefined means "no saved cost" — entering
+  // anything > 0 makes the row dirty; staying empty/0 leaves it pristine.
+  const isVariantDirty = (vid) => {
+    const cur  = Number(costs[vid] ?? 0);
+    const base = Number(costsMap[vid] ?? 0);
+    return cur !== base;
+  };
+
+  const dirtyCount = useMemo(() => {
+    let n = 0;
+    for (const product of products) {
+      for (const v of product.variants) {
+        if (isVariantDirty(v.shopify_variant_id)) n++;
+      }
+    }
+    return n;
+    // costsMap is stable across the lifetime of this component (parent
+    // re-mounts via key={} on Discard), so we only depend on costs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [costs]);
+
+  useEffect(() => {
+    onDirtyCountChange?.(dirtyCount);
+  }, [dirtyCount, onDirtyCountChange]);
+
   const toggleExpanded = (productId) => {
     setExpanded(prev => {
       const next = new Set(prev);
@@ -72,6 +110,12 @@ export default function COGSTable({ products, costsMap }) {
 
   const isMixed = (product) =>
     new Set(product.variants.map(v => costs[v.shopify_variant_id] ?? "")).size > 1;
+
+  // True when any variant under this product is dirty. Used to show a
+  // single "Modified" badge on the product header rather than per-variant
+  // when the product is collapsed.
+  const isProductDirty = (product) =>
+    product.variants.some(v => isVariantDirty(v.shopify_variant_id));
 
   const preFillCount = products.filter(p =>
     p.variants.some(v => v.shopify_cost != null && costsMap[v.shopify_variant_id] == null)
@@ -108,6 +152,7 @@ export default function COGSTable({ products, costsMap }) {
           const bulkVal      = productCostValue(product);
           const multiVariant = product.variants.length > 1;
           const anyShopifyCost = product.variants.some(v => v.shopify_cost != null);
+          const productDirty = isProductDirty(product);
 
           return (
             <Box
@@ -142,13 +187,16 @@ export default function COGSTable({ products, costsMap }) {
                       </div>
 
                       {/* Badges row */}
-                      {(multiVariant || anyShopifyCost) && (
+                      {(multiVariant || anyShopifyCost || productDirty) && (
                         <div style={{ display: "flex", gap: "4px", marginTop: "4px", flexWrap: "wrap" }}>
                           {multiVariant && (
                             <Badge>{product.variants.length} variants</Badge>
                           )}
                           {anyShopifyCost && (
                             <Badge tone="info">Pre-filled</Badge>
+                          )}
+                          {productDirty && (
+                            <Badge tone="attention">Modified</Badge>
                           )}
                         </div>
                       )}
@@ -200,6 +248,7 @@ export default function COGSTable({ products, costsMap }) {
                         {product.variants.map((v) => {
                           const displayTitle =
                             v.variant_title === "Default Title" ? "Default" : v.variant_title;
+                          const variantDirty = isVariantDirty(v.shopify_variant_id);
                           return (
                             <div
                               key={v.shopify_variant_id}
@@ -210,7 +259,7 @@ export default function COGSTable({ products, costsMap }) {
                                 paddingLeft: VARIANT_INDENT,
                               }}
                             >
-                              {/* Left: variant title + SKU (truncates) + badge */}
+                              {/* Left: variant title + SKU (truncates) + badges */}
                               <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, minWidth: 0 }}>
                                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flexShrink: 1 }}>
                                   <Text variant="bodySm" as="span">{displayTitle}</Text>
@@ -220,6 +269,11 @@ export default function COGSTable({ products, costsMap }) {
                                     </Text>
                                   )}
                                 </div>
+                                {variantDirty && (
+                                  <div style={{ flexShrink: 0 }}>
+                                    <Badge tone="attention" size="small">Modified</Badge>
+                                  </div>
+                                )}
                                 {v.shopify_cost != null && (
                                   <div style={{ flexShrink: 0 }}>
                                     <Badge tone="info" size="small">
@@ -252,16 +306,21 @@ export default function COGSTable({ products, costsMap }) {
                 )}
               </BlockStack>
 
-              {/* Hidden inputs — always rendered so every variant is submitted */}
-              {product.variants.map((v) => (
-                <span key={v.shopify_variant_id}>
-                  <input type="hidden" name={`cost_${v.shopify_variant_id}`}    value={costs[v.shopify_variant_id] ?? "0"} />
-                  <input type="hidden" name={`product_${v.shopify_variant_id}`} value={v.shopify_product_id} />
-                  <input type="hidden" name={`sku_${v.shopify_variant_id}`}     value={v.sku} />
-                  <input type="hidden" name={`ptitle_${v.shopify_variant_id}`}  value={v.product_title} />
-                  <input type="hidden" name={`vtitle_${v.shopify_variant_id}`}  value={v.variant_title} />
-                </span>
-              ))}
+              {/* Hidden inputs — only rendered for variants whose current value
+                  differs from the saved baseline. The action handler then
+                  receives a clean diff: nothing else gets a spurious
+                  updated_at touch. */}
+              {product.variants.map((v) =>
+                isVariantDirty(v.shopify_variant_id) ? (
+                  <span key={v.shopify_variant_id}>
+                    <input type="hidden" name={`cost_${v.shopify_variant_id}`}    value={costs[v.shopify_variant_id] ?? "0"} />
+                    <input type="hidden" name={`product_${v.shopify_variant_id}`} value={v.shopify_product_id} />
+                    <input type="hidden" name={`sku_${v.shopify_variant_id}`}     value={v.sku} />
+                    <input type="hidden" name={`ptitle_${v.shopify_variant_id}`}  value={v.product_title} />
+                    <input type="hidden" name={`vtitle_${v.shopify_variant_id}`}  value={v.variant_title} />
+                  </span>
+                ) : null
+              )}
             </Box>
           );
         })}

@@ -1,45 +1,37 @@
 import { fetchOrders, mapOrder } from './postex.server.js';
 import { getLastNDaysPKT } from './dates.server.js';
-import { buildCostIndex, computeCOGS } from './cogs.server.js';
+import {
+  buildCostIndex,
+  buildCostsByVariantId,
+  computeCOGSFromOrder,
+} from './cogs.server.js';
+import { enrichOrdersWithShopify, loadOfflineSession } from './enrich.server.js';
 
 const BATCH_CHUNK = 1000; // rows per apply_cogs_batch RPC call
 
+// Window we re-enrich on every cron tick. Slightly larger than the PostEx
+// sync window (20 days) so any Shopify orders that arrived since last sync —
+// even if PostEx hasn't caught up yet — get picked up.
+const ROLLING_ENRICH_DAYS = 30;
+
 // ------------------------------------------------------------
-// 30-day rolling sync from PostEx.
+// 20-day rolling sync from PostEx + line-items enrichment.
 // ------------------------------------------------------------
 export async function syncStore(storeRow, supabase) {
   const { start, end } = getLastNDaysPKT(20);
   const rawOrders = await fetchOrders(storeRow.postex_token, start, end);
   const mapped = rawOrders.map(o => mapOrder(o, storeRow.store_id));
 
-  for (const order of mapped) {
-    const { data: existing } = await supabase
+  // ---- 1. Upsert PostEx orders ----
+  if (mapped.length > 0) {
+    // Bulk upsert is cheaper than per-row. Conflict on (store_id,tracking_number)
+    // means status/payment changes overwrite, which is the behaviour we want.
+    const { error: upsertErr } = await supabase
       .from('orders')
-      .select('is_delivered,is_returned,cogs_matched,cogs_match_source')
-      .eq('tracking_number', order.tracking_number)
-      .single();
-
-    await supabase
-      .from('orders')
-      .upsert(order, { onConflict: 'store_id,tracking_number' });
-
-    const statusChanged =
-      existing &&
-      (order.is_delivered !== existing.is_delivered ||
-        order.is_returned !== existing.is_returned);
-
-    // Re-run COGS only when the prior match was weak. A sku/exact match is
-    // deterministic and won't improve on retry.
-    const weakMatch =
-      !existing ||
-      !existing.cogs_matched ||
-      existing.cogs_match_source === 'fuzzy' ||
-      existing.cogs_match_source === 'sibling_avg' ||
-      existing.cogs_match_source === 'fallback_avg';
-
-    if (statusChanged && weakMatch) {
-      matchCOGS(supabase, storeRow.store_id, order.tracking_number, order.order_detail)
-        .catch(err => console.error(`matchCOGS failed for ${order.tracking_number}:`, err));
+      .upsert(mapped, { onConflict: 'store_id,tracking_number' });
+    if (upsertErr) {
+      console.error(`[sync ${storeRow.store_id}] order upsert failed:`, upsertErr);
+      throw upsertErr;
     }
   }
 
@@ -47,29 +39,76 @@ export async function syncStore(storeRow, supabase) {
     .from('stores')
     .update({ last_postex_sync_at: new Date().toISOString() })
     .eq('store_id', storeRow.store_id);
+
+  // ---- 2. Shopify line-items enrichment for the rolling window ----
+  // Best-effort: any failure is logged and swallowed. Orders that don't get
+  // enriched simply stay on the text matcher path until the next tick.
+  const session = await loadOfflineSession(storeRow.store_id).catch(() => null);
+  const sinceISO = new Date(Date.now() - ROLLING_ENRICH_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  await enrichOrdersWithShopify({
+    supabase,
+    storeId: storeRow.store_id,
+    session,
+    sinceISO,
+  }).catch(err => {
+    console.error(`[sync ${storeRow.store_id}] rolling enrichment failed:`, err.message ?? err);
+  });
+
+  // ---- 3. One-shot historical line_items backfill (existing customers) ----
+  // Triggered on the first cron tick after deploy when stores.line_items_backfilled_at
+  // is NULL. Fire-and-forget: enrichment + COGS rematch happen in the
+  // background; the cron returns to its next batch immediately. Idempotent —
+  // the stores flag is set on completion so subsequent ticks skip this branch.
+  if (!storeRow.line_items_backfilled_at && session) {
+    void runOneShotHistoricalEnrichment({ supabase, storeId: storeRow.store_id, session })
+      .catch(err => {
+        console.error(`[backfill ${storeRow.store_id}] one-shot failed:`, err.message ?? err);
+      });
+  }
 }
 
 // ------------------------------------------------------------
-// Single-order COGS resolution used during sync.
+// Historical enrichment + rematch — runs once per existing store after
+// deploy. Self-flagging via stores.line_items_backfilled_at.
 // ------------------------------------------------------------
-export async function matchCOGS(supabase, storeId, trackingNumber, orderDetail) {
-  const { data: costs } = await supabase
-    .from('product_costs')
-    .select('product_title, variant_title, unit_cost, sku')
-    .eq('store_id', storeId);
+export async function runOneShotHistoricalEnrichment({ supabase, storeId, session }) {
+  console.log(`[backfill ${storeId}] starting one-shot historical line_items enrichment`);
+  const result = await enrichOrdersWithShopify({
+    supabase,
+    storeId,
+    session,
+    sinceISO: null, // full lifetime
+  });
+  console.log(
+    `[backfill ${storeId}] enriched ${result.enriched} of ${result.considered} orders` +
+    (result.skipped ? ` (skipped: ${result.skipped})` : '')
+  );
 
-  const index = buildCostIndex(costs);
-  const { cogsTotal, allMatched, source } = computeCOGS(orderDetail, index);
+  // Recompute COGS so newly enriched orders adopt the variant_id path.
+  // Retries on 'already_running' because the cron also fires a parallel
+  // retroactiveCOGSMatch right after syncStore returns — if it grabs the
+  // lock first, our call bails immediately and the freshly-enriched orders
+  // wouldn't be matched until the NEXT cron tick. Polling here keeps the
+  // post-deploy "first run" tight.
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const result = await retroactiveCOGSMatch(supabase, storeId).catch(err => {
+      console.error(`[backfill ${storeId}] post-backfill rematch failed:`, err.message ?? err);
+      return { skipped: true, reason: 'error' };
+    });
+    if (!result?.skipped) break;
+    if (result?.reason !== 'already_running') break;
+    await new Promise(r => setTimeout(r, 5000));
+  }
 
+  // Stamp the flag — even when 0 orders were enriched (empty store, no
+  // Shopify counterparts, or session expired). The point is "we attempted
+  // the historical pass once"; subsequent ticks rely on the rolling
+  // 30-day window in syncStore to keep new orders enriched.
   await supabase
-    .from('orders')
-    .update({
-      cogs_total: cogsTotal,
-      cogs_matched: allMatched,
-      cogs_match_source: source,
-    })
-    .eq('store_id', storeId)
-    .eq('tracking_number', trackingNumber);
+    .from('stores')
+    .update({ line_items_backfilled_at: new Date().toISOString() })
+    .eq('store_id', storeId);
+  console.log(`[backfill ${storeId}] one-shot backfill complete`);
 }
 
 // ------------------------------------------------------------
@@ -77,15 +116,20 @@ export async function matchCOGS(supabase, storeId, trackingNumber, orderDetail) 
 //
 // Concurrency:     DB-backed per-store mutex (stores.cogs_match_in_progress).
 //                  A second caller bails rather than racing on the same rows.
-// Scope:           Re-evaluates orders whose source is 'none' or any estimate
-//                  ('fuzzy', 'sibling_avg', 'fallback_avg'). sku/exact rows
-//                  are deterministic and untouched.
-// Performance:     One JS match pass, then one apply_cogs_batch RPC per
-//                  BATCH_CHUNK rows. ~3 seconds for 5000 orders.
+// Scope:           Re-evaluates orders that EITHER:
+//                    - have line_items set (variant_id path is now available
+//                      or the cost catalog may have changed for those variants), OR
+//                    - have a weak text-match source ('none', 'fuzzy',
+//                      'sibling_avg', 'fallback_avg').
+//                  Orders matched cleanly by SKU/exact text matching with no
+//                  line_items are deterministic and untouched.
+// Performance:     Two paginated queries to fetch eligible orders, one JS
+//                  match pass, then one apply_cogs_batch RPC per BATCH_CHUNK
+//                  rows. Variant_id path is sub-millisecond per order.
 //
 // Returns:
 //   { skipped?: true, reason?: 'already_running'|'no_costs'|'lock_error',
-//     evaluated, updated, sku, exact, fuzzy, sibling_avg, fallback_avg, none }
+//     evaluated, updated, sku, exact, fuzzy, sibling_avg, fallback_avg, none, variant_id }
 // ------------------------------------------------------------
 export async function retroactiveCOGSMatch(supabase, storeId) {
   // ---- acquire lock (compare-and-set update) ----
@@ -109,48 +153,83 @@ export async function retroactiveCOGSMatch(supabase, storeId) {
   }
 
   try {
-    // ---- fetch costs + candidate orders ----
-    // PostgREST caps a single response at ~1000 rows, so the order fetch must
-    // paginate or we'd silently truncate for large stores.
+    // ---- fetch costs ----
+    // shopify_variant_id is the primary key for the variant_id direct path.
     const costsRes = await supabase
       .from('product_costs')
-      .select('product_title, variant_title, unit_cost, sku')
+      .select('product_title, variant_title, unit_cost, sku, shopify_variant_id')
       .eq('store_id', storeId);
 
     const costs = costsRes.data ?? [];
 
+    if (!costs.length) {
+      // No costs saved — nothing meaningful to compute. Don't touch the DB;
+      // surface the reason so callers can show a hint to the merchant.
+      return { skipped: true, reason: 'no_costs' };
+    }
+
+    // ---- fetch candidate orders (two queries, deduplicated in-memory) ----
+    // PostgREST's .or() chokes on parens inside .in.() values, so we issue
+    // two simple queries and merge by tracking_number.
     const orders = [];
+    const seen = new Set();
     const PAGE = 1000;
+
+    // Query A: orders with line_items set (variant_id path candidates).
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await supabase
         .from('orders')
-        .select('tracking_number, order_detail')
+        .select('tracking_number, order_detail, line_items')
+        .eq('store_id', storeId)
+        .not('line_items', 'is', null)
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      if (!data?.length) break;
+      for (const o of data) {
+        if (!seen.has(o.tracking_number)) {
+          seen.add(o.tracking_number);
+          orders.push(o);
+        }
+      }
+      if (data.length < PAGE) break;
+    }
+
+    // Query B: orders whose match source is weak (text-matcher candidates).
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('tracking_number, order_detail, line_items')
         .eq('store_id', storeId)
         .in('cogs_match_source', ['none', 'fuzzy', 'sibling_avg', 'fallback_avg'])
         .range(from, from + PAGE - 1);
       if (error) throw error;
       if (!data?.length) break;
-      orders.push(...data);
+      for (const o of data) {
+        if (!seen.has(o.tracking_number)) {
+          seen.add(o.tracking_number);
+          orders.push(o);
+        }
+      }
       if (data.length < PAGE) break;
     }
 
-    if (!costs.length) {
-      // No costs saved for this store — every order would fall to 'none'.
-      // Don't touch the DB; let the merchant know via the return value.
-      return { skipped: true, reason: 'no_costs' };
-    }
-
-    const counts = { sku: 0, exact: 0, fuzzy: 0, sibling_avg: 0, fallback_avg: 0, none: 0 };
+    const counts = {
+      sku: 0, exact: 0, fuzzy: 0,
+      sibling_avg: 0, fallback_avg: 0, none: 0,
+      variant_id: 0,
+    };
 
     if (!orders.length) {
       return { evaluated: 0, updated: 0, ...counts };
     }
 
     // ---- compute all updates in-memory ----
-    const index = buildCostIndex(costs);
+    const textIndex = buildCostIndex(costs);
+    const costsByVariantId = buildCostsByVariantId(costs);
+
     const updates = [];
     for (const o of orders) {
-      const { cogsTotal, allMatched, source } = computeCOGS(o.order_detail ?? '', index);
+      const { cogsTotal, allMatched, source } = computeCOGSFromOrder(o, costsByVariantId, textIndex);
       counts[source]++;
       updates.push({
         tracking_number: o.tracking_number,

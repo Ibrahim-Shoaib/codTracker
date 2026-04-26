@@ -1,6 +1,7 @@
 import { fetchOrders, mapOrder } from './postex.server.js';
 import { fetchDailySpend } from './meta.server.js';
 import { getSupabaseForStore } from './supabase.server.js';
+import { enrichOrdersWithShopify, loadOfflineSession } from './enrich.server.js';
 
 const CHUNK_DAYS = 60;
 const STOP_AFTER_EMPTY = 2;
@@ -61,6 +62,44 @@ export async function runHistoricalBackfill({ store_id, postex_token }) {
     .eq('store_id', store_id);
 
   console.log(`Backfill done for ${store_id}: ${totalOrders} orders across ${totalChunks} chunks`);
+
+  // ---- Shopify line-items enrichment for the full lifetime we just pulled ----
+  // For new customers this runs immediately after onboarding step 1. There
+  // are no costs yet (step 3 is later) so we don't trigger COGS rematch here;
+  // the matcher will use the populated line_items the first time the
+  // merchant saves costs in step 3.
+  //
+  // Marks line_items_backfilled_at so the cron doesn't re-run the historical
+  // pass for this store.
+  try {
+    const session = await loadOfflineSession(store_id);
+    if (session) {
+      const enrichResult = await enrichOrdersWithShopify({
+        supabase,
+        storeId: store_id,
+        session,
+        sinceISO: null, // full lifetime
+      });
+      console.log(
+        `Backfill enrichment for ${store_id}: ` +
+        `${enrichResult.enriched} of ${enrichResult.considered} orders enriched` +
+        (enrichResult.skipped ? ` (skipped: ${enrichResult.skipped})` : '')
+      );
+    } else {
+      console.log(`Backfill enrichment for ${store_id}: no offline session — skipping`);
+    }
+  } catch (err) {
+    // Never block onboarding on enrichment failure. The cron's one-shot path
+    // will retry on next tick (the flag won't be set if we throw before the
+    // update below).
+    console.error(`Backfill enrichment for ${store_id} failed:`, err.message ?? err);
+    return;
+  }
+
+  await supabase
+    .from('stores')
+    .update({ line_items_backfilled_at: new Date().toISOString() })
+    .eq('store_id', store_id);
 }
 
 // Pulls Meta ad spend history backwards in 60-day chunks.

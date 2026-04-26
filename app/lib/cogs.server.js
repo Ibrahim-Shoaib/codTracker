@@ -1,27 +1,38 @@
 // ============================================================
-// COGS matcher — 5-tier waterfall
+// COGS matcher
 // ============================================================
 //
-// Each order's `order_detail` string from PostEx is parsed into line items.
-// Every line item is independently resolved against this store's
-// `product_costs` table using tiers, in order:
+// PRIMARY PATH — variant_id direct join (~91% of orders for stores using
+//   Shopify checkout). Each order has `line_items: [{variant_id, quantity}]`
+//   populated by the Shopify enrichment job. COGS is summed deterministically
+//   from product_costs.shopify_variant_id with no fuzzy logic. Tagged
+//   'variant_id'. Used when EVERY variant_id in line_items has a cost row;
+//   otherwise the order falls through to the text matcher below.
 //
-//   1. SKU          — exact match on product_costs.sku, unique only.
-//   2. Exact title  — normalized "product_title - variant_title" lookup,
-//                     unique only, with SKU/empty tail stripped. Also tries a
-//                     variant-title-only lookup so "Product - ColorA / ColorB"
-//                     (bundles) resolve when only the variant half is unique.
-//   3. Fuzzy        — token-sort ratio on normalized names. Committed only
-//                     when best >= FUZZY_MIN (0.90) AND beats runner-up by
-//                     >= FUZZY_GAP (0.10). Disabled inside sibling families
-//                     (same base title, multiple paren-suffixed variants).
-//   4. Sibling avg  — when the base product clearly matches a family but the
-//                     specific sibling can't be distinguished from text,
-//                     use the median cost of the family. Tagged 'sibling_avg'.
-//   5. Fallback avg — nothing matched; use the store's median unit_cost.
-//                     Tagged 'fallback_avg'.
+// FALLBACK PATH — 5-tier text waterfall. For orders with no line_items
+//   (DM/WhatsApp manual bookings, pre-install orders, or Shopify orders that
+//   couldn't be linked) and orders whose line_items contains variants with
+//   no cost row yet. Each line item is independently resolved against the
+//   store's `product_costs` table using tiers, in order:
 //
-// An order's `cogs_match_source` is the WEAKEST tier across its line items.
+//     1. SKU          — exact match on product_costs.sku, unique only.
+//     2. Exact title  — normalized "product_title - variant_title" lookup,
+//                       unique only, with SKU/empty tail stripped. Also tries
+//                       a variant-title-only lookup so "Product - ColorA /
+//                       ColorB" (bundles) resolve when only the variant half
+//                       is unique.
+//     3. Fuzzy        — token-sort ratio on normalized names. Committed only
+//                       when best >= FUZZY_MIN (0.90) AND beats runner-up by
+//                       >= FUZZY_GAP (0.10). Disabled inside sibling families
+//                       (same base title, multiple paren-suffixed variants).
+//     4. Sibling avg  — when the base product clearly matches a family but the
+//                       specific sibling can't be distinguished from text,
+//                       use the median cost of the family. Tagged 'sibling_avg'.
+//     5. Fallback avg — nothing matched; use the store's median unit_cost.
+//                       Tagged 'fallback_avg'.
+//
+// An order's `cogs_match_source` is the WEAKEST tier across its line items
+// (or 'variant_id' if the primary path resolved it cleanly).
 // ============================================================
 
 const FUZZY_MIN = 0.90;
@@ -259,14 +270,6 @@ export function buildCostIndex(costs) {
   };
 }
 
-// Back-compat shim — keeps the old signature working for legacy callers.
-export function buildCostMap(costs) {
-  const { byExact } = buildCostIndex(costs);
-  const m = new Map();
-  for (const [k, arr] of byExact) m.set(k, arr[0]?.unit_cost ?? 0);
-  return m;
-}
-
 // ------------------------------------------------------------
 // Per-line resolution
 // ------------------------------------------------------------
@@ -377,11 +380,10 @@ const SOURCE_RANK = {
   fuzzy:        3,
   exact:        4,
   sku:          5,
+  variant_id:   6,   // direct Shopify variant_id join — highest confidence
 };
 
-export function computeCOGS(orderDetail, indexOrMap) {
-  const index = indexOrMap instanceof Map ? legacyMapToIndex(indexOrMap) : indexOrMap;
-
+export function computeCOGS(orderDetail, index) {
   const items = parseOrderDetail(orderDetail);
   if (!items.length) {
     return { cogsTotal: 0, allMatched: true, source: 'exact' };
@@ -412,21 +414,47 @@ export function computeCOGS(orderDetail, indexOrMap) {
   };
 }
 
-// Legacy shim — accepts a plain Map<key, unit_cost>.
-function legacyMapToIndex(map) {
-  const byExact = new Map();
-  for (const [k, unit_cost] of map) {
-    byExact.set(k, [{ unit_cost, product_title: '', variant_title: '', sku: '' }]);
+// ------------------------------------------------------------
+// Variant-id direct path
+// ------------------------------------------------------------
+//
+// Builds a Map<shopify_variant_id, unit_cost> from product_costs rows.
+// Used by computeCOGSFromOrder when an order has Shopify line_items.
+export function buildCostsByVariantId(costs) {
+  const map = new Map();
+  for (const c of costs ?? []) {
+    if (!c.shopify_variant_id) continue;
+    map.set(String(c.shopify_variant_id), Number(c.unit_cost) || 0);
   }
-  return {
-    bySku: new Map(),
-    byExact,
-    byVariantTitle: new Map(),
-    byBaseTitle: new Map(),
-    familyVariants: new Map(),
-    fuzzyCandidates: [],
-    storeMedianCost: 0,
-    hasCosts: map.size > 0,
-    costCount: map.size,
-  };
+  return map;
+}
+
+// Resolves COGS for an order using the variant_id direct path when possible,
+// falling through to the text matcher otherwise.
+//
+// `order` must have at least { order_detail, line_items }. line_items shape:
+//   [{ variant_id: "123", quantity: 1 }, ...]   or null/undefined
+//
+// Returns { cogsTotal, allMatched, source }. `source` is 'variant_id' on the
+// primary path, otherwise one of the existing text-tier values.
+export function computeCOGSFromOrder(order, costsByVariantId, textIndex) {
+  const lineItems = Array.isArray(order?.line_items) ? order.line_items : null;
+
+  if (lineItems && lineItems.length > 0) {
+    // Every line item must have a cost row, otherwise we'd silently zero
+    // out unknown variants. Fall through to text matcher in that case so
+    // the order still gets a non-zero estimate (consistent with prior
+    // behavior for products missing from the catalog).
+    const allKnown = lineItems.every(it => costsByVariantId.has(String(it?.variant_id ?? '')));
+    if (allKnown) {
+      let cogsTotal = 0;
+      for (const it of lineItems) {
+        const cost = costsByVariantId.get(String(it.variant_id));
+        cogsTotal += Number(cost) * Number(it.quantity ?? 0);
+      }
+      return { cogsTotal, allMatched: true, source: 'variant_id' };
+    }
+  }
+
+  return computeCOGS(order?.order_detail ?? '', textIndex);
 }
