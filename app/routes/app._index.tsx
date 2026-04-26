@@ -18,6 +18,9 @@ import {
   getYesterdayPKT,
   getMTDPKT,
   getLastMonthPKT,
+  getDayBeforeYesterdayPKT,
+  getMTDComparisonPKT,
+  getMonthBeforeLastPKT,
   formatPKTDate,
 } from "../lib/dates.server.js";
 import { isTokenExpired, isTokenExpiringSoon } from "../lib/meta.server.js";
@@ -85,10 +88,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const perOrderExp  = expenses.filter((e: any) => e.type === "per_order").reduce((s: number, e: any) => s + Number(e.amount), 0);
 
   // 2. Period boundaries
-  const today = getTodayPKT();
+  const today     = getTodayPKT();
   const yesterday = getYesterdayPKT();
-  const mtd = getMTDPKT();
+  const mtd       = getMTDPKT();
   const lastMonth = getLastMonthPKT();
+
+  // Prior periods (Option A: equal-length immediately preceding for the daily
+  // and monthly cards, days-elapsed mirror for MTD). Today's prior = Yesterday,
+  // so we reuse the existing `yesterdayRes` and don't issue a 5th call.
+  const dayBeforeYest   = getDayBeforeYesterdayPKT();
+  const mtdComp         = getMTDComparisonPKT();
+  const monthBeforeLast = getMonthBeforeLastPKT();
 
   const todayFrom    = formatPKTDate(today.start);
   const todayTo      = formatPKTDate(today.end);
@@ -98,6 +108,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const mtdTo        = formatPKTDate(mtd.end);
   const lmFrom       = formatPKTDate(lastMonth.start);
   const lmTo         = formatPKTDate(lastMonth.end);
+  const dbyFrom      = formatPKTDate(dayBeforeYest.start);
+  const dbyTo        = formatPKTDate(dayBeforeYest.end);
+  const mtdCompFrom  = formatPKTDate(mtdComp.start);
+  const mtdCompTo    = formatPKTDate(mtdComp.end);
+  const mblFrom      = formatPKTDate(monthBeforeLast.start);
+  const mblTo        = formatPKTDate(monthBeforeLast.end);
 
   // City panel default window — "Maximum" (all-time). 2010-01-01 predates
   // any Pakistani Shopify merchant, and the partial idx_orders_city_terminal
@@ -119,12 +135,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const window90From = rollingFromUTC(90);
   const windowTo     = todayTo;
 
-  // 3. Parallel RPC calls — 4 KPI stats + 3 break-even windows + 1 banner count + 1 city breakdown
+  // 3. Parallel RPC calls — 4 KPI stats + 3 prior-period stats (Today reuses
+  // Yesterday) + 3 break-even windows + 1 banner count + 1 city breakdown
   const [
     todayRes,
     yesterdayRes,
     mtdRes,
     lastMonthRes,
+    dbyRes,
+    mtdCompRes,
+    mblRes,
     win30Res,
     win60Res,
     win90Res,
@@ -135,6 +155,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     statsRpc(supabase, shop, yestFrom,  yestTo,  monthlyExp, perOrderExp),
     statsRpc(supabase, shop, mtdFrom,   mtdTo,   monthlyExp, perOrderExp),
     statsRpc(supabase, shop, lmFrom,    lmTo,    monthlyExp, perOrderExp),
+    statsRpc(supabase, shop, dbyFrom,     dbyTo,     monthlyExp, perOrderExp),
+    statsRpc(supabase, shop, mtdCompFrom, mtdCompTo, monthlyExp, perOrderExp),
+    statsRpc(supabase, shop, mblFrom,     mblTo,     monthlyExp, perOrderExp),
     statsRpc(supabase, shop, window30From, windowTo, monthlyExp, perOrderExp),
     statsRpc(supabase, shop, window60From, windowTo, monthlyExp, perOrderExp),
     statsRpc(supabase, shop, window90From, windowTo, monthlyExp, perOrderExp),
@@ -154,6 +177,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     yesterday: yesterdayRes.data?.[0] ?? null,
     mtd:       mtdRes.data?.[0]       ?? null,
     lastMonth: lastMonthRes.data?.[0] ?? null,
+  };
+
+  // Prior-period stats. Today's prior = Yesterday's current, so we reuse
+  // `yesterdayRes` rather than issuing a duplicate RPC.
+  const prior = {
+    today:     yesterdayRes.data?.[0] ?? null,
+    yesterday: dbyRes.data?.[0]       ?? null,
+    mtd:       mtdCompRes.data?.[0]   ?? null,
+    lastMonth: mblRes.data?.[0]       ?? null,
   };
 
   // Derive the break-even card numbers.
@@ -250,10 +282,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     backfillInProgress: !store.last_postex_sync_at,
     unmatchedCOGSCount: unmatchedCount ?? 0,
     periods: {
-      today:     { stats: s.today,     dateRange: { from: todayFrom, to: todayTo } },
-      yesterday: { stats: s.yesterday, dateRange: { from: yestFrom,  to: yestTo  } },
-      mtd:       { stats: s.mtd,       dateRange: { from: mtdFrom,   to: mtdTo   } },
-      lastMonth: { stats: s.lastMonth, dateRange: { from: lmFrom,    to: lmTo    } },
+      today:     { stats: s.today,     priorStats: prior.today,     dateRange: { from: todayFrom, to: todayTo } },
+      yesterday: { stats: s.yesterday, priorStats: prior.yesterday, dateRange: { from: yestFrom,  to: yestTo  } },
+      mtd:       { stats: s.mtd,       priorStats: prior.mtd,       dateRange: { from: mtdFrom,   to: mtdTo   } },
+      lastMonth: { stats: s.lastMonth, priorStats: prior.lastMonth, dateRange: { from: lmFrom,    to: lmTo    } },
     },
     breakEven,
     cityBreakdown: {
@@ -323,6 +355,7 @@ export default function Dashboard() {
                   key={key}
                   period={key}
                   stats={periods[key].stats}
+                  priorStats={periods[key].priorStats}
                   dateRange={periods[key].dateRange}
                   onMore={(stats, dateRange, title) =>
                     setDetail({ stats, dateRange, title })

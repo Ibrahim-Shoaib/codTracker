@@ -107,6 +107,53 @@ function MoneyText({ value, variant = "headingMd" }) {
   );
 }
 
+// ── Period-over-period delta ─────────────────────────────────────────────────
+// Sales uses % (always-positive denominator). Net profit uses absolute PKR
+// (sign flips around zero make % meaningless). Both hide when prior data is
+// unavailable or the change is negligible.
+function fmtCompactPKR(v) {
+  const n = Math.round(Math.abs(v));
+  if (n >= 1_000_000) {
+    const m = n / 1_000_000;
+    return `PKR ${m.toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (n >= 1_000) {
+    const k = n / 1_000;
+    return `PKR ${k.toFixed(1).replace(/\.0$/, "")}K`;
+  }
+  return `PKR ${n.toLocaleString()}`;
+}
+
+function computeSalesDelta(current, prior) {
+  if (current == null || prior == null) return null;
+  const c = Number(current);
+  const p = Number(prior);
+  if (p === 0) {
+    return c > 0 ? { dir: "up", label: "New" } : null;
+  }
+  const pct = ((c - p) / p) * 100;
+  if (Math.abs(pct) < 0.5) return null;
+  return { dir: pct >= 0 ? "up" : "down", label: `${Math.abs(Math.round(pct))}%` };
+}
+
+function computeNetProfitDelta(current, prior) {
+  if (current == null || prior == null) return null;
+  const diff = Number(current) - Number(prior);
+  if (Math.abs(diff) < 1) return null;
+  return { dir: diff > 0 ? "up" : "down", label: fmtCompactPKR(diff) };
+}
+
+function Delta({ delta }) {
+  if (!delta) return null;
+  const arrow = delta.dir === "up" ? "▲" : "▼";
+  const tone  = delta.dir === "up" ? "success" : "critical";
+  return (
+    <Text as="span" variant="bodySm" tone={tone} fontWeight="medium">
+      {arrow} {delta.label}
+    </Text>
+  );
+}
+
 // ── Header gradients ─────────────────────────────────────────────────────────
 // Recent → past reads as emerald → teal → cyan → indigo. Tailwind 600/700
 // levels keep the saturation balanced; deeper stop on the bottom-right gives
@@ -129,6 +176,7 @@ const DEFAULT_NAMES = {
 export default function KPICard({
   period,
   stats: defaultStats,
+  priorStats: defaultPriorStats,
   dateRange: defaultDateRange,
   onMore,
 }) {
@@ -151,9 +199,17 @@ export default function KPICard({
   const [currentTo,    setCurrentTo]    = useState(defaultDateRange?.to   ?? "");
   const [activePreset, setActivePreset] = useState(null);
 
-  const stats   = fetcher.data?.stats ?? defaultStats;
+  // After a date-picker fetch, both stats and priorStats come from the api;
+  // before any fetch (or while loading), fall back to the loader payload.
+  const stats      = fetcher.data?.stats      ?? defaultStats;
+  const priorStats = fetcher.data
+    ? fetcher.data?.priorStats ?? null
+    : defaultPriorStats;
   const loading = fetcher.state === "loading";
   const presets = computePresets();
+
+  const salesDelta     = computeSalesDelta(stats?.sales,      priorStats?.sales);
+  const netProfitDelta = computeNetProfitDelta(stats?.net_profit, priorStats?.net_profit);
 
   function applyPreset(preset) {
     if (preset.label === "Custom range") {
@@ -301,7 +357,10 @@ export default function KPICard({
 
           {/* Sales */}
           <BlockStack gap="100">
-            <Text variant="bodySm" tone="subdued">Sales</Text>
+            <InlineStack gap="200" blockAlign="center">
+              <Text variant="bodySm" tone="subdued">Sales</Text>
+              <Delta delta={salesDelta} />
+            </InlineStack>
             <Text variant="headingLg" fontWeight="bold">{fmtPKR(stats?.sales)}</Text>
           </BlockStack>
 
@@ -338,7 +397,10 @@ export default function KPICard({
           {/* Net Profit | Margin */}
           <InlineStack align="space-between" blockAlign="start">
             <BlockStack gap="100">
-              <Text variant="bodySm" tone="subdued">Net Profit</Text>
+              <InlineStack gap="200" blockAlign="center">
+                <Text variant="bodySm" tone="subdued">Net Profit</Text>
+                <Delta delta={netProfitDelta} />
+              </InlineStack>
               <MoneyText value={stats?.net_profit} variant="headingSm" />
             </BlockStack>
             <BlockStack gap="100">

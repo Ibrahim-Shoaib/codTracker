@@ -77,6 +77,41 @@ export function getMTDComparisonPKT() {
   return { start: startOfDayUTC(firstOfLastMonth), end: endOfDayUTC(endOfComparison) };
 }
 
+// Day before yesterday — prior comparison for the "Yesterday" card
+export function getDayBeforeYesterdayPKT() {
+  const dby = subtractDaysPKT(nowPKT(), 2);
+  return { start: startOfDayUTC(dby), end: endOfDayUTC(dby) };
+}
+
+// Full month before last month — prior comparison for the "Last month" card
+export function getMonthBeforeLastPKT() {
+  const pkt = nowPKT();
+  const firstOfMonthBefore = new Date(Date.UTC(pkt.getUTCFullYear(), pkt.getUTCMonth() - 2, 1));
+  // Day 0 of "last month" = last day of "month before last"
+  const lastOfMonthBefore  = new Date(Date.UTC(pkt.getUTCFullYear(), pkt.getUTCMonth() - 1, 0));
+  return { start: startOfDayUTC(firstOfMonthBefore), end: endOfDayUTC(lastOfMonthBefore) };
+}
+
+// Equal-length range immediately preceding [fromYMD, toYMD]. Inputs and
+// outputs are 'YYYY-MM-DD' strings — used for custom-range comparisons.
+//   length = (to - from) + 1 inclusive days
+//   prior  = [from - length, from - 1]
+export function getPriorEqualLengthRange(fromYMD, toYMD) {
+  const [fy, fm, fd] = fromYMD.split('-').map(Number);
+  const [ty, tm, td] = toYMD.split('-').map(Number);
+  const fromDate = new Date(Date.UTC(fy, fm - 1, fd));
+  const toDate   = new Date(Date.UTC(ty, tm - 1, td));
+  const dayMs    = 24 * 60 * 60 * 1000;
+  const lengthDays = Math.round((toDate - fromDate) / dayMs) + 1;
+
+  const priorTo   = new Date(fromDate); priorTo.setUTCDate(priorTo.getUTCDate() - 1);
+  const priorFrom = new Date(fromDate); priorFrom.setUTCDate(priorFrom.getUTCDate() - lengthDays);
+
+  const ymd = (d) =>
+    `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  return { from: ymd(priorFrom), to: ymd(priorTo) };
+}
+
 // Returns 'YYYY-MM-DD' string in PKT — used for PostEx API calls and ad_spend date keys
 export function formatPKTDate(dateUTC) {
   const pkt = new Date(new Date(dateUTC).getTime() + PKT_OFFSET_MS);
