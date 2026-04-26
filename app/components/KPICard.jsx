@@ -249,25 +249,26 @@ export default function KPICard({
     setShowCustom(false);
   }
 
-  // Pill-style activator — translucent fill + hairline border on the gradient
-  // header makes the entire date row read as a tappable control. Without this
-  // the calendar icon alone is too quiet and most users miss the affordance.
+  // Soft-tint activator — borderless so it reads as a hint, not a chip.
+  // Resting fill is faint enough not to compete with the gradient header,
+  // but the area still announces itself as interactive; hover deepens the
+  // fill so the affordance pays off when the user moves over it.
   const pillHovered = hovered || popoverOpen;
   const activator = (
     <button
       type="button"
       style={{
         background: pillHovered
-          ? "rgba(255,255,255,0.22)"
-          : "rgba(255,255,255,0.12)",
-        border: "1px solid rgba(255,255,255,0.28)",
-        borderRadius: "8px",
+          ? "rgba(255,255,255,0.20)"
+          : "rgba(255,255,255,0.10)",
+        border: "none",
+        borderRadius: "6px",
         cursor: "pointer",
-        padding: "4px 10px",
+        padding: "3px 8px",
         display: "inline-flex",
         alignItems: "center",
         gap: "6px",
-        transition: "background-color 150ms ease, border-color 150ms ease",
+        transition: "background-color 150ms ease",
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -439,7 +440,7 @@ export default function KPICard({
                 onMore(stats, { from: currentFrom, to: currentTo }, displayName)
               }
             >
-              View breakdown →
+              Breakdown →
             </Button>
           </InlineStack>
 
