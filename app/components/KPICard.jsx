@@ -108,20 +108,13 @@ function MoneyText({ value, variant = "headingMd" }) {
 }
 
 // ── Period-over-period delta ─────────────────────────────────────────────────
-// Sales uses % (always-positive denominator). Net profit uses absolute PKR
-// (sign flips around zero make % meaningless). Both hide when prior data is
-// unavailable or the change is negligible.
-function fmtCompactPKR(v) {
-  const n = Math.round(Math.abs(v));
-  if (n >= 1_000_000) {
-    const m = n / 1_000_000;
-    return `PKR ${m.toFixed(1).replace(/\.0$/, "")}M`;
-  }
-  if (n >= 1_000) {
-    const k = n / 1_000;
-    return `PKR ${k.toFixed(1).replace(/\.0$/, "")}K`;
-  }
-  return `PKR ${n.toLocaleString()}`;
+// Both metrics show percent change. Net profit normalises by |prior| so the
+// percent's sign always reflects the direction of improvement — works through
+// negative prior values and zero crossings. Hidden when prior data is missing
+// or the change is negligible. Capped at 999% to avoid noisy four-digit deltas
+// during sign flips.
+function fmtPctDelta(pct) {
+  return Math.abs(pct) >= 1000 ? "999+%" : `${Math.abs(Math.round(pct))}%`;
 }
 
 function computeSalesDelta(current, prior) {
@@ -133,14 +126,24 @@ function computeSalesDelta(current, prior) {
   }
   const pct = ((c - p) / p) * 100;
   if (Math.abs(pct) < 0.5) return null;
-  return { dir: pct >= 0 ? "up" : "down", label: `${Math.abs(Math.round(pct))}%` };
+  return { dir: pct >= 0 ? "up" : "down", label: fmtPctDelta(pct) };
 }
 
 function computeNetProfitDelta(current, prior) {
   if (current == null || prior == null) return null;
-  const diff = Number(current) - Number(prior);
-  if (Math.abs(diff) < 1) return null;
-  return { dir: diff > 0 ? "up" : "down", label: fmtCompactPKR(diff) };
+  const c = Number(current);
+  const p = Number(prior);
+  if (Math.abs(c - p) < 1) return null;
+  if (p === 0) {
+    return c > 0
+      ? { dir: "up",   label: "New"  }
+      : { dir: "down", label: "Loss" };
+  }
+  // |prior| denominator so signs read correctly across zero:
+  //   -100 → -50 → +50%, -100 → +50 → +150%, +100 → -50 → -150%
+  const pct = ((c - p) / Math.abs(p)) * 100;
+  if (Math.abs(pct) < 0.5) return null;
+  return { dir: pct >= 0 ? "up" : "down", label: fmtPctDelta(pct) };
 }
 
 function Delta({ delta }) {
@@ -246,17 +249,25 @@ export default function KPICard({
     setShowCustom(false);
   }
 
+  // Pill-style activator — translucent fill + hairline border on the gradient
+  // header makes the entire date row read as a tappable control. Without this
+  // the calendar icon alone is too quiet and most users miss the affordance.
+  const pillHovered = hovered || popoverOpen;
   const activator = (
     <button
       type="button"
       style={{
-        background: "none",
-        border: "none",
+        background: pillHovered
+          ? "rgba(255,255,255,0.22)"
+          : "rgba(255,255,255,0.12)",
+        border: "1px solid rgba(255,255,255,0.28)",
+        borderRadius: "8px",
         cursor: "pointer",
-        padding: 0,
-        display: "flex",
+        padding: "4px 10px",
+        display: "inline-flex",
         alignItems: "center",
-        gap: "4px",
+        gap: "6px",
+        transition: "background-color 150ms ease, border-color 150ms ease",
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -266,13 +277,13 @@ export default function KPICard({
         style={{
           fontSize: "13px",
           fontFamily: "inherit",
-          color: "rgba(255,255,255,0.85)",
-          textDecoration: hovered ? "underline" : "none",
+          color: "rgba(255,255,255,0.95)",
+          fontWeight: 500,
         }}
       >
         {currentLabel}
       </span>
-      <span style={{ display: "flex", color: "rgba(255,255,255,0.85)" }}>
+      <span style={{ display: "flex", color: "rgba(255,255,255,0.95)" }}>
         <Icon source={CalendarIcon} />
       </span>
     </button>
@@ -374,7 +385,7 @@ export default function KPICard({
                 {fmtNum(stats?.orders)} / {fmtNum(stats?.units)}
               </Text>
             </BlockStack>
-            <BlockStack gap="100">
+            <BlockStack gap="100" inlineAlign="start">
               <Text variant="bodySm" tone="subdued">Returns</Text>
               <Text variant="bodyMd" fontWeight="semibold">{fmtNum(stats?.returns)}</Text>
             </BlockStack>
@@ -419,7 +430,7 @@ export default function KPICard({
             </BlockStack>
           </InlineStack>
 
-          {/* More */}
+          {/* View breakdown */}
           <InlineStack align="end">
             <Button
               variant="plain"
@@ -428,7 +439,7 @@ export default function KPICard({
                 onMore(stats, { from: currentFrom, to: currentTo }, displayName)
               }
             >
-              More
+              View breakdown →
             </Button>
           </InlineStack>
 
