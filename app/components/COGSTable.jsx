@@ -75,10 +75,11 @@ export default function COGSTable({ products, costsMap, onDirtyCountChange }) {
       }
     }
     return n;
-    // costsMap is stable across the lifetime of this component (parent
-    // re-mounts via key={} on Discard), so we only depend on costs.
+    // costsMap is in deps because Remix re-runs the loader after a successful
+    // save, returning a new costsMap object. Without this dep the memo would
+    // hold the pre-save dirtyCount and the SaveBar would never close.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [costs]);
+  }, [costs, costsMap]);
 
   useEffect(() => {
     onDirtyCountChange?.(dirtyCount);
