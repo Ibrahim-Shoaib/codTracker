@@ -30,22 +30,19 @@ export default function PipelinePills({ inTransitValue, unfulfilledPromise, peri
         <Suspense fallback={<PillSkeleton />}>
           <Await resolve={unfulfilledPromise}>
             {(pipeline) => {
-              const bucket = pipeline?.[period];
-              if (!bucket || bucket.value <= 0) return null;
+              const value = pipeline?.[period]?.value ?? 0;
               return (
-                <Badge tone="warning">
-                  {`${fmtPKR(bucket.value)} · Unfulfilled`}
+                <Badge tone="attention">
+                  {`${fmtPKR(value)} · Unfulfilled`}
                 </Badge>
               );
             }}
           </Await>
         </Suspense>
       )}
-      {inTransitNum > 0 && (
-        <Badge tone="info">
-          {`${fmtPKR(inTransitNum)} · In Transit`}
-        </Badge>
-      )}
+      <Badge tone="info">
+        {`${fmtPKR(inTransitNum)} · In Transit`}
+      </Badge>
     </InlineStack>
   );
 }
