@@ -2,6 +2,7 @@ import { fetchOrders, mapOrder } from './postex.server.js';
 import { fetchDailySpend } from './meta.server.js';
 import { getSupabaseForStore } from './supabase.server.js';
 import { enrichOrdersWithShopify, loadOfflineSession } from './enrich.server.js';
+import { cancelStaleBooked } from './stale-orders.server.js';
 
 const CHUNK_DAYS = 60;
 const STOP_AFTER_EMPTY = 2;
@@ -62,6 +63,13 @@ export async function runHistoricalBackfill({ store_id, postex_token }) {
     .eq('store_id', store_id);
 
   console.log(`Backfill done for ${store_id}: ${totalOrders} orders across ${totalChunks} chunks`);
+
+  // Sweep historical Booked orders that are already past the rolling 20-day
+  // window — PostEx will never update them again. Also repair flags on any
+  // Cancelled/Unbooked/Transferred rows whose is_in_transit is still true.
+  await cancelStaleBooked(supabase, store_id).catch(err => {
+    console.error(`Backfill stale-Booked sweep failed for ${store_id}:`, err.message ?? err);
+  });
 
   // ---- Shopify line-items enrichment for the full lifetime we just pulled ----
   // For new customers this runs immediately after onboarding step 1. There

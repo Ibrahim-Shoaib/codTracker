@@ -2,11 +2,17 @@ const BASE_URL = 'https://api.postex.pk/services/integration/api/order';
 
 const DELIVERED_CODES  = new Set(['0005']);
 const RETURNED_CODES   = new Set(['0002', '0006', '0007']);
+// Terminal-but-not-delivered statuses: customer cancellation, never booked,
+// or transferred away. Carried as is_in_transit=false so they don't pollute
+// the in-transit count, but is_delivered/is_returned are also false so they
+// don't count toward sales or returns either.
+const CANCELLED_CODES  = new Set(['0009', '0010', '0011']);
 
 // Fallback map when transactionStatusHistory is missing or empty.
 // Live data confirmed: the list-orders API never returns transactionStatusHistory,
 // so this map is the primary (and only) status resolution path for all synced orders.
-// Actual API values observed: 'Delivered', 'Return', 'Booked', 'Cancelled', 'Under Verification'
+// Actual API values observed: 'Delivered', 'Return', 'Booked', 'Cancelled', 'Under Verification',
+// plus 'Unbooked' and 'Transferred' seen in the trendy-homes-pk dataset.
 const STRING_STATUS_MAP = {
   'Delivered':             '0005',
   'Return':                '0002', // actual API value — NOT 'Returned'
@@ -16,6 +22,9 @@ const STRING_STATUS_MAP = {
   'Attempted':             '0013',
   'Under Verification':    '0008', // actual API value for 'Delivery Under Review'
   'Delivery Under Review': '0008', // kept as safety fallback
+  'Cancelled':             '0009',
+  'Unbooked':              '0010',
+  'Transferred':           '0011',
 };
 
 function resolveStatusCode(raw) {
@@ -29,6 +38,7 @@ function resolveStatusCode(raw) {
 function statusFlags(code) {
   if (DELIVERED_CODES.has(code))  return { is_delivered: true,  is_returned: false, is_in_transit: false };
   if (RETURNED_CODES.has(code))   return { is_delivered: false, is_returned: true,  is_in_transit: false };
+  if (CANCELLED_CODES.has(code))  return { is_delivered: false, is_returned: false, is_in_transit: false };
   return                                  { is_delivered: false, is_returned: false, is_in_transit: true  };
 }
 

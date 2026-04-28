@@ -6,6 +6,7 @@ import {
   computeCOGSFromOrder,
 } from './cogs.server.js';
 import { enrichOrdersWithShopify, loadOfflineSession } from './enrich.server.js';
+import { cancelStaleBooked } from './stale-orders.server.js';
 
 const BATCH_CHUNK = 1000; // rows per apply_cogs_batch RPC call
 
@@ -39,6 +40,14 @@ export async function syncStore(storeRow, supabase) {
     .from('stores')
     .update({ last_postex_sync_at: new Date().toISOString() })
     .eq('store_id', storeRow.store_id);
+
+  // ---- 1b. Sweep stale Booked rows past the rolling window ----
+  // Once an order ages beyond 20 days while still Booked, PostEx will never
+  // return it again — it's abandoned. Flip to Cancelled so it stops counting
+  // as in-transit. Best-effort: a failure here doesn't block the sync.
+  await cancelStaleBooked(supabase, storeRow.store_id).catch(err => {
+    console.error(`[sync ${storeRow.store_id}] cancelStaleBooked failed:`, err.message ?? err);
+  });
 
   // ---- 2. Shopify line-items enrichment for the rolling window ----
   // Best-effort: any failure is logged and swallowed. Orders that don't get
