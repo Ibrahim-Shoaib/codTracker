@@ -14,6 +14,7 @@ CREATE TABLE stores (
   postex_token text,
   meta_access_token text,
   meta_ad_account_id text,
+  meta_ad_account_name text,               -- human-readable account name shown in settings; NULL until first reconnect after migration 009
   meta_token_expires_at timestamptz,       -- Meta long-lived tokens expire after 60 days
   meta_sync_error text,                    -- last Meta cron error msg; NULL when healthy. Set on failure, cleared on success/reconnect.
   expenses_amount numeric DEFAULT 0,

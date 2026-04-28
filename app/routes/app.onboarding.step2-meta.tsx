@@ -88,13 +88,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const accessToken = String(formData.get("access_token") ?? "");
     const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
 
+    const cookieHeaderForName = request.headers.get("Cookie");
+    const oauthSessionForName = await metaOAuthSession.getSession(cookieHeaderForName);
+    const accounts: Array<{ id: string; name: string }> =
+      oauthSessionForName.get("meta_ad_accounts") ?? [];
+    const adAccountName = accounts.find((a) => a.id === adAccountId)?.name ?? null;
+
     const supabase = await getSupabaseForStore(shop);
     await supabase
       .from("stores")
       .update({
         meta_access_token: accessToken,
         meta_ad_account_id: adAccountId,
+        meta_ad_account_name: adAccountName,
         meta_token_expires_at: expiresAt,
+        meta_sync_error: null,
         onboarding_step: 3,
       })
       .eq("store_id", shop);

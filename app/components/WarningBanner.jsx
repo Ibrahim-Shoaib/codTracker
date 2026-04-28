@@ -7,7 +7,6 @@ import { Banner, BlockStack, Text } from "@shopify/polaris";
 //   isMetaExpiringSoon  boolean — within 7 days of stored expiry
 //   metaExpiresAt       string | null  (ISO date string)
 //   metaSyncError       string | null  — last cron error; presence ⇒ disconnected
-//   lastMetaSyncAt      string | null  — ISO of the last successful sync
 //   backfillInProgress  boolean
 export default function WarningBanner({
   unmatchedCOGSCount,
@@ -16,7 +15,6 @@ export default function WarningBanner({
   isMetaExpiringSoon,
   metaExpiresAt,
   metaSyncError,
-  lastMetaSyncAt,
   backfillInProgress,
 }) {
   const banners = [];
@@ -37,14 +35,6 @@ export default function WarningBanner({
   const metaIsBroken = metaConnected && (!!metaSyncError || isMetaExpired);
 
   if (metaIsBroken) {
-    const sinceLabel = lastMetaSyncAt
-      ? new Date(lastMetaSyncAt).toLocaleString("en-PK", {
-          day: "numeric",
-          month: "short",
-          hour: "numeric",
-          minute: "2-digit",
-        })
-      : null;
     banners.push(
       <Banner
         key="meta-broken"
@@ -52,18 +42,9 @@ export default function WarningBanner({
         title="Meta Ads disconnected"
         action={{ content: "Reconnect Meta Ads", url: "/app/settings" }}
       >
-        <BlockStack gap="100">
-          <Text as="p" variant="bodyMd">
-            {sinceLabel
-              ? `Ad spend hasn't synced since ${sinceLabel}. ROAS and net profit on this dashboard won't include today's spend until you reconnect.`
-              : `Ad spend isn't syncing. ROAS and net profit on this dashboard won't include today's spend until you reconnect.`}
-          </Text>
-          {metaSyncError && (
-            <Text as="p" variant="bodySm" tone="subdued">
-              Reason: {metaSyncError}
-            </Text>
-          )}
-        </BlockStack>
+        <Text as="p" variant="bodyMd">
+          Reconnect to resume ad spend syncing.
+        </Text>
       </Banner>
     );
   } else if (isMetaExpiringSoon && metaExpiresAt) {

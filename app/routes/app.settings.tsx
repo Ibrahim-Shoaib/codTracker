@@ -55,7 +55,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     supabase
       .from("stores")
       .select(
-        "postex_token, meta_access_token, meta_ad_account_id, meta_token_expires_at, meta_sync_error"
+        "postex_token, meta_access_token, meta_ad_account_id, meta_ad_account_name, meta_token_expires_at, meta_sync_error"
       )
       .eq("store_id", shop)
       .single(),
@@ -131,11 +131,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const accessToken = String(formData.get("access_token") ?? "");
     const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
 
+    // Look up the chosen account's display name from the OAuth session so we
+    // can show "Trendy Homes Ads" in settings instead of "act_1224674772151444".
+    const cookieHeaderForName = request.headers.get("Cookie");
+    const oauthSessionForName = await metaOAuthSession.getSession(cookieHeaderForName);
+    const accounts: Array<{ id: string; name: string }> =
+      oauthSessionForName.get("meta_ad_accounts") ?? [];
+    const adAccountName = accounts.find((a) => a.id === adAccountId)?.name ?? null;
+
     await supabase
       .from("stores")
       .update({
         meta_access_token:    accessToken,
         meta_ad_account_id:   adAccountId,
+        meta_ad_account_name: adAccountName,
         meta_token_expires_at: expiresAt,
         meta_sync_error:      null,
       })
@@ -326,11 +335,10 @@ export default function SettingsPage() {
               )}
 
               {metaIsBroken && store?.meta_access_token && (
-                <Banner tone="critical" title="Meta Ads sync stopped">
+                <Banner tone="critical" title="Meta Ads disconnected">
                   <BlockStack gap="100">
                     <Text as="p" variant="bodyMd">
-                      Reconnect to restore ad-spend tracking. Until then, ROAS
-                      and net profit on your dashboard won't include today's spend.
+                      Reconnect to resume ad spend syncing.
                     </Text>
                     {metaSyncError && (
                       <Text as="p" variant="bodySm" tone="subdued">
@@ -348,15 +356,22 @@ export default function SettingsPage() {
                 </Banner>
               )}
 
-              <InlineStack gap="300" blockAlign="center">
-                <Text as="span" variant="bodyMd">Status:</Text>
-                {metaStatus()}
+              <BlockStack gap="100">
+                <InlineStack gap="300" blockAlign="center">
+                  <Text as="span" variant="bodyMd">Status:</Text>
+                  {metaStatus()}
+                  {store?.meta_access_token && (
+                    <Text as="span" variant="bodyMd">
+                      {store.meta_ad_account_name ?? store.meta_ad_account_id}
+                    </Text>
+                  )}
+                </InlineStack>
                 {metaExpiryLabel && !metaIsBroken && (
                   <Text as="span" variant="bodySm" tone="subdued">
                     Expires {metaExpiryLabel}
                   </Text>
                 )}
-              </InlineStack>
+              </BlockStack>
 
               {pendingToken && pendingAccounts ? (
                 <Form method="post">
