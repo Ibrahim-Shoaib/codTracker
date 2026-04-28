@@ -14,6 +14,7 @@ import {
   DatePicker,
 } from "@shopify/polaris";
 import { CalendarIcon } from "@shopify/polaris-icons";
+import PipelinePills from "./PipelinePills.jsx";
 
 // ── Number formatters ─────────────────────────────────────────────────────────
 const fmtPKR = (n) => {
@@ -181,6 +182,7 @@ export default function KPICard({
   stats: defaultStats,
   priorStats: defaultPriorStats,
   dateRange: defaultDateRange,
+  unfulfilledPromise,
   onMore,
 }) {
   const fetcher = useFetcher();
@@ -210,6 +212,12 @@ export default function KPICard({
     : defaultPriorStats;
   const loading = fetcher.state === "loading";
   const presets = computePresets();
+
+  // The Unfulfilled pill is keyed off the loader's default date ranges. When
+  // the merchant picks a custom date for this card the displayed period no
+  // longer matches the deferred bucket, so we suppress it. In Transit comes
+  // from the per-period SQL stats and stays valid on every range.
+  const usingDefaultRange = !fetcher.data;
 
   const salesDelta     = computeSalesDelta(stats?.sales,      priorStats?.sales);
   const netProfitDelta = computeNetProfitDelta(stats?.net_profit, priorStats?.net_profit);
@@ -374,6 +382,11 @@ export default function KPICard({
               <Delta delta={salesDelta} />
             </InlineStack>
             <Text variant="headingLg" fontWeight="bold">{fmtPKR(stats?.sales)}</Text>
+            <PipelinePills
+              inTransitValue={stats?.in_transit_value}
+              unfulfilledPromise={usingDefaultRange ? unfulfilledPromise : null}
+              period={period}
+            />
           </BlockStack>
 
           <Divider />

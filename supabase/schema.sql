@@ -209,27 +209,28 @@ CREATE OR REPLACE FUNCTION get_dashboard_stats(
   -- Note: p_days_in_period was removed; monthly cost uses v_month_count instead
 )
 RETURNS TABLE (
-  sales          numeric,
-  orders         bigint,
-  units          bigint,
-  returns        bigint,
-  in_transit     bigint,
-  delivery_cost  numeric,   -- full total (fees + taxes) — drives profit math
-  reversal_cost  numeric,   -- reversal_fee only, returned (see migration 005)
-  tax            numeric,   -- transaction_tax + reversal_tax, delivered + returned
-  cogs           numeric,
-  ad_spend       numeric,
-  expenses       numeric,
-  gross_profit   numeric,
-  net_profit     numeric,
-  return_loss    numeric,   -- total PKR cost of returned shipments (see migration 006)
-  roas           numeric,
-  poas           numeric,
-  cac            numeric,
-  aov            numeric,
-  margin_pct     numeric,
-  roi_pct        numeric,
-  refund_pct     numeric
+  sales            numeric,
+  orders           bigint,
+  units            bigint,
+  returns          bigint,
+  in_transit       bigint,
+  delivery_cost    numeric,   -- full total (fees + taxes) — drives profit math
+  reversal_cost    numeric,   -- reversal_fee only, returned (see migration 005)
+  tax              numeric,   -- transaction_tax + reversal_tax, delivered + returned
+  cogs             numeric,
+  ad_spend         numeric,
+  expenses         numeric,
+  gross_profit     numeric,
+  net_profit       numeric,
+  return_loss      numeric,   -- total PKR cost of returned shipments (see migration 006)
+  roas             numeric,
+  poas             numeric,
+  cac              numeric,
+  aov              numeric,
+  margin_pct       numeric,
+  roi_pct          numeric,
+  refund_pct       numeric,
+  in_transit_value numeric    -- SUM(invoice_payment) for non-terminal orders (see migration 010)
 ) AS $$
 DECLARE
   v_sales          numeric;
@@ -242,6 +243,7 @@ DECLARE
   v_tax            numeric;   -- transaction_tax + reversal_tax (delivered + returned)
   v_cogs           numeric;
   v_return_loss    numeric;   -- total return loss across returned shipments
+  v_in_transit_value numeric; -- pipeline PKR value for non-terminal orders (see migration 010)
   v_ad_spend       numeric;
   v_expenses       numeric;
   v_gross_profit          numeric;
@@ -313,10 +315,24 @@ BEGIN
            + (o.cogs_total * (1 - v_sellable_returns_pct / 100.0))
         ELSE 0
       END
+    ), 0),
+    -- in_transit_value: SUM(invoice_payment) for non-terminal orders.
+    -- Excludes Delivered, Returned, Cancelled, Transferred. Includes
+    -- Booked, Unbooked, OFD, Under Verification, Attempted, default.
+    -- Filters on raw transaction_status because the live orders table
+    -- has no status_code column.
+    COALESCE(SUM(
+      CASE WHEN NOT o.is_delivered
+            AND NOT o.is_returned
+            AND COALESCE(o.transaction_status, '') NOT IN ('Cancelled', 'Transferred')
+        THEN o.invoice_payment
+        ELSE 0
+      END
     ), 0)
   INTO
     v_sales, v_delivered, v_units, v_returns, v_in_transit,
-    v_delivery_cost, v_reversal_cost, v_tax, v_cogs, v_return_loss
+    v_delivery_cost, v_reversal_cost, v_tax, v_cogs, v_return_loss,
+    v_in_transit_value
   FROM orders o
   WHERE o.store_id = p_store_id
     AND o.transaction_date >= p_from_date::timestamptz
@@ -366,7 +382,8 @@ BEGIN
     CASE WHEN (v_cogs + v_ad_spend + v_delivery_cost) = 0 THEN NULL
          ELSE (v_net_profit / (v_cogs + v_ad_spend + v_delivery_cost)) * 100 END,
     CASE WHEN (v_delivered + v_returns) = 0 THEN 0::numeric
-         ELSE (v_returns::numeric / (v_delivered + v_returns)) * 100 END;
+         ELSE (v_returns::numeric / (v_delivered + v_returns)) * 100 END,
+    v_in_transit_value;
 END;
 $$ LANGUAGE plpgsql;
 

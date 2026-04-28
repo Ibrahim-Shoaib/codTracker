@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
+import { defer, json } from "@remix-run/node";
 import { Navigate, useLoaderData } from "@remix-run/react";
 import { useState } from "react";
 import {
@@ -24,6 +24,7 @@ import {
   formatPKTDate,
 } from "../lib/dates.server.js";
 import { isTokenExpired, isTokenExpiringSoon } from "../lib/meta.server.js";
+import { fetchUnfulfilledPipeline } from "../lib/shopify-pipeline.server.js";
 import KPICard from "../components/KPICard.jsx";
 import WarningBanner from "../components/WarningBanner.jsx";
 import DetailPanel from "../components/DetailPanel.jsx";
@@ -273,7 +274,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ? { ...selected, isFallback: selected.windowDays !== 30 }
     : null;
 
-  return json({
+  // Real-time Shopify "Unfulfilled" pipeline. Fired in parallel and not
+  // awaited — the loader returns immediately with the SQL payload while
+  // the dashboard renders <Suspense> skeleton chips for this promise.
+  const unfulfilledPipeline = fetchUnfulfilledPipeline(session, {
+    today:     { from: todayFrom, to: todayTo },
+    yesterday: { from: yestFrom,  to: yestTo  },
+    mtd:       { from: mtdFrom,   to: mtdTo   },
+    lastMonth: { from: lmFrom,    to: lmTo    },
+  }).catch((err) => {
+    console.error("Shopify pipeline fetch failed:", err);
+    return null;
+  });
+
+  return defer({
     expensesList: expenses,
     metaConnected:      !!store.meta_access_token,
     isMetaExpired:      isTokenExpired(store.meta_token_expires_at),
@@ -294,6 +308,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       from:   cityFromDate,
       to:     cityToDate,
     },
+    unfulfilledPipeline,
   });
 };
 
@@ -312,7 +327,8 @@ export default function Dashboard() {
   const { periods, expensesList, unmatchedCOGSCount,
           metaConnected, isMetaExpired, isMetaExpiringSoon, metaExpiresAt,
           metaSyncError,
-          backfillInProgress, cityBreakdown, breakEven } = data;
+          backfillInProgress, cityBreakdown, breakEven,
+          unfulfilledPipeline } = data;
 
   // Empty state: no orders in any period
   const totalOrders = PERIOD_KEYS.reduce(
@@ -360,6 +376,7 @@ export default function Dashboard() {
                   stats={periods[key].stats}
                   priorStats={periods[key].priorStats}
                   dateRange={periods[key].dateRange}
+                  unfulfilledPromise={unfulfilledPipeline}
                   onMore={(stats, dateRange, title) =>
                     setDetail({ stats, dateRange, title })
                   }
