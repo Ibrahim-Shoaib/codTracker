@@ -34,6 +34,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   for (const store of stores) {
     if (isTokenExpired(store.meta_token_expires_at)) {
+      await adminClient
+        .from("stores")
+        .update({ meta_sync_error: "Meta token expired. Reconnect to resume sync." })
+        .eq("store_id", store.store_id);
       skipped++;
       continue;
     }
@@ -56,11 +60,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
       await adminClient
         .from("stores")
-        .update({ last_meta_sync_at: new Date().toISOString() })
+        .update({
+          last_meta_sync_at: new Date().toISOString(),
+          meta_sync_error:   null,
+        })
         .eq("store_id", store.store_id);
       finalized++;
-    } catch (err) {
+    } catch (err: any) {
+      const message = (err?.message ?? String(err)).replace(/^Meta fetchSpend failed:\s*/, "");
       console.error(`Meta finalize failed for ${store.store_id}:`, err);
+      await adminClient
+        .from("stores")
+        .update({ meta_sync_error: message })
+        .eq("store_id", store.store_id);
       errors++;
     }
   }

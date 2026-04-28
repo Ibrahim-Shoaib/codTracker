@@ -55,7 +55,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     supabase
       .from("stores")
       .select(
-        "postex_token, meta_access_token, meta_ad_account_id, meta_token_expires_at"
+        "postex_token, meta_access_token, meta_ad_account_id, meta_token_expires_at, meta_sync_error"
       )
       .eq("store_id", shop)
       .single(),
@@ -76,6 +76,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     metaJustConnected,
     isMetaExpired:      isTokenExpired(store?.meta_token_expires_at),
     isMetaExpiringSoon: isTokenExpiringSoon(store?.meta_token_expires_at),
+    metaSyncError:      store?.meta_sync_error ?? null,
   });
 };
 
@@ -136,6 +137,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         meta_access_token:    accessToken,
         meta_ad_account_id:   adAccountId,
         meta_token_expires_at: expiresAt,
+        meta_sync_error:      null,
       })
       .eq("store_id", shop);
 
@@ -173,7 +175,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function SettingsPage() {
   const { store, expensesList, pendingToken, pendingAccounts,
-          metaJustConnected, isMetaExpired, isMetaExpiringSoon } = useLoaderData<typeof loader>();
+          metaJustConnected, isMetaExpired, isMetaExpiringSoon,
+          metaSyncError } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const submitting = navigation.state === "submitting";
@@ -239,10 +242,16 @@ export default function SettingsPage() {
     value: acc.id,
   }));
 
+  // Single source of truth: meta_sync_error is set by the cron whenever a sync
+  // call fails (token expired, session invalidated, network error). Treat that
+  // as the authoritative "disconnected" signal — falling back to expiry only
+  // when no error has been recorded yet.
+  const metaIsBroken = !!metaSyncError || isMetaExpired;
+
   const metaStatus = () => {
     if (!store?.meta_access_token) return <Badge tone="warning">Not connected</Badge>;
-    if (isMetaExpired)              return <Badge tone="critical">Token expired</Badge>;
-    if (isMetaExpiringSoon)         return <Badge tone="warning">Expiring soon</Badge>;
+    if (metaIsBroken)              return <Badge tone="critical">Disconnected</Badge>;
+    if (isMetaExpiringSoon)        return <Badge tone="warning">Expiring soon</Badge>;
     return <Badge tone="success">Connected</Badge>;
   };
 
@@ -308,11 +317,6 @@ export default function SettingsPage() {
             <BlockStack gap="400">
               <Text as="h2" variant="headingMd">Meta Ads Settings</Text>
 
-              <Banner tone="warning">
-                You will be redirected to Meta to re-authorize. This is required
-                when your token expires.
-              </Banner>
-
               {metaJustConnected && (
                 <Banner tone="success">Meta Ads connected successfully.</Banner>
               )}
@@ -321,10 +325,33 @@ export default function SettingsPage() {
                 <Banner tone="critical">Meta Ads connection failed. Please try again.</Banner>
               )}
 
+              {metaIsBroken && store?.meta_access_token && (
+                <Banner tone="critical" title="Meta Ads sync stopped">
+                  <BlockStack gap="100">
+                    <Text as="p" variant="bodyMd">
+                      Reconnect to restore ad-spend tracking. Until then, ROAS
+                      and net profit on your dashboard won't include today's spend.
+                    </Text>
+                    {metaSyncError && (
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        Reason: {metaSyncError}
+                      </Text>
+                    )}
+                  </BlockStack>
+                </Banner>
+              )}
+
+              {!metaIsBroken && isMetaExpiringSoon && metaExpiryLabel && (
+                <Banner tone="warning">
+                  Your Meta Ads connection expires on {metaExpiryLabel}.
+                  Reconnect now to avoid an interruption.
+                </Banner>
+              )}
+
               <InlineStack gap="300" blockAlign="center">
                 <Text as="span" variant="bodyMd">Status:</Text>
                 {metaStatus()}
-                {metaExpiryLabel && !isMetaExpired && (
+                {metaExpiryLabel && !metaIsBroken && (
                   <Text as="span" variant="bodySm" tone="subdued">
                     Expires {metaExpiryLabel}
                   </Text>

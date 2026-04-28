@@ -15,6 +15,7 @@ CREATE TABLE stores (
   meta_access_token text,
   meta_ad_account_id text,
   meta_token_expires_at timestamptz,       -- Meta long-lived tokens expire after 60 days
+  meta_sync_error text,                    -- last Meta cron error msg; NULL when healthy. Set on failure, cleared on success/reconnect.
   expenses_amount numeric DEFAULT 0,
   expenses_type text CHECK (expenses_type IN ('monthly', 'per_order')),
   sellable_returns_pct numeric DEFAULT 100,

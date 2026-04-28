@@ -33,6 +33,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   for (const store of stores) {
     if (isTokenExpired(store.meta_token_expires_at)) {
+      // Stored expiry says the token is dead — surface this to the merchant
+      // the same way as a runtime auth failure so the dashboard banner appears.
+      await adminClient
+        .from("stores")
+        .update({ meta_sync_error: "Meta token expired. Reconnect to resume sync." })
+        .eq("store_id", store.store_id);
       skipped++;
       continue;
     }
@@ -53,13 +59,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         },
         { onConflict: "store_id,spend_date" }
       );
+      // Success — clear any prior error so the disconnected banner disappears.
       await adminClient
         .from("stores")
-        .update({ last_meta_sync_at: new Date().toISOString() })
+        .update({
+          last_meta_sync_at: new Date().toISOString(),
+          meta_sync_error:   null,
+        })
         .eq("store_id", store.store_id);
       synced++;
-    } catch (err) {
+    } catch (err: any) {
+      const message = (err?.message ?? String(err)).replace(/^Meta fetchSpend failed:\s*/, "");
       console.error(`Meta today sync failed for ${store.store_id}:`, err);
+      await adminClient
+        .from("stores")
+        .update({ meta_sync_error: message })
+        .eq("store_id", store.store_id);
       errors++;
     }
   }

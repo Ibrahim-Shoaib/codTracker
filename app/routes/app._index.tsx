@@ -58,7 +58,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     supabase
       .from("stores")
       .select(
-        "postex_token, onboarding_complete, onboarding_step, sellable_returns_pct, meta_access_token, meta_token_expires_at, last_postex_sync_at"
+        "postex_token, onboarding_complete, onboarding_step, sellable_returns_pct, meta_access_token, meta_token_expires_at, meta_sync_error, last_meta_sync_at, last_postex_sync_at"
       )
       .eq("store_id", shop)
       .single(),
@@ -279,6 +279,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     isMetaExpired:      isTokenExpired(store.meta_token_expires_at),
     isMetaExpiringSoon: isTokenExpiringSoon(store.meta_token_expires_at),
     metaExpiresAt:      store.meta_token_expires_at,
+    metaSyncError:      store.meta_sync_error ?? null,
+    lastMetaSyncAt:     store.last_meta_sync_at ?? null,
     backfillInProgress: !store.last_postex_sync_at,
     unmatchedCOGSCount: unmatchedCount ?? 0,
     periods: {
@@ -310,6 +312,7 @@ export default function Dashboard() {
 
   const { periods, expensesList, unmatchedCOGSCount,
           metaConnected, isMetaExpired, isMetaExpiringSoon, metaExpiresAt,
+          metaSyncError, lastMetaSyncAt,
           backfillInProgress, cityBreakdown, breakEven } = data;
 
   // Empty state: no orders in any period
@@ -329,6 +332,8 @@ export default function Dashboard() {
           isMetaExpired={isMetaExpired}
           isMetaExpiringSoon={isMetaExpiringSoon}
           metaExpiresAt={metaExpiresAt}
+          metaSyncError={metaSyncError}
+          lastMetaSyncAt={lastMetaSyncAt}
           backfillInProgress={backfillInProgress}
         />
 
