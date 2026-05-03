@@ -1,5 +1,4 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
-import { randomUUID } from "node:crypto";
 import { authenticate } from "../shopify.server";
 import {
   buildCAPIEvent,
@@ -10,6 +9,15 @@ import {
   extractIdentityFromOrder,
   extractCustomerIdentity,
 } from "../lib/cart-attributes.server.js";
+
+// Deterministic event_id for webhook-driven events. Critical for idempotency:
+// Shopify retries any non-2xx webhook with the SAME resource id, so we MUST
+// reuse the same event_id across retries — otherwise Meta double-counts the
+// conversion. Format: "<event>:<shop>:<resource>" — stays under Meta's 100-char
+// event_id limit even for very long shop domains.
+function deterministicEventId(eventName: string, shop: string, resourceId: string | number) {
+  return `${eventName.toLowerCase()}:${shop}:${resourceId}`;
+}
 
 // One handler for all five subscribed topics. Shopify routes to the same URI
 // based on shopify.app.toml; we branch on `topic` here.
@@ -63,9 +71,10 @@ async function handleOrderPaid(shop: string, order: ShopifyOrder) {
 
   // Use the event_id stamped onto cart attributes by our Custom Web Pixel
   // (so browser-side Purchase + this server-side Purchase share a dedup key).
-  // Falls back to a fresh UUID if none was set — a webhook-only Purchase
-  // from POS, draft order, or subscription has no browser counterpart.
-  const eventId = identityHints.eventId ?? randomUUID();
+  // Falls back to a deterministic id derived from order.id — webhook retries
+  // for the same order will produce the same id, preventing Meta double-counts.
+  const eventId =
+    identityHints.eventId ?? deterministicEventId("purchase", shop, order.id);
 
   const value = Number(order.current_total_price ?? order.total_price ?? 0);
   const currency = order.presentment_currency ?? order.currency ?? "USD";
@@ -118,7 +127,12 @@ async function handleRefund(shop: string, refund: ShopifyRefund) {
   // value from the matched original Purchase based on event_id linkage.
   const event = buildCAPIEvent({
     eventName: "Refund",
-    eventId: randomUUID(),
+    // Deterministic — webhook retries for the same refund.id reuse this id.
+    eventId: deterministicEventId(
+      "refund",
+      shop,
+      `${refund.order_id}-${"id" in refund ? refund.id : refundedTotal}`
+    ),
     eventTime: refund.processed_at ? new Date(refund.processed_at) : new Date(),
     userData: {}, // no identity available on refund webhook payload
     customData: {
@@ -161,8 +175,16 @@ async function handleCheckout(
   if (!eventName) return;
 
   // Use the event_id from cart attributes so the browser-side equivalent and
-  // this server-side equivalent dedup. If none set, generate one.
-  const eventId = identityHints.eventId ?? randomUUID();
+  // this server-side equivalent dedup. Fall back to a deterministic id keyed
+  // by checkout token + event name so webhook retries (CHECKOUTS_UPDATE fires
+  // many times during a single checkout) reuse the same id. Without this,
+  // each retry produces a new event_id and Meta counts duplicate funnel events.
+  const checkoutId =
+    "token" in checkout && checkout.token
+      ? checkout.token
+      : checkout.id ?? "unknown";
+  const eventId =
+    identityHints.eventId ?? deterministicEventId(eventName, shop, checkoutId);
 
   const value = Number(checkout.total_price ?? 0);
   const currency = checkout.presentment_currency ?? checkout.currency ?? "USD";
@@ -234,13 +256,15 @@ type ShopifyOrder = {
   browser_ip?: string;
 };
 type ShopifyCheckout = ShopifyOrder & {
+  token?: string;
   payment_url?: string;
   abandoned_checkout_url?: string;
   updated_at?: string;
 };
 type ShopifyRefund = {
+  id?: number | string;
   order_id: number | string;
   processed_at?: string;
   currency?: string;
-  transactions?: Array<{ amount?: string | number }>;
+  transactions?: Array<{ amount?: string | number; kind?: string }>;
 };

@@ -315,6 +315,39 @@ export default function AdTracking() {
                   <Badge tone="success">Connected</Badge>
                 </InlineStack>
 
+                {(() => {
+                  // If they connected but no Purchase has fired yet, the
+                  // Theme App Extension probably isn't enabled — without it
+                  // cart attributes don't carry fbp/fbc into the order, and
+                  // EMQ stays low. Surface this prominently.
+                  const connectedAgo =
+                    Date.now() - new Date(connection.connected_at).getTime();
+                  const noEventsYet =
+                    !connection.last_event_sent_at && connectedAgo > 60 * 60 * 1000;
+                  const hasPurchase = recentEvents.some(
+                    (e) => e.event_name === "Purchase"
+                  );
+                  if (noEventsYet || (connectedAgo > 24 * 60 * 60 * 1000 && !hasPurchase)) {
+                    return (
+                      <Banner tone="warning" title="Enable the Theme block to start tracking">
+                        <BlockStack gap="100">
+                          <Text as="p" variant="bodyMd">
+                            We installed the storefront pixel, but the
+                            <strong> COD Tracker Cart Relay </strong>
+                            theme app block isn't active yet. Without it, server-side
+                            Purchase events miss the fbp/fbc identity that drives match quality.
+                          </Text>
+                          <Text as="p" variant="bodyMd">
+                            Online Store → Themes → Customize → App embeds →
+                            toggle <strong>COD Tracker Cart Relay</strong> on.
+                          </Text>
+                        </BlockStack>
+                      </Banner>
+                    );
+                  }
+                  return null;
+                })()}
+
                 <Divider />
 
                 <BlockStack gap="200">

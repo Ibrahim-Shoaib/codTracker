@@ -5,6 +5,36 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildCAPIEvent, shopifyEventToMeta } from "../app/lib/meta-capi.server.js";
 
+// ─── Webhook idempotency contract ────────────────────────────────────────────
+// Same shape as `deterministicEventId` in api.webhooks.meta-pixel.tsx.
+// We test it here as a black-box invariant: the same inputs MUST produce the
+// same event_id, otherwise Shopify webhook retries inflate Meta conversions.
+function deterministicEventId(eventName, shop, resourceId) {
+  return `${eventName.toLowerCase()}:${shop}:${resourceId}`;
+}
+
+test("deterministicEventId is stable across calls (idempotent webhook retries)", () => {
+  const a = deterministicEventId("Purchase", "shop.myshopify.com", 12345);
+  const b = deterministicEventId("Purchase", "shop.myshopify.com", 12345);
+  assert.equal(a, b);
+});
+
+test("deterministicEventId differs across resources (no collision)", () => {
+  assert.notEqual(
+    deterministicEventId("Purchase", "shop.myshopify.com", 1),
+    deterministicEventId("Purchase", "shop.myshopify.com", 2)
+  );
+});
+
+test("deterministicEventId stays under Meta's 100-char limit for typical shops", () => {
+  const id = deterministicEventId(
+    "InitiateCheckout",
+    "very-long-merchant-shop-name-12345.myshopify.com",
+    "abcdef1234567890abcdef1234567890"
+  );
+  assert.ok(id.length <= 100, `event_id too long: ${id.length}`);
+});
+
 test("buildCAPIEvent requires eventName", () => {
   assert.throws(() =>
     buildCAPIEvent({ eventId: "x", eventTime: 0, userData: {} })

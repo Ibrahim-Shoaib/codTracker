@@ -49,6 +49,13 @@ async function handle(request: Request) {
     return new Response("invalid body", { status: 400 });
   }
 
+  // Defend against null/non-object bodies. parseBody can return null when the
+  // request body is the literal `null` JSON, and accessing `body.event` on it
+  // would 500 instead of cleanly rejecting.
+  if (body == null || typeof body !== "object") {
+    return new Response("invalid body", { status: 400 });
+  }
+
   // Map Shopify customer-event name → Meta standard event. Unknown / skipped
   // events return null — we just 204 those without doing any work.
   const metaEventName = shopifyEventToMeta(body.event);
@@ -56,7 +63,7 @@ async function handle(request: Request) {
     return new Response(null, { status: 204 });
   }
 
-  if (!body.event_id) {
+  if (!body.event_id || typeof body.event_id !== "string") {
     return new Response("missing event_id", { status: 400 });
   }
 
