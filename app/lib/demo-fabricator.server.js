@@ -308,8 +308,14 @@ function fabricateAdSpend(deliveredRevenueToday, rng) {
 
 // ── public: generate one or more days for one store ───────────────────────
 //
-// `dates` — array of 'YYYY-MM-DD' strings. Each day is fabricated independently
-// and skipped if any orders already exist for (store_id, that day).
+// `dates`   — array of 'YYYY-MM-DD' strings. Each day is fabricated
+//             independently and skipped if any orders already exist for
+//             (store_id, that day).
+// `catalog` — optional pre-built catalog [{variant_id,product_id,
+//             product_title,variant_title,cost}]. If omitted, the function
+//             pulls from Shopify (live merchant catalog) — used by the
+//             per-merchant onboarding path. The shared demo pool passes
+//             a synthetic catalog so it never touches Shopify.
 //
 // Returns { ordersInserted, daysSkipped, daysFabricated, adSpendInserted }.
 export async function fabricateDemoDataForDates({
@@ -317,10 +323,11 @@ export async function fabricateDemoDataForDates({
   storeId,
   session,
   dates,
+  catalog: providedCatalog,
 }) {
   if (!dates?.length) return { ordersInserted: 0, daysSkipped: 0, daysFabricated: 0, adSpendInserted: 0 };
 
-  const catalog = await loadCatalog({ supabase, storeId, session });
+  const catalog = providedCatalog ?? await loadCatalog({ supabase, storeId, session });
   if (catalog.length === 0) {
     console.warn(`[demo-fabricator ${storeId}] empty catalog — Shopify products with cost > 0 required`);
     return { ordersInserted: 0, daysSkipped: 0, daysFabricated: 0, adSpendInserted: 0 };

@@ -22,10 +22,7 @@ import {
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
-import {
-  fabricateDemoDataForDates,
-  datesBetween,
-} from "../lib/demo-fabricator.server.js";
+import { ensurePoolSeeded } from "../lib/demo-pool.server.js";
 
 type Expense = { id: string; name: string; amount: number; type: "monthly" | "per_order" };
 
@@ -90,29 +87,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       .single();
 
     if (storeRow?.is_demo) {
-      const today = new Date();
-      const start = new Date(today.getTime() - 89 * 24 * 60 * 60 * 1000);
-      const ymd = (d: Date) =>
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      const dates = datesBetween(ymd(start), ymd(today));
-
-      // Fire-and-forget. last_postex_sync_at is intentionally NOT set
-      // upfront — keeping it null until the seed finishes makes the
-      // dashboard's backfillInProgress flag true, which surfaces the
-      // SyncingLoader banner. Once the seed completes (~5–15s) we stamp
-      // the timestamp, the loader disappears, and the auto-revalidator
-      // on the dashboard picks up the new orders without a manual reload.
+      // Demo stores share the pool — no per-store fabrication. The pool
+      // was seeded asynchronously back in step 1 (ensurePoolSeeded);
+      // here we just guarantee it's ready in case the merchant flew
+      // through onboarding faster than the seed could finish.
       void (async () => {
         try {
-          await fabricateDemoDataForDates({
-            supabase,
-            storeId: shop,
-            session,
-            dates,
-          });
+          await ensurePoolSeeded(supabase);
         } catch (err) {
-          console.error(`[demo seed ${shop}] failed:`, err);
+          console.error(`[demo onboard ${shop}] ensurePoolSeeded failed:`, err);
         }
+        // Stamp the sync timestamp so the dashboard's loader banner
+        // disappears and the merchant lands on a populated dashboard.
         await supabase
           .from("stores")
           .update({ last_postex_sync_at: new Date().toISOString() })

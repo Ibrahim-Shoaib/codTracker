@@ -21,6 +21,7 @@ import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { validateToken } from "../lib/postex.server.js";
 import { runHistoricalBackfill } from "../lib/backfill.server.js";
 import { fixZeroInvoicePayments } from "../lib/invoice-fix.server.js";
+import { ensurePoolSeeded } from "../lib/demo-pool.server.js";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -63,6 +64,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         onboarding_step: 2,
       })
       .eq("store_id", shop);
+
+    // Make sure the shared demo pool has data. Fire-and-forget — by the
+    // time the merchant finishes step 4 (Meta + COGS + expenses) the pool
+    // is seeded for them to read. Idempotent: no-op if pool is already
+    // populated, so concurrent demo onboardings don't double-seed.
+    void ensurePoolSeeded(supabase).catch((err) =>
+      console.error(`[demo onboard ${shop}] ensurePoolSeeded failed:`, err)
+    );
+
     return redirect("/app/onboarding/step2-meta");
   }
 

@@ -25,6 +25,7 @@ import {
 import { isTokenExpired, isTokenExpiringSoon } from "../lib/meta.server.js";
 import { fetchUnfulfilledPipeline } from "../lib/shopify-pipeline.server.js";
 import { fetchDemoPipeline } from "../lib/demo-pipeline.server.js";
+import { effectiveStoreId } from "../lib/demo-pool.server.js";
 import KPICard from "../components/KPICard.jsx";
 import WarningBanner from "../components/WarningBanner.jsx";
 import DetailPanel from "../components/DetailPanel.jsx";
@@ -89,6 +90,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const expenses = expensesList ?? [];
   const monthlyExp   = expenses.filter((e: any) => e.type === "monthly").reduce((s: number, e: any) => s + Number(e.amount), 0);
   const perOrderExp  = expenses.filter((e: any) => e.type === "per_order").reduce((s: number, e: any) => s + Number(e.amount), 0);
+
+  // For demo stores, all orders/ad_spend reads target the shared pool
+  // store_id; expenses + COGS lookups continue to use the merchant's
+  // own shop. This single switch is what makes "every demo store sees
+  // the same data" work without changing the rest of the dashboard.
+  const dataStoreId = effectiveStoreId(store, shop);
 
   // 2. Period boundaries
   const today     = getTodayPKT();
@@ -157,23 +164,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     cityRes,
     trendRes,
   ] = await Promise.all([
-    statsRpc(supabase, shop, todayFrom, todayTo, monthlyExp, perOrderExp),
-    statsRpc(supabase, shop, yestFrom,  yestTo,  monthlyExp, perOrderExp),
-    statsRpc(supabase, shop, mtdFrom,   mtdTo,   monthlyExp, perOrderExp),
-    statsRpc(supabase, shop, lmFrom,    lmTo,    monthlyExp, perOrderExp),
-    statsRpc(supabase, shop, dbyFrom,     dbyTo,     monthlyExp, perOrderExp),
-    statsRpc(supabase, shop, mtdCompFrom, mtdCompTo, monthlyExp, perOrderExp),
-    statsRpc(supabase, shop, mblFrom,     mblTo,     monthlyExp, perOrderExp),
-    statsRpc(supabase, shop, window30From, windowTo, monthlyExp, perOrderExp),
-    statsRpc(supabase, shop, window60From, windowTo, monthlyExp, perOrderExp),
-    statsRpc(supabase, shop, window90From, windowTo, monthlyExp, perOrderExp),
+    statsRpc(supabase, dataStoreId, todayFrom, todayTo, monthlyExp, perOrderExp),
+    statsRpc(supabase, dataStoreId, yestFrom,  yestTo,  monthlyExp, perOrderExp),
+    statsRpc(supabase, dataStoreId, mtdFrom,   mtdTo,   monthlyExp, perOrderExp),
+    statsRpc(supabase, dataStoreId, lmFrom,    lmTo,    monthlyExp, perOrderExp),
+    statsRpc(supabase, dataStoreId, dbyFrom,     dbyTo,     monthlyExp, perOrderExp),
+    statsRpc(supabase, dataStoreId, mtdCompFrom, mtdCompTo, monthlyExp, perOrderExp),
+    statsRpc(supabase, dataStoreId, mblFrom,     mblTo,     monthlyExp, perOrderExp),
+    statsRpc(supabase, dataStoreId, window30From, windowTo, monthlyExp, perOrderExp),
+    statsRpc(supabase, dataStoreId, window60From, windowTo, monthlyExp, perOrderExp),
+    statsRpc(supabase, dataStoreId, window90From, windowTo, monthlyExp, perOrderExp),
     supabase
       .from("orders")
       .select("id", { count: "exact", head: true })
-      .eq("store_id", shop)
+      .eq("store_id", dataStoreId)
       .eq("cogs_match_source", "none"),
     (supabase as any).rpc("get_city_breakdown", {
-      p_store_id:  shop,
+      p_store_id:  dataStoreId,
       p_from_date: cityFromDate,
       p_to_date:   cityToDate,
     }),
@@ -184,7 +191,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const prior = getPriorEqualLengthRange(window30From, windowTo);
       const [cur, pri] = await Promise.all([
         (supabase as any).rpc("get_trend_series", {
-          p_store_id:           shop,
+          p_store_id:           dataStoreId,
           p_from_date:          window30From,
           p_to_date:            windowTo,
           p_monthly_expenses:   monthlyExp,
@@ -192,7 +199,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           p_granularity:        "day",
         }),
         (supabase as any).rpc("get_trend_series", {
-          p_store_id:           shop,
+          p_store_id:           dataStoreId,
           p_from_date:          prior.from,
           p_to_date:            prior.to,
           p_monthly_expenses:   monthlyExp,
@@ -321,7 +328,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
   const unfulfilledPipeline = (
     store.is_demo
-      ? fetchDemoPipeline(supabase, shop, pipelineRanges)
+      ? fetchDemoPipeline(supabase, dataStoreId, pipelineRanges)
       : fetchUnfulfilledPipeline(session, pipelineRanges)
   ).catch((err) => {
     console.error("Pipeline fetch failed:", err);

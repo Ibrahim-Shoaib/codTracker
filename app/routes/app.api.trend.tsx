@@ -7,6 +7,7 @@ import {
   formatPKTDate,
   getPriorEqualLengthRange,
 } from "../lib/dates.server.js";
+import { effectiveStoreId } from "../lib/demo-pool.server.js";
 
 // Resource route the dashboard chart uses to swap windows without reloading.
 // Returns the Shopify-style "current period vs prior equal-length period"
@@ -88,7 +89,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const supabase = await getSupabaseForStore(shop);
 
-  // Mirror dashboard expense math
+  // Mirror dashboard expense math (per-store — even for demo, expenses
+  // are the merchant's own entered values).
   const { data: expensesList } = await supabase
     .from("store_expenses")
     .select("amount, type")
@@ -101,8 +103,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     .filter((e: any) => e.type === "per_order")
     .reduce((s: number, e: any) => s + Number(e.amount), 0);
 
+  // Demo stores read trend data from the shared pool. Fetch the is_demo
+  // flag with a single cheap query — same swap the dashboard loader does.
+  const { data: storeRow } = await supabase
+    .from("stores")
+    .select("is_demo")
+    .eq("store_id", shop)
+    .single();
+  const dataStoreId = effectiveStoreId(storeRow ?? null, shop);
+
   const args = {
-    p_store_id: shop,
+    p_store_id: dataStoreId,
     p_monthly_expenses: monthlyExp,
     p_per_order_expenses: perOrderExp,
     p_granularity: granularity,

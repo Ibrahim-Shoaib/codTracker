@@ -1,31 +1,32 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { createClient } from "@supabase/supabase-js";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
-import { sessionStorage } from "../shopify.server";
 import {
-  fabricateDemoDataForDates,
-  datesBetween,
-  sweepStaleInTransit,
-} from "../lib/demo-fabricator.server.js";
-import { getTodayPKT, formatPKTDate } from "../lib/dates.server.js";
+  DEMO_POOL_STORE_ID,
+  ensurePoolSeeded,
+  reseedPool,
+  tickPool,
+} from "../lib/demo-pool.server.js";
 
-// Daily cron: keeps every is_demo store's data rolling forward by appending
-// "today" each day. Idempotent — calling this multiple times in one day is
-// a no-op for any day that already has orders, so safe to retry / re-fire.
+// Daily cron: keeps the shared demo pool's data rolling forward by
+// appending today + sweeping any in-transit orders past the 14-day window.
+// All is_demo merchant stores read from this pool, so a single tick is
+// enough no matter how many demo merchants are onboarded.
 //
-// Recommended Railway schedule: 0 4 * * *  (UTC = 9 AM PKT). Pick any time
-// — there's no data race, the per-day idempotency check ensures we never
-// double-insert.
+// Recommended Railway schedule: 0 4 * * *  (UTC = 9 AM PKT). The per-day
+// idempotency check in the fabricator means re-runs are no-ops, so it's
+// safe to run more often.
 //
 // Auth: same x-cron-secret pattern as the other crons.
 //
-// Accepts both POST (cron) and GET (manual debug) so you can hit the URL
-// from a browser when iterating locally.
-
-function ymdOf(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
+// Optional query params:
+//   ?reseed=1            → wipe the pool's orders + ad_spend and re-fabricate
+//                         the last 90 days. Use after fabrication-parameter
+//                         changes so existing data adopts the new math.
+//   ?days=N              → with reseed, controls how many past days to seed
+//                         (default 90).
+//
+// Both POST and GET handlers so it can be triggered manually.
 
 async function tick(request: Request) {
   if (request.headers.get("x-cron-secret") !== process.env.CRON_SECRET) {
@@ -33,90 +34,43 @@ async function tick(request: Request) {
   }
 
   const url = new URL(request.url);
-  // Reseed mode: wipe + regenerate the requested window (default 90d) for
-  // either one named store (?shop=…) or all demo stores. Use after
-  // changing fabrication parameters so existing demos pick up the new math.
   const reseed = url.searchParams.get("reseed") === "1";
-  const targetShop = url.searchParams.get("shop");
   const reseedDays = Number(url.searchParams.get("days") ?? 90);
 
-  const adminClient = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  // The pool runs under its own sentinel store_id — getSupabaseForStore
+  // sets the RLS context to it (no-op since service-role bypasses RLS,
+  // but keeps the convention consistent with the rest of the codebase).
+  const supabase = await getSupabaseForStore(DEMO_POOL_STORE_ID);
 
-  // Build the store list. In reseed mode the targetShop param can scope to
-  // one store; we still verify it's marked is_demo so we never wipe a real
-  // merchant's data by accident.
-  let storesQuery = adminClient.from("stores").select("store_id").eq("is_demo", true);
-  if (targetShop) storesQuery = storesQuery.eq("store_id", targetShop);
-  const { data: stores } = await storesQuery;
-
-  if (!stores?.length) return json({ ticked: 0, total: 0, mode: reseed ? "reseed" : "tick" });
-
-  const todayPkt = formatPKTDate(getTodayPKT().start);
-  const reseedDates = reseed
-    ? datesBetween(
-        ymdOf(new Date(Date.now() - (reseedDays - 1) * 24 * 60 * 60 * 1000)),
-        ymdOf(new Date())
-      )
-    : null;
-
-  let ticked = 0;
-  let totalOrders = 0;
-  let errors = 0;
-
-  for (const store of stores) {
-    try {
-      const offlineSession = await sessionStorage.loadSession(`offline_${store.store_id}`);
-      if (!offlineSession) {
-        console.warn(`[demo-tick] no offline session for ${store.store_id}, skipping`);
-        continue;
-      }
-      const supabase = await getSupabaseForStore(store.store_id);
-
-      // Reseed: wipe existing fabricated data so the new params take effect.
-      // The is_demo guard above means this can never touch a real merchant.
-      if (reseed) {
-        await supabase.from("orders").delete().eq("store_id", store.store_id);
-        await supabase.from("ad_spend").delete().eq("store_id", store.store_id);
-      }
-
-      const result = await fabricateDemoDataForDates({
-        supabase,
-        storeId: store.store_id,
-        session: offlineSession,
-        dates: reseedDates ?? [todayPkt],
+  try {
+    if (reseed) {
+      const result = await reseedPool(supabase, reseedDays);
+      return json({
+        mode: "reseed",
+        pool: DEMO_POOL_STORE_ID,
+        days: reseedDays,
+        ordersInserted: result.ordersInserted,
+        adSpendInserted: result.adSpendInserted,
+        daysFabricated: result.daysFabricated,
       });
-      totalOrders += result.ordersInserted;
-
-      // Resolve any in-transit orders past 14 days to terminal state — same
-      // way real PostEx shipments would have completed by now.
-      const sweepResult = await sweepStaleInTransit(supabase, store.store_id);
-      if (sweepResult.swept > 0) {
-        console.log(`[demo-tick ${store.store_id}] swept ${sweepResult.swept} stale in-transit (${sweepResult.delivered}d/${sweepResult.returned}r/${sweepResult.cancelled}c)`);
-      }
-
-      await adminClient
-        .from("stores")
-        .update({ last_postex_sync_at: new Date().toISOString() })
-        .eq("store_id", store.store_id);
-      ticked++;
-    } catch (err) {
-      console.error(`[demo-tick ${store.store_id}] failed:`, err);
-      errors++;
     }
-  }
 
-  return json({
-    mode: reseed ? "reseed" : "tick",
-    ticked,
-    total: stores.length,
-    totalOrders,
-    errors,
-    day: todayPkt,
-    reseedDays: reseed ? reseedDays : undefined,
-  });
+    // Default tick: ensure pool has at least its 90-day seed (no-op when
+    // already populated), then append today + sweep stale in-transit.
+    const seedResult = await ensurePoolSeeded(supabase);
+    const tickResult = await tickPool(supabase);
+
+    return json({
+      mode: "tick",
+      pool: DEMO_POOL_STORE_ID,
+      seedAlreadyPresent: seedResult.alreadySeeded,
+      todayOrdersInserted: tickResult.fab.ordersInserted,
+      stale: tickResult.sweep,
+    });
+  } catch (err: any) {
+    console.error("[demo-tick] failed:", err);
+    return json({ error: err?.message ?? String(err) }, { status: 500 });
+  }
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => tick(request);
