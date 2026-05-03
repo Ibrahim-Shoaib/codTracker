@@ -1,61 +1,61 @@
 // Replacement for fetchUnfulfilledPipeline (Shopify Admin API call) for
-// stores marked is_demo. Same return shape, but bucketizes the in-transit
-// fabricated orders out of our own DB so the dashboard never hits Shopify
-// for a demo store. Internally consistent: the value the pills show always
-// matches the rows that drive the rest of the dashboard.
+// stores marked is_demo. Same return shape, but never hits Shopify.
+//
+// Conceptually different from the dashboard's in_transit_value pill:
+//   * Unfulfilled (this helper) = orders sitting in Shopify that the
+//     merchant hasn't sent to PostEx yet. Real merchants only see this
+//     for *today's* orders — anything older has already been processed.
+//   * In Transit (stats.in_transit_value, computed by get_dashboard_stats)
+//     = orders shipped via PostEx that haven't yet been delivered/returned.
+//     Spans the full 14-day in-transit window.
+//
+// So: only the Today bucket is non-zero here; yesterday / MTD / last month
+// are always 0. The number we surface for Today is a small fraction
+// (~25%) of today's fabricated in-transit volume — it represents the
+// portion still "queued in Shopify" instead of "out with PostEx".
 //
 // Returns: { today: { count, value }, yesterday: …, mtd: …, lastMonth: … }
 // or null on error (caller already handles null gracefully).
 
+const UNFULFILLED_FRACTION_OF_TODAY = 0.25;
+
 export async function fetchDemoPipeline(supabase, storeId, ranges) {
   if (!ranges) return null;
-  // Use the widest envelope across all four ranges as the SQL filter so we
-  // make a single round trip, then bucket in JS — same approach as the real
-  // Shopify pipeline helper.
-  const fromFloor = Object.values(ranges).reduce(
-    (min, r) => (r.from < min ? r.from : min),
-    '9999-12-31'
-  );
-  const toCeiling = Object.values(ranges).reduce(
-    (max, r) => (r.to > max ? r.to : max),
-    '0000-01-01'
-  );
 
-  const { data, error } = await supabase
-    .from('orders')
-    .select('transaction_date, invoice_payment')
-    .eq('store_id', storeId)
-    .eq('is_in_transit', true)
-    .gte('transaction_date', `${fromFloor}T00:00:00+05:00`)
-    .lte('transaction_date', `${toCeiling}T23:59:59+05:00`);
-
-  if (error) {
-    console.error('[demo-pipeline] query failed:', error);
-    return null;
-  }
-
-  const buckets = {
+  const empty = {
     today:     { count: 0, value: 0 },
     yesterday: { count: 0, value: 0 },
     mtd:       { count: 0, value: 0 },
     lastMonth: { count: 0, value: 0 },
   };
 
-  for (const row of data ?? []) {
-    // transaction_date comes back as an ISO string in UTC. We compare on
-    // PKT calendar dates — shift the timestamp to PKT then take YYYY-MM-DD.
-    const t = new Date(row.transaction_date);
-    const pktMs = t.getTime() + 5 * 60 * 60 * 1000;
-    const pkt = new Date(pktMs);
-    const ymd = `${pkt.getUTCFullYear()}-${String(pkt.getUTCMonth() + 1).padStart(2, '0')}-${String(pkt.getUTCDate()).padStart(2, '0')}`;
-    const amount = Number(row.invoice_payment) || 0;
-    for (const [key, range] of Object.entries(ranges)) {
-      if (ymd >= range.from && ymd <= range.to) {
-        buckets[key].count += 1;
-        buckets[key].value += amount;
-      }
-    }
+  const todayRange = ranges.today;
+  if (!todayRange) return empty;
+
+  // Today's in-transit orders — the universe we draw the unfulfilled
+  // sample from. Single round-trip, scoped to a single PKT day.
+  const { data, error } = await supabase
+    .from('orders')
+    .select('invoice_payment')
+    .eq('store_id', storeId)
+    .eq('is_in_transit', true)
+    .gte('transaction_date', `${todayRange.from}T00:00:00+05:00`)
+    .lte('transaction_date', `${todayRange.to}T23:59:59+05:00`);
+
+  if (error) {
+    console.error('[demo-pipeline] query failed:', error);
+    return null;
   }
 
-  return buckets;
+  const rows = data ?? [];
+  const totalCount = rows.length;
+  const totalValue = rows.reduce((s, r) => s + (Number(r.invoice_payment) || 0), 0);
+
+  return {
+    ...empty,
+    today: {
+      count: Math.round(totalCount * UNFULFILLED_FRACTION_OF_TODAY),
+      value: Math.round(totalValue * UNFULFILLED_FRACTION_OF_TODAY),
+    },
+  };
 }
