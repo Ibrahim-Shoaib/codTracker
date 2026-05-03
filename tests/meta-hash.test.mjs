@@ -47,6 +47,25 @@ test("normalizePhone returns null for too-short input", () => {
   assert.equal(normalizePhone("123"), null);
 });
 
+test("normalizePhone prepends dial code when country is known and missing", () => {
+  // Pakistani local format: "0300 1234567" → "923001234567" (E.164)
+  assert.equal(normalizePhone("0300 1234567", "PK"), "923001234567");
+  // US local format: "(415) 555-0123" → "14155550123"
+  assert.equal(normalizePhone("(415) 555-0123", "US"), "14155550123");
+  // UK with leading 0: "07700 900123" → "447700900123"
+  assert.equal(normalizePhone("07700 900123", "GB"), "447700900123");
+});
+
+test("normalizePhone leaves number alone if dial code already present", () => {
+  assert.equal(normalizePhone("923001234567", "PK"), "923001234567");
+  assert.equal(normalizePhone("+923001234567", "PK"), "923001234567");
+});
+
+test("normalizePhone passes through unknown countries without modification", () => {
+  assert.equal(normalizePhone("0300 1234567", "ZZ"), "03001234567");
+  assert.equal(normalizePhone("0300 1234567"), "03001234567");
+});
+
 test("normalizeName strips diacritics, lowercases, removes punctuation", () => {
   assert.equal(normalizeName("José"), "jose");
   assert.equal(normalizeName("O'Brien"), "obrien");

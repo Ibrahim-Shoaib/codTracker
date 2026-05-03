@@ -29,12 +29,39 @@ export function normalizeEmail(value) {
   return v;
 }
 
-// Phone: digits only, must include country code (no leading +).
+// Phone: E.164-style digits only (country code prefix, no leading +).
 // "+92 300 1234567" → "923001234567"
-export function normalizePhone(value) {
+//
+// Meta's documented EMQ optimization: phone in E.164 format (with country
+// code) adds ~3 EMQ points vs. local-format phone. The value on a Shopify
+// order is whatever the customer typed at checkout, which is often just
+// "0300 1234567" without country code. We use the order's
+// shipping/billing country_code to recover the missing prefix.
+//
+// Country code → dial code mapping. Limited to markets we know merchants
+// operate in; other regions pass through with whatever digits they have.
+const DIAL_CODES = {
+  PK: "92", IN: "91", BD: "880", LK: "94",     // South Asia
+  AE: "971", SA: "966", QA: "974", KW: "965", OM: "968", BH: "973",  // Gulf
+  GB: "44", US: "1", CA: "1", AU: "61",        // Anglosphere
+  DE: "49", FR: "33", IT: "39", ES: "34", NL: "31",  // EU
+};
+
+export function normalizePhone(value, countryCode) {
   if (!value) return null;
-  const digits = String(value).replace(/\D/g, "");
+  let digits = String(value).replace(/\D/g, "");
   if (digits.length < 7) return null;
+
+  // If country code is known and the phone doesn't already start with it,
+  // try to recover the country prefix. Strips a leading domestic-trunk
+  // zero first ("03001234567" → "3001234567"), then prepends the dial code.
+  const cc = countryCode ? String(countryCode).toUpperCase() : null;
+  const dial = cc && DIAL_CODES[cc];
+  if (dial && !digits.startsWith(dial)) {
+    if (digits.startsWith("0")) digits = digits.slice(1);
+    digits = dial + digits;
+  }
+
   return digits;
 }
 
@@ -97,8 +124,8 @@ export function hashEmail(value) {
   return n ? sha256(n) : null;
 }
 
-export function hashPhone(value) {
-  const n = normalizePhone(value);
+export function hashPhone(value, countryCode) {
+  const n = normalizePhone(value, countryCode);
   return n ? sha256(n) : null;
 }
 
@@ -147,7 +174,10 @@ export function buildUserData(input) {
   const em = hashEmail(input.email);
   if (em) ud.em = [em];
 
-  const ph = hashPhone(input.phone);
+  // Pass the order's country code so phone-normalization can prepend the
+  // right dial code (E.164 format) when the customer typed a domestic-format
+  // number. Adds ~3 EMQ points per Meta's documented matching rules.
+  const ph = hashPhone(input.phone, input.country);
   if (ph) ud.ph = [ph];
 
   const fn = hashName(input.firstName);

@@ -100,6 +100,13 @@ export function buildCAPIEvent({
     event_id: eventId,
     action_source: actionSource,
     user_data: userData ?? {},
+    // Empty array signals "full data processing" (no Limited Data Use).
+    // Meta's docs require this field to be present even when not restricted —
+    // omitting it can trigger ambiguous handling for users in regions with
+    // privacy laws (CCPA/GDPR). Pakistani merchants don't currently fall
+    // under LDU rules, but sending [] explicitly is the documented best
+    // practice and improves data quality scoring on Meta's side.
+    data_processing_options: [],
   };
   if (eventSourceUrl) evt.event_source_url = eventSourceUrl;
   if (customData && Object.keys(customData).length) evt.custom_data = customData;

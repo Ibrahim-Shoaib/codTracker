@@ -89,6 +89,18 @@ test("buildCAPIEvent defaults action_source to 'website'", () => {
   assert.equal(evt.action_source, "website");
 });
 
+test("buildCAPIEvent always includes data_processing_options for GDPR/CCPA compliance", () => {
+  const evt = buildCAPIEvent({
+    eventName: "Purchase",
+    eventId: "id",
+    userData: {},
+  });
+  // Empty array signals "full data processing" (no Limited Data Use).
+  // Meta's docs require this field even when not restricted.
+  assert.ok(Array.isArray(evt.data_processing_options));
+  assert.equal(evt.data_processing_options.length, 0);
+});
+
 test("buildCAPIEvent omits empty custom_data", () => {
   const evt = buildCAPIEvent({
     eventName: "Purchase",

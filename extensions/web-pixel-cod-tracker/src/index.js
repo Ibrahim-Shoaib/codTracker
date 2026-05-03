@@ -5,6 +5,11 @@
 // endpoint (/apps/tracking/track) so the server-side CAPI relay can fire
 // matching events with the highest possible Event Match Quality.
 //
+// CRITICAL: event_id MUST match between the browser pixel event and the
+// server-side CAPI event for Meta to deduplicate. We use the same
+// `<event>:<shop>:<resource>` format on both sides — see
+// app/routes/api.webhooks.meta-pixel.tsx for the matching server logic.
+//
 // Sandbox APIs available:
 //   analytics.subscribe(name, cb)
 //   browser.cookie.get / set
@@ -17,7 +22,7 @@ import { register } from "@shopify/web-pixels-extension";
 register(({ analytics, browser, init, settings }) => {
   const accountID = settings?.accountID;
   if (!accountID) {
-    // No shop id → can't route the beacon. Bail silently rather than throw.
+    // No shop id → can't route the beacon, can't compute deterministic event_ids. Bail silently.
     return;
   }
 
@@ -32,7 +37,6 @@ register(({ analytics, browser, init, settings }) => {
   const NINETY_DAYS = 90 * 24 * 60 * 60;
 
   function generateFbp() {
-    // Format: fb.1.<unix_ms>.<10-digit-random>
     const rand = Math.floor(Math.random() * 1e10);
     return `fb.1.${Date.now()}.${rand}`;
   }
@@ -43,7 +47,6 @@ register(({ analytics, browser, init, settings }) => {
     return m ? decodeURIComponent(m[1]) : null;
   }
 
-  // Read or initialize _fbp / _fbc cookies on the storefront domain.
   async function ensureFbCookies() {
     let fbp = await browser.cookie.get("_fbp");
     if (!fbp) {
@@ -61,27 +64,32 @@ register(({ analytics, browser, init, settings }) => {
     return { fbp, fbc, fbclid };
   }
 
-  // Generate or reuse a per-event UUID. Same event_id is also written to cart
-  // attributes by the Theme App Extension snippet — that's how the server-side
-  // Purchase event from the order webhook dedups against our beacon Purchase.
-  function uuid() {
-    // RFC4122 v4-ish — sandbox doesn't expose crypto.randomUUID reliably.
-    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === "x" ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
+  // ─── event_id strategy ──────────────────────────────────────────────────────
+  //
+  // Deterministic format `<event>:<shop>:<resource>` matched on the server.
+  // For events with a stable resource id available in the customer-event
+  // payload (Purchase has order.id, AddPaymentInfo/InitiateCheckout have
+  // checkout.token), we derive the id; webhook retries + browser pixel both
+  // produce the SAME id so Meta deduplicates correctly.
+  //
+  // For events without a stable resource id (PageView, ViewContent, AddToCart
+  // before a cart is created, Search), we fall back to a session+timestamp
+  // composite that's stable across the same page load — these events don't
+  // have a webhook counterpart so dedup isn't critical for them.
+
+  function deterministicId(eventName, resourceId) {
+    return `${eventName.toLowerCase()}:${accountID}:${resourceId}`;
   }
 
-  // Persist the current Purchase event_id under a cart attribute so the
-  // order webhook handler can match. localStorage backup in case the user
-  // navigates away without a cart yet.
-  async function setEventId(eventId) {
-    try {
-      await browser.localStorage.setItem("_cod_event_id", eventId);
-    } catch (_) {
-      /* storage might be blocked — beacons still work */
-    }
+  // Per-page-load random id, used as a fallback when no resource id is in
+  // scope. Computed once and reused so retries within the same page hit dedup.
+  const PAGE_SESSION = (function () {
+    const rand = Math.floor(Math.random() * 1e12).toString(36);
+    return `${Date.now()}.${rand}`;
+  })();
+
+  function fallbackId(eventName) {
+    return `${eventName.toLowerCase()}:${accountID}:${PAGE_SESSION}`;
   }
 
   // ─── Beacon ─────────────────────────────────────────────────────────────────
@@ -89,11 +97,8 @@ register(({ analytics, browser, init, settings }) => {
   function send(payload) {
     try {
       const body = JSON.stringify(payload);
-      // sendBeacon is fire-and-forget and survives the page unload that
-      // happens immediately after checkout_completed.
       browser.sendBeacon(beaconBase, body);
     } catch (err) {
-      // Last-resort fallback; sendBeacon errors are swallowed by spec.
       try {
         fetch(beaconBase, {
           method: "POST",
@@ -108,12 +113,8 @@ register(({ analytics, browser, init, settings }) => {
     }
   }
 
-  async function track(eventName, customData = {}) {
+  async function track(eventName, eventId, customData = {}) {
     const { fbp, fbc } = await ensureFbCookies();
-    const eventId = uuid();
-    if (eventName === "checkout_completed") {
-      await setEventId(eventId);
-    }
     send({
       event: eventName,
       event_id: eventId,
@@ -127,13 +128,19 @@ register(({ analytics, browser, init, settings }) => {
   }
 
   // ─── Subscribe to standard customer events ─────────────────────────────────
-  // Skipping page_viewed entirely — it's noisy and Meta's algorithm doesn't
-  // optimize on it for ecom Purchase campaigns.
+
+  // PageView — included for retargeting and Lookalike-from-website-visitors
+  // audience generation. Some merchants run brand-awareness campaigns that
+  // need this signal. AEM no longer caps at 8 events (June 2025), so the
+  // bandwidth tradeoff is fine.
+  analytics.subscribe("page_viewed", () => {
+    track("page_viewed", fallbackId("page_viewed"));
+  });
 
   analytics.subscribe("product_viewed", (event) => {
     const variant = event?.data?.productVariant;
     if (!variant) return;
-    track("product_viewed", {
+    track("product_viewed", fallbackId("product_viewed"), {
       content_ids: variant.product?.id ? [String(variant.product.id)] : [],
       value: Number(variant.price?.amount ?? 0),
       currency: variant.price?.currencyCode,
@@ -144,7 +151,7 @@ register(({ analytics, browser, init, settings }) => {
   analytics.subscribe("product_added_to_cart", (event) => {
     const item = event?.data?.cartLine;
     const merch = item?.merchandise;
-    track("product_added_to_cart", {
+    track("product_added_to_cart", fallbackId("product_added_to_cart"), {
       content_ids: merch?.product?.id ? [String(merch.product.id)] : [],
       value: Number(item?.cost?.totalAmount?.amount ?? 0),
       currency: item?.cost?.totalAmount?.currencyCode,
@@ -155,13 +162,21 @@ register(({ analytics, browser, init, settings }) => {
   analytics.subscribe("search_submitted", (event) => {
     const query = event?.data?.searchResult?.query;
     if (!query) return;
-    track("search_submitted", { search_string: query });
+    track("search_submitted", fallbackId("search_submitted"), {
+      search_string: query,
+    });
   });
 
+  // checkout_started → InitiateCheckout. Use checkout.token as the resource id
+  // so the matching server-side webhook (CHECKOUTS_CREATE) produces the same
+  // event_id and Meta dedups.
   analytics.subscribe("checkout_started", (event) => {
     const c = event?.data?.checkout;
     if (!c) return;
-    track("checkout_started", {
+    const eventId = c.token
+      ? deterministicId("InitiateCheckout", c.token)
+      : fallbackId("checkout_started");
+    track("checkout_started", eventId, {
       value: Number(c.totalPrice?.amount ?? 0),
       currency: c.totalPrice?.currencyCode,
       num_items: c.lineItems?.reduce?.(
@@ -175,21 +190,31 @@ register(({ analytics, browser, init, settings }) => {
     });
   });
 
+  // payment_info_submitted → AddPaymentInfo. Same checkout.token as InitiateCheckout
+  // but a different event_id (event-name is part of the deterministic key).
   analytics.subscribe("payment_info_submitted", (event) => {
     const c = event?.data?.checkout;
-    track("payment_info_submitted", {
+    const eventId = c?.token
+      ? deterministicId("AddPaymentInfo", c.token)
+      : fallbackId("payment_info_submitted");
+    track("payment_info_submitted", eventId, {
       value: Number(c?.totalPrice?.amount ?? 0),
       currency: c?.totalPrice?.currencyCode,
     });
   });
 
+  // checkout_completed → Purchase. The MOST critical event_id to get right —
+  // this is the one Meta optimizes against. Use order.id (always present in
+  // the completed-checkout payload) so the webhook-driven Purchase
+  // (orders/paid) generates the IDENTICAL event_id and Meta deduplicates.
   analytics.subscribe("checkout_completed", (event) => {
     const c = event?.data?.checkout;
     if (!c) return;
-    // Identity hints on completed checkout — Shopify provides hashed-able
-    // email/phone here; we forward unhashed and let the server hash with
-    // the correct normalization.
-    track("checkout_completed", {
+    const orderId = c.order?.id;
+    const eventId = orderId
+      ? deterministicId("Purchase", orderId)
+      : fallbackId("checkout_completed");
+    track("checkout_completed", eventId, {
       value: Number(c.totalPrice?.amount ?? 0),
       currency: c.totalPrice?.currencyCode,
       num_items: c.lineItems?.reduce?.(
