@@ -96,23 +96,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       const dates = datesBetween(ymd(start), ymd(today));
 
-      // Stamp the sync timestamp immediately so the dashboard renders normally
-      // while fabrication runs in the background.
-      await supabase
-        .from("stores")
-        .update({ last_postex_sync_at: new Date().toISOString() })
-        .eq("store_id", shop);
-
-      // Fire-and-forget — fabrication for 90 days takes a few seconds; the
-      // dashboard will show data progressively as it lands.
-      void fabricateDemoDataForDates({
-        supabase,
-        storeId: shop,
-        session,
-        dates,
-      }).catch((err) =>
-        console.error(`[demo seed ${shop}] failed:`, err)
-      );
+      // Fire-and-forget. last_postex_sync_at is intentionally NOT set
+      // upfront — keeping it null until the seed finishes makes the
+      // dashboard's backfillInProgress flag true, which surfaces the
+      // SyncingLoader banner. Once the seed completes (~5–15s) we stamp
+      // the timestamp, the loader disappears, and the auto-revalidator
+      // on the dashboard picks up the new orders without a manual reload.
+      void (async () => {
+        try {
+          await fabricateDemoDataForDates({
+            supabase,
+            storeId: shop,
+            session,
+            dates,
+          });
+        } catch (err) {
+          console.error(`[demo seed ${shop}] failed:`, err);
+        }
+        await supabase
+          .from("stores")
+          .update({ last_postex_sync_at: new Date().toISOString() })
+          .eq("store_id", shop);
+      })();
     }
 
     return redirect("/app");

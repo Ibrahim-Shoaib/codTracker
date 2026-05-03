@@ -1,13 +1,11 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { defer, json } from "@remix-run/node";
-import { Navigate, useLoaderData } from "@remix-run/react";
-import { useState } from "react";
+import { Navigate, useLoaderData, useRevalidator } from "@remix-run/react";
+import { useEffect, useState } from "react";
 import {
   Page,
   BlockStack,
   InlineGrid,
-  Text,
-  EmptyState,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -33,6 +31,7 @@ import DetailPanel from "../components/DetailPanel.jsx";
 import CityLossPanel from "../components/CityLossPanel.jsx";
 import BreakEvenSection from "../components/BreakEvenSection.jsx";
 import TrendPanel from "../components/TrendPanel.jsx";
+import SyncingLoader from "../components/SyncingLoader.jsx";
 
 const STEP_ROUTES: Record<number, string> = {
   1: "/app/onboarding/step1-postex",
@@ -373,12 +372,16 @@ export default function Dashboard() {
           backfillInProgress, cityBreakdown, breakEven, trend,
           unfulfilledPipeline } = data;
 
-  // Empty state: no orders in any period
-  const totalOrders = PERIOD_KEYS.reduce(
-    (sum, k) => sum + Number(periods[k].stats?.orders ?? 0),
-    0
-  );
-  const isEmpty = totalOrders === 0;
+  // Auto-revalidate while data is being populated (real-store PostEx
+  // backfill or demo-store fabrication). Polls every 4 seconds so cards
+  // fill in without the merchant having to refresh. Stops as soon as
+  // last_postex_sync_at flips, which makes backfillInProgress false.
+  const revalidator = useRevalidator();
+  useEffect(() => {
+    if (!backfillInProgress) return;
+    const id = setInterval(() => revalidator.revalidate(), 4000);
+    return () => clearInterval(id);
+  }, [backfillInProgress, revalidator]);
 
   return (
     <Page>
@@ -394,23 +397,18 @@ export default function Dashboard() {
           backfillInProgress={backfillInProgress}
         />
 
-        {isEmpty ? (
-          <EmptyState
-            heading={
-              backfillInProgress
-                ? "Syncing your order history…"
-                : "No orders found"
-            }
-            image=""
-          >
-            <Text as="p" tone="subdued">
-              {backfillInProgress
-                ? "Your order data is being synced. Check back in a few minutes."
-                : "No orders found for any of the tracked periods."}
-            </Text>
-          </EmptyState>
-        ) : (
-          <>
+        {/* Always render the full app — even with zero orders, every card
+            shows so the merchant sees the product they bought. While data
+            is still being populated we surface a small inline loader at
+            the top instead of hiding the dashboard behind an empty state. */}
+        {backfillInProgress && (
+          <SyncingLoader
+            title="Setting up your dashboard…"
+            subtitle="Your sales, profit and orders will appear here in a moment. This usually takes under a minute."
+          />
+        )}
+
+        <>
             <InlineGrid columns={{ xs: 1, sm: 2, lg: 4 }} gap="400">
               {PERIOD_KEYS.map((key) => (
                 <KPICard
@@ -441,7 +439,6 @@ export default function Dashboard() {
               initialLabel="Maximum"
             />
           </>
-        )}
       </BlockStack>
 
       {detail && (

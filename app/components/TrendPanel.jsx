@@ -205,7 +205,12 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
     };
   }, [current, prior, granularity]);
 
-  if (backfillInProgress) return null;
+  // Note: we used to hide the panel entirely while backfillInProgress was
+  // true, but the dashboard now always renders the full app — even with
+  // zero data — so the merchant sees what they bought. The chart's own
+  // "No activity in this window yet" empty state handles the zero case
+  // gracefully.
+  void backfillInProgress;
 
   const hasAnyData = (current.points?.length ?? 0) > 0;
   const hasAnyActivity = (current.points ?? []).some(
