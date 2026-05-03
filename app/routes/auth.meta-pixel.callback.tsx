@@ -4,6 +4,7 @@ import {
   debugToken,
   listDatasets,
   listAdAccounts,
+  resolveClientBusinessId,
 } from "../lib/meta-pixel.server.js";
 import { metaPixelOAuthSession } from "../lib/meta-pixel-session.server.js";
 
@@ -13,6 +14,7 @@ import { metaPixelOAuthSession } from "../lib/meta-pixel-session.server.js";
 type GranularScope = { scope?: string; target_ids?: string[] };
 type DebugTokenInfo = {
   profile_id?: string;
+  user_id?: string;
   granular_scopes?: GranularScope[];
 };
 
@@ -95,12 +97,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // The first non-empty match wins.
     const tokenInfo = await debugToken(access_token);
     console.log("[meta-pixel oauth] debug_token response:", JSON.stringify(tokenInfo));
-    const businessId = extractBusinessId(tokenInfo);
+
+    // Some FBL4B template variations issue a valid BISU but leave target_ids
+    // empty inside granular_scopes — we have to resolve the Business via a
+    // separate Graph call when that happens. Try the granular_scopes path
+    // first (avoids an extra round trip), fall back to the Graph query.
+    let businessId = extractBusinessId(tokenInfo);
+    if (!businessId) {
+      console.log(
+        "[meta-pixel oauth] no business in granular_scopes — falling back to /me?fields=business"
+      );
+      businessId = await resolveClientBusinessId(access_token, tokenInfo.user_id);
+    }
     if (!businessId) {
       throw new Error(
         "BISU token has no associated business — make sure you selected a Business and granted Pixel + Ad Account access during the Meta consent flow."
       );
     }
+    console.log(`[meta-pixel oauth] resolved business_id=${businessId}`);
 
     // List datasets + ad accounts for the merchant to pick from.
     const [datasets, adAccounts] = await Promise.all([

@@ -107,6 +107,51 @@ export async function listGranularScopes(accessToken) {
   return data.data ?? [];
 }
 
+// Resolve the client Business ID for a BISU token via a direct Graph call.
+// Some FBL4B template variations issue a valid BISU but don't populate
+// target_ids inside granular_scopes — we still need the Business ID to list
+// datasets, so we query Meta directly using the system user id we got
+// from debug_token.
+//
+// Tries two paths in order:
+//   1. GET /me?fields=business — most BISU tokens carry the Business in `business`
+//   2. GET /{system_user_id}/businesses — listing endpoint (rare fallback)
+export async function resolveClientBusinessId(accessToken, systemUserId) {
+  try {
+    const params = new URLSearchParams({
+      fields: "id,name,business",
+      access_token: accessToken,
+    });
+    const res = await fetch(`${GRAPH_BASE}/me?${params}`);
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data?.business?.id) return data.business.id;
+    }
+  } catch {
+    /* fall through */
+  }
+
+  if (systemUserId) {
+    try {
+      const params = new URLSearchParams({
+        fields: "id,name",
+        access_token: accessToken,
+      });
+      const res = await fetch(
+        `${GRAPH_BASE}/${encodeURIComponent(systemUserId)}/businesses?${params}`
+      );
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data?.data?.[0]?.id) return data.data[0].id;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  return null;
+}
+
 // ─── Business assets ──────────────────────────────────────────────────────────
 
 // List all datasets (a.k.a. pixels) owned by the business associated with the
