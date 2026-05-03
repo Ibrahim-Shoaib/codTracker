@@ -12,11 +12,40 @@ api_version = "2025-10"
   topics = [ "app/uninstalled" ]
   uri = "/api/webhooks/uninstall"
 
+  # Ad Tracking — feeds CAPI relay. Order webhooks are the canonical source
+  # of truth for Purchase events; refunds fire negative-value Purchase.
+  # Checkouts give us InitiateCheckout; cart attributes carry _fbp/_fbc/_fbclid
+  # from the storefront into the order payload via note_attributes.
+  [[webhooks.subscriptions]]
+  topics = [
+    "orders/paid",
+    "orders/edited",
+    "refunds/create",
+    "checkouts/create",
+    "checkouts/update",
+  ]
+  uri = "/api/webhooks/meta-pixel"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_orders,read_products,read_inventory"
+# Required scopes (existing): read_orders, read_products, read_inventory
+# New scopes for Ad Tracking:
+#   - read_customers     → email/phone/name on order webhooks for hashed identity
+#   - read_checkouts     → checkout webhooks for InitiateCheckout
+#   - write_pixels, read_pixels → install/manage Custom Web Pixel via Admin GraphQL
+#   - read_marketing_events → optional, for Meta channel cross-reference
+scopes = "read_orders,read_products,read_inventory,read_customers,read_checkouts,write_pixels,read_pixels"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [ "https://codtracker-production.up.railway.app/auth/callback" ]
+
+# App Proxy — serves first-party tracking endpoint at the merchant's domain:
+#   https://{shop}.myshopify.com/apps/tracking/track  →  /proxy/tracking/track
+# This bypasses ad blockers (requests look first-party) and lets cookies set
+# by our pixel live in the merchant's domain context (full 90-day fbp/fbc lifespan).
+[app_proxy]
+url = "https://codtracker-production.up.railway.app/proxy/tracking"
+subpath = "tracking"
+prefix = "apps"
