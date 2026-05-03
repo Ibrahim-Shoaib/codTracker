@@ -3,7 +3,10 @@ import { json } from "@remix-run/node";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { sessionStorage } from "../shopify.server";
-import { fabricateDemoDataForDates } from "../lib/demo-fabricator.server.js";
+import {
+  fabricateDemoDataForDates,
+  datesBetween,
+} from "../lib/demo-fabricator.server.js";
 import { getTodayPKT, formatPKTDate } from "../lib/dates.server.js";
 
 // Daily cron: keeps every is_demo store's data rolling forward by appending
@@ -19,24 +22,44 @@ import { getTodayPKT, formatPKTDate } from "../lib/dates.server.js";
 // Accepts both POST (cron) and GET (manual debug) so you can hit the URL
 // from a browser when iterating locally.
 
+function ymdOf(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 async function tick(request: Request) {
   if (request.headers.get("x-cron-secret") !== process.env.CRON_SECRET) {
     return new Response("Unauthorized", { status: 401 });
   }
+
+  const url = new URL(request.url);
+  // Reseed mode: wipe + regenerate the requested window (default 90d) for
+  // either one named store (?shop=…) or all demo stores. Use after
+  // changing fabrication parameters so existing demos pick up the new math.
+  const reseed = url.searchParams.get("reseed") === "1";
+  const targetShop = url.searchParams.get("shop");
+  const reseedDays = Number(url.searchParams.get("days") ?? 90);
 
   const adminClient = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const { data: stores } = await adminClient
-    .from("stores")
-    .select("store_id")
-    .eq("is_demo", true);
+  // Build the store list. In reseed mode the targetShop param can scope to
+  // one store; we still verify it's marked is_demo so we never wipe a real
+  // merchant's data by accident.
+  let storesQuery = adminClient.from("stores").select("store_id").eq("is_demo", true);
+  if (targetShop) storesQuery = storesQuery.eq("store_id", targetShop);
+  const { data: stores } = await storesQuery;
 
-  if (!stores?.length) return json({ ticked: 0, total: 0 });
+  if (!stores?.length) return json({ ticked: 0, total: 0, mode: reseed ? "reseed" : "tick" });
 
   const todayPkt = formatPKTDate(getTodayPKT().start);
+  const reseedDates = reseed
+    ? datesBetween(
+        ymdOf(new Date(Date.now() - (reseedDays - 1) * 24 * 60 * 60 * 1000)),
+        ymdOf(new Date())
+      )
+    : null;
 
   let ticked = 0;
   let totalOrders = 0;
@@ -44,24 +67,27 @@ async function tick(request: Request) {
 
   for (const store of stores) {
     try {
-      // Fabricator needs a Shopify session to read the merchant's catalog.
-      // If the offline session is gone (uninstalled but row not yet purged)
-      // skip cleanly.
       const offlineSession = await sessionStorage.loadSession(`offline_${store.store_id}`);
       if (!offlineSession) {
         console.warn(`[demo-tick] no offline session for ${store.store_id}, skipping`);
         continue;
       }
       const supabase = await getSupabaseForStore(store.store_id);
+
+      // Reseed: wipe existing fabricated data so the new params take effect.
+      // The is_demo guard above means this can never touch a real merchant.
+      if (reseed) {
+        await supabase.from("orders").delete().eq("store_id", store.store_id);
+        await supabase.from("ad_spend").delete().eq("store_id", store.store_id);
+      }
+
       const result = await fabricateDemoDataForDates({
         supabase,
         storeId: store.store_id,
         session: offlineSession,
-        dates: [todayPkt],
+        dates: reseedDates ?? [todayPkt],
       });
       totalOrders += result.ordersInserted;
-      // Stamp last_postex_sync_at so the dashboard's "Syncing…" empty-state
-      // logic stays happy even after the initial seed expires from view.
       await adminClient
         .from("stores")
         .update({ last_postex_sync_at: new Date().toISOString() })
@@ -73,7 +99,15 @@ async function tick(request: Request) {
     }
   }
 
-  return json({ ticked, total: stores.length, totalOrders, errors, day: todayPkt });
+  return json({
+    mode: reseed ? "reseed" : "tick",
+    ticked,
+    total: stores.length,
+    totalOrders,
+    errors,
+    day: todayPkt,
+    reseedDays: reseed ? reseedDays : undefined,
+  });
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => tick(request);

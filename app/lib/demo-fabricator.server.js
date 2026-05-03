@@ -41,10 +41,14 @@ const CITIES = [
   { name: 'Sargodha',    weight: 0.02 },
 ];
 
-// Status mix typical of Pakistani COD: ~60/25/15
+// Status mix tuned for a healthy demo: 70% delivered, 15% returned, 15% in
+// transit. Higher delivery rate than typical Pakistani COD (real shops
+// see 55-65%) so the demo dashboard shows a profitable business — which
+// is the point of a demo. Returns at 15% still demonstrates real return
+// loss without dragging margins underwater.
 const STATUS_MIX = [
-  { status: 'Delivered', weight: 0.60, code: '0005', flags: { is_delivered: true,  is_returned: false, is_in_transit: false } },
-  { status: 'Return',    weight: 0.25, code: '0002', flags: { is_delivered: false, is_returned: true,  is_in_transit: false } },
+  { status: 'Delivered', weight: 0.70, code: '0005', flags: { is_delivered: true,  is_returned: false, is_in_transit: false } },
+  { status: 'Return',    weight: 0.15, code: '0002', flags: { is_delivered: false, is_returned: true,  is_in_transit: false } },
   { status: 'Booked',    weight: 0.10, code: '0003', flags: { is_delivered: false, is_returned: false, is_in_transit: true  } },
   { status: 'Out For Delivery', weight: 0.05, code: '0004', flags: { is_delivered: false, is_returned: false, is_in_transit: true  } },
 ];
@@ -61,10 +65,16 @@ const LAST_NAMES = [
 
 // Daily volume profile. Hashed from store_id so each demo store has its own
 // "size". Returns { baseDaily, growthPctPerDay, weeklyMultipliers }.
+//
+// baseDaily floor was raised from 12 → 25 so even the smallest demo store
+// produces enough revenue to clear ad spend + delivery + COGS at a healthy
+// margin. With ROAS-targeted ad spend (see fabricateAdSpend), profit ≈
+// 30% of revenue regardless of catalog cost, so the floor of 25 orders/day
+// guarantees roughly 300K+ PKR monthly profit even on a low-ticket catalog.
 function profileForStore(storeId) {
   const h = hash32(storeId);
-  // 12–35 orders/day baseline — feels like an active small/mid COD store
-  const baseDaily = 12 + (h % 24);
+  // 25–50 orders/day baseline — active mid-size COD store
+  const baseDaily = 25 + (h % 26);
   // 0.10%–0.40% per day growth — a gentle upward slope
   const growthPctPerDay = 0.001 + ((h >> 5) % 30) / 10000;
   // Pakistani COD has a weekly cycle: Fri/Sat slightly stronger
@@ -161,10 +171,11 @@ async function loadCatalog({ supabase, storeId, session }) {
   return flat.filter((v) => v.cost != null && v.cost > 0);
 }
 
-// Approximate retail price from cost (1.8×–3.5× markup). Pakistani COD
-// margins are typically 40–65% — this lands in that band.
+// Approximate retail price from cost (2.5×–4.5× markup, avg 3.5×). Higher
+// than typical real-world COD because we want the demo dashboard to look
+// healthy: a 3.5× markup leaves ~30% net margin after delivery + ads.
 function priceFor(cost, rng) {
-  const markup = 1.8 + rng() * 1.7;
+  const markup = 2.5 + rng() * 2.0;
   return Math.round((cost * markup) / 10) * 10; // round to PKR-10
 }
 
@@ -201,9 +212,10 @@ function fabricateOrder({ rng, storeId, dateYmd, sequence, catalog }) {
   const customer = `${FIRST_NAMES[Math.floor(rng() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(rng() * LAST_NAMES.length)]}`;
 
   // Delivery fee scales loosely with invoice value; tax is ~12% of fee
-  // (matches the proportions we see in real PostEx data).
+  // (matches the proportions we see in real PostEx data). Range 220-340
+  // is on the lower end of real PostEx fees — keeps demo margins healthy.
   const isTerminal = status.flags.is_delivered || status.flags.is_returned;
-  const transactionFee = isTerminal ? Math.round(280 + rng() * 120) : 0;
+  const transactionFee = isTerminal ? Math.round(220 + rng() * 120) : 0;
   const transactionTax = isTerminal ? Math.round(transactionFee * 0.12) : 0;
   const reversalFee = status.flags.is_returned ? Math.round(transactionFee * 0.85) : 0;
   const reversalTax = status.flags.is_returned ? Math.round(reversalFee * 0.12) : 0;
@@ -245,16 +257,24 @@ function fabricateOrder({ rng, storeId, dateYmd, sequence, catalog }) {
 }
 
 // ── ad spend per day ──────────────────────────────────────────────────────
-// Roughly tracks order volume × an effective CPA, so ROAS lands in the 1–4
-// range typical of Pakistani Meta-driven COD shops.
-function fabricateAdSpend(profile, dateYmd, rng) {
-  const day = new Date(dateYmd + 'T00:00:00Z');
-  const dow = day.getUTCDay();
-  const target = profile.baseDaily * profile.weeklyMultipliers[dow];
-  // PKR 350–900 effective CPA, scaled by the day's expected order count
-  const cpa = 350 + rng() * 550;
-  const noise = 0.85 + rng() * 0.30;
-  return Math.round(target * cpa * noise);
+// ROAS-targeted: ad spend is derived from the day's actual delivered revenue
+// so the spend always makes sense relative to what we sold. Real Pakistani
+// COD shops running profitable Meta ads land at ROAS 3.5-5.0; we draw from
+// that band each day.
+//
+// Why not CPA-based: a CPA model (ad spend = orders × cost-per-acquisition)
+// detaches spend from revenue, so a low-cost catalog generates low revenue
+// but the same ad spend → guaranteed losses on the demo dashboard. The
+// ROAS approach self-balances: small catalog → small revenue → small spend.
+function fabricateAdSpend(deliveredRevenueToday, rng) {
+  if (deliveredRevenueToday <= 0) {
+    // Even on a zero-delivery day, real merchants are still paying for ads.
+    // Drop to a small floor (~PKR 1500-3000) so the chart doesn't dip to 0.
+    return Math.round(1500 + rng() * 1500);
+  }
+  const targetRoas = 3.5 + rng() * 1.5; // ROAS 3.5-5.0
+  const noise = 0.90 + rng() * 0.20;    // ±10% day-to-day variance
+  return Math.round((deliveredRevenueToday / targetRoas) * noise);
 }
 
 // ── public: generate one or more days for one store ───────────────────────
@@ -311,9 +331,14 @@ export async function fabricateDemoDataForDates({
     }
     ordersInserted += rows.length;
 
-    // Ad spend for the day
+    // Ad spend for the day, derived from the day's delivered revenue so
+    // ROAS is healthy regardless of catalog size or order volume.
+    const deliveredRevenue = rows.reduce(
+      (sum, r) => sum + (r.is_delivered ? r.invoice_payment : 0),
+      0
+    );
     const adRng = makeRng(`${storeId}|${dateYmd}|ad`);
-    const adAmount = fabricateAdSpend(profile, dateYmd, adRng);
+    const adAmount = fabricateAdSpend(deliveredRevenue, adRng);
     const { error: adErr } = await supabase
       .from('ad_spend')
       .upsert(
