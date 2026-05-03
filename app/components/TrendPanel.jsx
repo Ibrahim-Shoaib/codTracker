@@ -188,10 +188,15 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
         data: keys.map((k, i) => ({ key: k, value: profit[i] })),
       },
       {
+        // Cost is plotted as a negative magnitude so the line sits below
+        // zero on the same axis as Revenue. Reads as "money out" mirroring
+        // Revenue's "money in"; Profit visually equals the gap between
+        // Revenue and the inverted Cost line. Tooltip + KPI badge still
+        // render the original positive magnitude with a leading "-PKR".
         name: "Cost",
         color: COLOR_COST,
         styleOverride: { line: { strokeDasharray: "5,4" } },
-        data: keys.map((k, i) => ({ key: k, value: cost[i] })),
+        data: keys.map((k, i) => ({ key: k, value: -cost[i] })),
       },
     ];
 
