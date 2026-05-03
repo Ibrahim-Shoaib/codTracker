@@ -1,0 +1,27 @@
+{%- comment -%}
+  COD Tracker — Cart Identity Relay
+  ==================================
+  App embed block. Reads _fbp / _fbc / _fbclid cookies set by the Custom Web
+  Pixel and writes them onto the cart as attributes via /cart/update.js.
+  When an order is placed, those values arrive in the `note_attributes` field
+  of the order webhook so our server-side CAPI relay can include high-EMQ
+  identity (fbp, fbc) without storing per-event browser data.
+
+  Merchants enable this from Online Store → Themes → Customize → App embeds.
+  We do NOT inject any visible content; the script tag is the entire payload.
+{%- endcomment -%}
+
+<script src="{{ 'identity-relay.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "COD Tracker Cart Relay",
+  "target": "head",
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "Forwards Meta tracking identity (fbp, fbc, fbclid) onto each cart so server-side conversion events match more accurately. Required for the COD Tracker Ad Tracking feature to reach maximum match quality. No visible UI is added."
+    }
+  ]
+}
+{% endschema %}

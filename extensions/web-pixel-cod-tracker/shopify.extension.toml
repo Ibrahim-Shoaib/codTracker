@@ -1,0 +1,17 @@
+api_version = "2025-10"
+
+[[extensions]]
+name = "COD Tracker Pixel"
+description = "Server-side Meta Pixel relay via the COD Tracker app — recovers conversions lost to ad blockers and iOS 14+ tracking restrictions."
+type = "web_pixel_extension"
+handle = "cod-tracker-pixel"
+runtime_context = "strict"
+
+[extensions.settings]
+type = "object"
+
+[extensions.settings.fields.accountID]
+name = "Account ID"
+description = "Your shop domain — set automatically on install."
+type = "single_line_text_field"
+validations = [{ name = "min", value = "1" }]
