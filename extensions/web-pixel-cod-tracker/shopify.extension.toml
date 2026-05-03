@@ -1,4 +1,5 @@
 api_version = "2025-10"
+uid = "29b37c73-a6e5-af93-b250-b6428ca701f4a4a0f277"
 
 [[extensions]]
 name = "COD Tracker Pixel"
