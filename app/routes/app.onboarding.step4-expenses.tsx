@@ -22,6 +22,10 @@ import {
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
+import {
+  fabricateDemoDataForDates,
+  datesBetween,
+} from "../lib/demo-fabricator.server.js";
 
 type Expense = { id: string; name: string; amount: number; type: "monthly" | "per_order" };
 
@@ -66,8 +70,51 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "finish") {
     await supabase
       .from("stores")
-      .update({ onboarding_complete: true, onboarding_step: 4 })
+      .update({
+        onboarding_complete: true,
+        onboarding_step: 4,
+        // Mark first sync as "done" so the dashboard's backfill banner / empty
+        // state never appears for demo stores. Otherwise the merchant lands on
+        // an empty dashboard while we backfill.
+      })
       .eq("store_id", shop);
+
+    // Demo seed: 90 days back through today, fabricated from real Shopify
+    // catalog. Triggered async so the merchant isn't blocked on the redirect.
+    // We also stamp last_postex_sync_at so the dashboard treats the store as
+    // "ready" instead of showing the syncing banner.
+    const { data: storeRow } = await supabase
+      .from("stores")
+      .select("is_demo")
+      .eq("store_id", shop)
+      .single();
+
+    if (storeRow?.is_demo) {
+      const today = new Date();
+      const start = new Date(today.getTime() - 89 * 24 * 60 * 60 * 1000);
+      const ymd = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const dates = datesBetween(ymd(start), ymd(today));
+
+      // Stamp the sync timestamp immediately so the dashboard renders normally
+      // while fabrication runs in the background.
+      await supabase
+        .from("stores")
+        .update({ last_postex_sync_at: new Date().toISOString() })
+        .eq("store_id", shop);
+
+      // Fire-and-forget — fabrication for 90 days takes a few seconds; the
+      // dashboard will show data progressively as it lands.
+      void fabricateDemoDataForDates({
+        supabase,
+        storeId: shop,
+        session,
+        dates,
+      }).catch((err) =>
+        console.error(`[demo seed ${shop}] failed:`, err)
+      );
+    }
+
     return redirect("/app");
   }
 

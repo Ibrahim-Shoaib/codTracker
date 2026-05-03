@@ -47,6 +47,25 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ error: "PostEx API Token is required." });
   }
 
+  // Demo trigger: a magic env-var token flips the store into demo mode and
+  // skips the real PostEx validation + historical backfill. The merchant
+  // (and anyone watching) sees an identical flow — no badge, no banner —
+  // they advance to step 2 normally and Meta will be connected for real.
+  // The actual order data is fabricated at the end of step 4.
+  const demoKey = process.env.DEMO_POSTEX_KEY;
+  if (demoKey && token === demoKey) {
+    const supabase = await getSupabaseForStore(shop);
+    await supabase
+      .from("stores")
+      .update({
+        postex_token: token,    // stored but never used — cron skips is_demo stores
+        is_demo: true,
+        onboarding_step: 2,
+      })
+      .eq("store_id", shop);
+    return redirect("/app/onboarding/step2-meta");
+  }
+
   const valid = await validateToken(token).catch(() => false);
   if (!valid) {
     return json({ error: "Invalid token. Please check your PostEx credentials." });

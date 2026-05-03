@@ -26,6 +26,7 @@ import {
 } from "../lib/dates.server.js";
 import { isTokenExpired, isTokenExpiringSoon } from "../lib/meta.server.js";
 import { fetchUnfulfilledPipeline } from "../lib/shopify-pipeline.server.js";
+import { fetchDemoPipeline } from "../lib/demo-pipeline.server.js";
 import KPICard from "../components/KPICard.jsx";
 import WarningBanner from "../components/WarningBanner.jsx";
 import DetailPanel from "../components/DetailPanel.jsx";
@@ -61,7 +62,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     supabase
       .from("stores")
       .select(
-        "postex_token, onboarding_complete, onboarding_step, sellable_returns_pct, meta_access_token, meta_token_expires_at, meta_sync_error, last_postex_sync_at"
+        "postex_token, onboarding_complete, onboarding_step, sellable_returns_pct, meta_access_token, meta_token_expires_at, meta_sync_error, last_postex_sync_at, is_demo"
       )
       .eq("store_id", shop)
       .single(),
@@ -309,16 +310,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ? { ...selected, isFallback: selected.windowDays !== 30 }
     : null;
 
-  // Real-time Shopify "Unfulfilled" pipeline. Fired in parallel and not
-  // awaited — the loader returns immediately with the SQL payload while
-  // the dashboard renders <Suspense> skeleton chips for this promise.
-  const unfulfilledPipeline = fetchUnfulfilledPipeline(session, {
+  // Pipeline value for the dashboard pills. Real stores hit Shopify Admin
+  // for live unfulfilled orders; demo stores read in-transit fabricated
+  // orders out of the DB so the pills stay internally consistent and we
+  // never make a Shopify call for a demo merchant.
+  const pipelineRanges = {
     today:     { from: todayFrom, to: todayTo },
     yesterday: { from: yestFrom,  to: yestTo  },
     mtd:       { from: mtdFrom,   to: mtdTo   },
     lastMonth: { from: lmFrom,    to: lmTo    },
-  }).catch((err) => {
-    console.error("Shopify pipeline fetch failed:", err);
+  };
+  const unfulfilledPipeline = (
+    store.is_demo
+      ? fetchDemoPipeline(supabase, shop, pipelineRanges)
+      : fetchUnfulfilledPipeline(session, pipelineRanges)
+  ).catch((err) => {
+    console.error("Pipeline fetch failed:", err);
     return null;
   });
 

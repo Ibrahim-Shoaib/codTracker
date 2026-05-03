@@ -22,7 +22,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { data: stores } = await adminClient
     .from("stores")
     .select("store_id, postex_token, line_items_backfilled_at")
-    .not("postex_token", "is", null);
+    .not("postex_token", "is", null)
+    // Demo stores carry a magic-key token but their data is fabricated locally;
+    // hitting PostEx with the magic key returns 401 and would pollute the row.
+    .neq("is_demo", true);
 
   if (!stores?.length) {
     return json({ synced: 0, errors: 0 });

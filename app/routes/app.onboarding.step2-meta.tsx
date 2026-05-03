@@ -107,9 +107,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       })
       .eq("store_id", shop);
 
-    runMetaHistoricalBackfill({ store_id: shop, access_token: accessToken, ad_account_id: adAccountId }).catch(
-      (err) => console.error("Meta historical backfill failed:", err)
-    );
+    // Demo stores: skip the 90-day Meta backfill — fabricated ad_spend will
+    // be populated when step 4 finishes. The real OAuth above is preserved
+    // so the connected-account UX in Settings still shows the Meta name.
+    const { data: storeFlag } = await supabase
+      .from("stores")
+      .select("is_demo")
+      .eq("store_id", shop)
+      .single();
+
+    if (!storeFlag?.is_demo) {
+      runMetaHistoricalBackfill({ store_id: shop, access_token: accessToken, ad_account_id: adAccountId }).catch(
+        (err) => console.error("Meta historical backfill failed:", err)
+      );
+    }
 
     const cookieHeader = request.headers.get("Cookie");
     const oauthSession = await metaOAuthSession.getSession(cookieHeader);

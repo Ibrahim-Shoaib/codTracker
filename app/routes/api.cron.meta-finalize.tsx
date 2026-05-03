@@ -19,7 +19,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { data: stores } = await adminClient
     .from("stores")
     .select("store_id, meta_access_token, meta_ad_account_id, meta_token_expires_at")
-    .not("meta_access_token", "is", null);
+    .not("meta_access_token", "is", null)
+    // Demo stores: Meta is connected for the UX but ad_spend is fabricated.
+    .neq("is_demo", true);
 
   if (!stores?.length) {
     return json({ finalized: 0, skipped: 0, errors: 0 });

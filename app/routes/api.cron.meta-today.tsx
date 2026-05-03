@@ -18,7 +18,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { data: stores } = await adminClient
     .from("stores")
     .select("store_id, meta_access_token, meta_ad_account_id, meta_token_expires_at")
-    .not("meta_access_token", "is", null);
+    .not("meta_access_token", "is", null)
+    // Demo stores complete real Meta OAuth (so the connected-account UX is
+    // intact) but their ad_spend is fabricated — never query Meta for them.
+    .neq("is_demo", true);
 
   if (!stores?.length) {
     return json({ synced: 0, skipped: 0, errors: 0 });
