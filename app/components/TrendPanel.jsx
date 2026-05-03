@@ -193,9 +193,17 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
         // Revenue's "money in"; Profit visually equals the gap between
         // Revenue and the inverted Cost line. Tooltip + KPI badge still
         // render the original positive magnitude with a leading "-PKR".
+        //
+        // Area fill is disabled (hasArea: false) — polaris-viz's area
+        // generator hardcodes y0 = chart bottom, so the gradient on a
+        // negative line would extend downward past the line toward the
+        // axis floor instead of upward toward the zero baseline. The
+        // dashed line alone reads cleaner.
         name: "Cost",
         color: COLOR_COST,
-        styleOverride: { line: { strokeDasharray: "5,4" } },
+        styleOverride: {
+          line: { strokeDasharray: "5,4", hasArea: false },
+        },
         data: keys.map((k, i) => ({ key: k, value: -cost[i] })),
       },
     ];
