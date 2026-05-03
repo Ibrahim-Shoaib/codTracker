@@ -340,7 +340,7 @@ export default function Dashboard() {
 
   return (
     <Page>
-      <TitleBar title="COD Tracker" />
+      <TitleBar title="CODProfit" />
       <BlockStack gap="400">
         <WarningBanner
           unmatchedCOGSCount={unmatchedCOGSCount}
