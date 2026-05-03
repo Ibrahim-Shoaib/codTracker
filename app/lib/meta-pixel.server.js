@@ -113,39 +113,74 @@ export async function listGranularScopes(accessToken) {
 // datasets, so we query Meta directly using the system user id we got
 // from debug_token.
 //
-// Tries two paths in order:
-//   1. GET /me?fields=business — most BISU tokens carry the Business in `business`
-//   2. GET /{system_user_id}/businesses — listing endpoint (rare fallback)
+// Tries multiple paths in order. Each path's full response is logged so
+// future unexpected shapes are one log line away from being diagnosed.
 export async function resolveClientBusinessId(accessToken, systemUserId) {
+  // Path 1: GET /{system_user_id}?fields=business — Meta's documented path
+  // for FBL4B Conversions-API templates.
+  if (systemUserId) {
+    try {
+      const params = new URLSearchParams({
+        fields: "id,name,business",
+        access_token: accessToken,
+      });
+      const url = `${GRAPH_BASE}/${encodeURIComponent(systemUserId)}?${params}`;
+      const res = await fetch(url);
+      const data = await res.json().catch(() => ({}));
+      console.log(`[meta-pixel] resolve path1 GET /${systemUserId}?fields=business`, JSON.stringify(data));
+      if (data?.business?.id) return data.business.id;
+    } catch (err) {
+      console.log("[meta-pixel] resolve path1 threw:", String(err));
+    }
+  }
+
+  // Path 2: GET /me?fields=business — alternative form, some templates use it.
   try {
     const params = new URLSearchParams({
       fields: "id,name,business",
       access_token: accessToken,
     });
     const res = await fetch(`${GRAPH_BASE}/me?${params}`);
-    if (res.ok) {
-      const data = await res.json().catch(() => ({}));
-      if (data?.business?.id) return data.business.id;
-    }
-  } catch {
-    /* fall through */
+    const data = await res.json().catch(() => ({}));
+    console.log("[meta-pixel] resolve path2 GET /me?fields=business", JSON.stringify(data));
+    if (data?.business?.id) return data.business.id;
+  } catch (err) {
+    console.log("[meta-pixel] resolve path2 threw:", String(err));
   }
 
+  // Path 3: query the system user with the App access token (not the BISU).
+  // Some BISUs can't introspect their own owning Business, but the App can.
+  if (systemUserId && process.env.META_APP_ID && process.env.META_APP_SECRET) {
+    try {
+      const appToken = `${process.env.META_APP_ID}|${process.env.META_APP_SECRET}`;
+      const params = new URLSearchParams({
+        fields: "id,name,business",
+        access_token: appToken,
+      });
+      const url = `${GRAPH_BASE}/${encodeURIComponent(systemUserId)}?${params}`;
+      const res = await fetch(url);
+      const data = await res.json().catch(() => ({}));
+      console.log(`[meta-pixel] resolve path3 GET /${systemUserId} (app token)`, JSON.stringify(data));
+      if (data?.business?.id) return data.business.id;
+    } catch (err) {
+      console.log("[meta-pixel] resolve path3 threw:", String(err));
+    }
+  }
+
+  // Path 4: list businesses the system user has access to.
   if (systemUserId) {
     try {
       const params = new URLSearchParams({
         fields: "id,name",
         access_token: accessToken,
       });
-      const res = await fetch(
-        `${GRAPH_BASE}/${encodeURIComponent(systemUserId)}/businesses?${params}`
-      );
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        if (data?.data?.[0]?.id) return data.data[0].id;
-      }
-    } catch {
-      /* fall through */
+      const url = `${GRAPH_BASE}/${encodeURIComponent(systemUserId)}/businesses?${params}`;
+      const res = await fetch(url);
+      const data = await res.json().catch(() => ({}));
+      console.log(`[meta-pixel] resolve path4 GET /${systemUserId}/businesses`, JSON.stringify(data));
+      if (data?.data?.[0]?.id) return data.data[0].id;
+    } catch (err) {
+      console.log("[meta-pixel] resolve path4 threw:", String(err));
     }
   }
 
