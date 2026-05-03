@@ -16,6 +16,7 @@ import {
   BlockStack,
   InlineStack,
   Text,
+  TextField,
   Button,
   Banner,
   Badge,
@@ -23,6 +24,7 @@ import {
   ProgressBar,
   EmptyState,
   Divider,
+  Link,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -226,6 +228,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // This lets the merchant verify the entire pipeline (PageView → Purchase) in
   // a single click instead of having to walk through a real checkout.
   if (intent === "test_event") {
+    // The Test Event Code is per-merchant and rotates — Meta shows it in
+    // Events Manager → Test Events tab (looks like "TEST30616"). Without a
+    // valid code, the events go to Meta but the merchant can't see them
+    // anywhere. We refuse to fire the test if the code is missing — this
+    // prevents the "I clicked Send but nothing showed up" support issue.
+    const testCode = String(formData.get("test_code") || "").trim();
+    if (!testCode || !/^TEST[A-Z0-9]+$/i.test(testCode)) {
+      return json({
+        intent,
+        testResult: {
+          ok: false as const,
+          reason:
+            "Enter your Meta Test Event Code first. Find it at Events Manager → Test Events → top of page (e.g. TEST30616).",
+        },
+      });
+    }
     const now = new Date();
     const ts = Math.floor(now.getTime() / 1000);
     const testUserData = buildUserData({
@@ -310,16 +328,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }),
     ];
 
-    // ALWAYS include a test_event_code — never an empty value. Meta treats
-    // any non-empty test_event_code as "this is a test, exclude from
-    // production reporting/audiences/optimization". If META_TEST_EVENT_CODE
-    // is set we use it (so events also appear in Events Manager → Test
-    // Events for the merchant to see). If it's missing for any reason, we
-    // fall back to a per-shop literal — events are still safely excluded
-    // from production, even if the merchant can't visually find them
-    // until they set up the code in Events Manager.
-    const testCode =
-      process.env.META_TEST_EVENT_CODE || `CODPROFIT_TEST_${shop}`;
     const result = await sendCAPIEventsForShop({
       storeId: shop,
       events,
@@ -373,6 +381,8 @@ export default function AdTracking() {
   const [selectedDataset, setSelectedDataset] = useState<string>(
     pending?.datasets?.[0]?.id ?? ""
   );
+  const [testCode, setTestCode] = useState("");
+  const testCodeValid = /^TEST[A-Z0-9]+$/i.test(testCode.trim());
 
   // Open the popup and navigate it to Meta when the action returns the URL.
   useEffect(() => {
@@ -471,13 +481,59 @@ export default function AdTracking() {
                   </Text>
                 </BlockStack>
 
-                <InlineStack gap="200">
+                <BlockStack gap="200">
+                  <Text as="h3" variant="headingSm">
+                    Send test events
+                  </Text>
+                  <Text as="p" variant="bodyMd" tone="subdued">
+                    Paste your current Test Event Code from{" "}
+                    <Link
+                      url={`https://www.facebook.com/events_manager2/list/dataset/${connection.dataset_id}/test_events`}
+                      target="_blank"
+                    >
+                      Events Manager → Test Events
+                    </Link>
+                    . The code rotates and looks like{" "}
+                    <Text as="span" fontWeight="semibold">
+                      TEST30616
+                    </Text>
+                    . Without it, the events fire safely (excluded from
+                    production) but you won't see them in the dashboard.
+                  </Text>
                   <Form method="post">
                     <input type="hidden" name="intent" value="test_event" />
-                    <Button submit loading={submitting && navigation.formData?.get("intent") === "test_event"}>
-                      Send test event
-                    </Button>
+                    <input type="hidden" name="test_code" value={testCode.trim()} />
+                    <InlineStack gap="200" align="start" blockAlign="end">
+                      <div style={{ minWidth: 220 }}>
+                        <TextField
+                          label="Test Event Code"
+                          labelHidden
+                          autoComplete="off"
+                          placeholder="TEST30616"
+                          value={testCode}
+                          onChange={setTestCode}
+                          error={
+                            testCode.length > 0 && !testCodeValid
+                              ? "Must start with TEST followed by digits/letters"
+                              : undefined
+                          }
+                        />
+                      </div>
+                      <Button
+                        submit
+                        disabled={!testCodeValid}
+                        loading={
+                          submitting &&
+                          navigation.formData?.get("intent") === "test_event"
+                        }
+                      >
+                        Send 7 test events
+                      </Button>
+                    </InlineStack>
                   </Form>
+                </BlockStack>
+
+                <InlineStack gap="200">
                   <Form method="post">
                     <input type="hidden" name="intent" value="disconnect" />
                     <Button
