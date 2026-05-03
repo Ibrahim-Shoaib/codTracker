@@ -1,4 +1,9 @@
-FROM node:20-alpine
+# Pinned to a specific patch version because Railway's Metal builder
+# repeatedly hangs on `load metadata for docker.io/library/node:20-alpine`
+# when Docker Hub is slow — pinning a static tag avoids re-fetching the
+# floating "20-alpine" manifest on every build and lets the layer cache
+# do its job. Bump intentionally when there's a security fix.
+FROM node:20.18.1-alpine
 RUN apk add --no-cache openssl
 
 EXPOSE 3000
