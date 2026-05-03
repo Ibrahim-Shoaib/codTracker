@@ -310,10 +310,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }),
     ];
 
+    // ALWAYS include a test_event_code — never an empty value. Meta treats
+    // any non-empty test_event_code as "this is a test, exclude from
+    // production reporting/audiences/optimization". If META_TEST_EVENT_CODE
+    // is set we use it (so events also appear in Events Manager → Test
+    // Events for the merchant to see). If it's missing for any reason, we
+    // fall back to a per-shop literal — events are still safely excluded
+    // from production, even if the merchant can't visually find them
+    // until they set up the code in Events Manager.
+    const testCode =
+      process.env.META_TEST_EVENT_CODE || `CODPROFIT_TEST_${shop}`;
     const result = await sendCAPIEventsForShop({
       storeId: shop,
       events,
-      testEventCode: process.env.META_TEST_EVENT_CODE,
+      testEventCode: testCode,
     });
     return json({ intent, testResult: result });
   }
