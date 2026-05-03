@@ -3,6 +3,7 @@ import { json } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { getPriorEqualLengthRange } from "../lib/dates.server.js";
+import { effectiveStoreId } from "../lib/demo-pool.server.js";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -14,6 +15,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (!from || !to) return json({ stats: null, priorStats: null });
 
   const supabase = await getSupabaseForStore(shop);
+
+  // Demo stores read orders/ad_spend from the shared pool — same swap
+  // the dashboard loader does. Without this, custom date picks on a
+  // demo store hit the merchant's own (empty) store_id and return zeros.
+  const { data: storeRow } = await supabase
+    .from("stores")
+    .select("is_demo")
+    .eq("store_id", shop)
+    .single();
+  const dataStoreId = effectiveStoreId(storeRow ?? null, shop);
+
   const { data: expensesList } = await supabase
     .from("store_expenses")
     .select("id, name, amount, type")
@@ -31,14 +43,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const [{ data }, { data: priorData }] = await Promise.all([
     (supabase as any).rpc("get_dashboard_stats", {
-      p_store_id:           shop,
+      p_store_id:           dataStoreId,
       p_from_date:          from,
       p_to_date:            to,
       p_monthly_expenses:   monthlyExp,
       p_per_order_expenses: perOrderExp,
     }),
     (supabase as any).rpc("get_dashboard_stats", {
-      p_store_id:           shop,
+      p_store_id:           dataStoreId,
       p_from_date:          prior.from,
       p_to_date:            prior.to,
       p_monthly_expenses:   monthlyExp,
