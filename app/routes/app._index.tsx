@@ -22,6 +22,7 @@ import {
   getMTDComparisonPKT,
   getMonthBeforeLastPKT,
   formatPKTDate,
+  getPriorEqualLengthRange,
 } from "../lib/dates.server.js";
 import { isTokenExpired, isTokenExpiringSoon } from "../lib/meta.server.js";
 import { fetchUnfulfilledPipeline } from "../lib/shopify-pipeline.server.js";
@@ -176,13 +177,35 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       p_from_date: cityFromDate,
       p_to_date:   cityToDate,
     }),
-    (supabase as any).rpc("get_daily_series", {
-      p_store_id:           shop,
-      p_from_date:          window30From,
-      p_to_date:            windowTo,
-      p_monthly_expenses:   monthlyExp,
-      p_per_order_expenses: perOrderExp,
-    }),
+    // Initial trend payload — current 30d + prior 30d, day buckets.
+    // Comparison fetched inline so the chart renders fully on first paint
+    // without waiting for a client fetcher.
+    (async () => {
+      const prior = getPriorEqualLengthRange(window30From, windowTo);
+      const [cur, pri] = await Promise.all([
+        (supabase as any).rpc("get_trend_series", {
+          p_store_id:           shop,
+          p_from_date:          window30From,
+          p_to_date:            windowTo,
+          p_monthly_expenses:   monthlyExp,
+          p_per_order_expenses: perOrderExp,
+          p_granularity:        "day",
+        }),
+        (supabase as any).rpc("get_trend_series", {
+          p_store_id:           shop,
+          p_from_date:          prior.from,
+          p_to_date:            prior.to,
+          p_monthly_expenses:   monthlyExp,
+          p_per_order_expenses: perOrderExp,
+          p_granularity:        "day",
+        }),
+      ]);
+      return {
+        granularity: "day" as const,
+        current: { from: window30From, to: windowTo,    points: cur.data ?? [] },
+        prior:   { from: prior.from,   to: prior.to,    points: pri.data ?? [] },
+      };
+    })(),
   ]);
 
   const s = {
@@ -320,11 +343,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       from:   cityFromDate,
       to:     cityToDate,
     },
-    trend: {
-      series: trendRes?.data ?? [],
-      from:   window30From,
-      to:     windowTo,
-    },
+    trend: trendRes,
     unfulfilledPipeline,
   });
 };
@@ -404,9 +423,7 @@ export default function Dashboard() {
             {breakEven && <BreakEvenSection {...breakEven} />}
 
             <TrendPanel
-              initialSeries={trend.series}
-              initialFrom={trend.from}
-              initialTo={trend.to}
+              initialPayload={trend}
               backfillInProgress={backfillInProgress}
             />
 

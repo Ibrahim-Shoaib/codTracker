@@ -5,22 +5,24 @@ import { getSupabaseForStore } from "../lib/supabase.server.js";
 import {
   getTodayPKT,
   formatPKTDate,
+  getPriorEqualLengthRange,
 } from "../lib/dates.server.js";
 
-// Resource route the dashboard uses to swap the trend chart's window without
-// reloading the whole page. Same payload shape as the loader's initial fetch
-// in app._index.tsx so the chart component is agnostic to the source.
+// Resource route the dashboard chart uses to swap windows without reloading.
+// Returns the Shopify-style "current period vs prior equal-length period"
+// payload with bucketing chosen automatically from the range size:
+//   * ≤ 90 days        → day buckets
+//   * ≤ 90 months      → month buckets   (~7.5 years)
+//   * > 90 months      → year buckets
+// Per-day granularity stays sharp for the standard 7/30/90 toggles, while
+// custom multi-year ranges don't blow up the payload or overplot the chart.
 //
-// Query params:
-//   ?days=7|30|90        rolling window ending today (PKT)
-//   ?from=YYYY-MM-DD&to=YYYY-MM-DD   explicit range
-// Either the days form or the from/to form must be present.
+// Query params (one of):
+//   ?days=7|30|90
+//   ?from=YYYY-MM-DD&to=YYYY-MM-DD
 
 const ALLOWED_DAY_WINDOWS = new Set([7, 30, 90]);
-// Hard guard against a merchant tabbing through the URL bar with a giant
-// range — 366 days covers a full year of comparison while keeping payloads
-// bounded (a year is ~365 rows × ~10 numbers ≈ a few KB).
-const MAX_RANGE_DAYS = 366;
+const MAX_RANGE_DAYS = 365 * 20; // 20 years — generous; payload is bucketed
 
 function ymd(d: Date) {
   const y = d.getUTCFullYear();
@@ -31,6 +33,12 @@ function ymd(d: Date) {
 
 function isYmd(s: string | null): s is string {
   return !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+function pickGranularity(days: number): "day" | "month" | "year" {
+  if (days <= 90) return "day";
+  if (days <= 30 * 90) return "month"; // ≈ 90 months ≈ 7.4 years
+  return "year";
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -53,7 +61,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const today = getTodayPKT();
     to = formatPKTDate(today.start);
     const start = new Date(today.start);
-    // Inclusive: a 7-day window ending today covers today + 6 prior days
     start.setUTCDate(start.getUTCDate() - (days - 1));
     from = ymd(start);
   } else if (isYmd(fromParam) && isYmd(toParam)) {
@@ -72,9 +79,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return json({ error: "missing_range" }, { status: 400 });
   }
 
+  // Range length and prior-period bounds
+  const fd = new Date(`${from}T00:00:00Z`);
+  const td = new Date(`${to}T00:00:00Z`);
+  const lengthDays = Math.round((td.getTime() - fd.getTime()) / 86_400_000) + 1;
+  const granularity = pickGranularity(lengthDays);
+  const prior = getPriorEqualLengthRange(from, to);
+
   const supabase = await getSupabaseForStore(shop);
 
-  // Mirror the dashboard's expense math so chart numbers reconcile with cards
+  // Mirror dashboard expense math
   const { data: expensesList } = await supabase
     .from("store_expenses")
     .select("amount, type")
@@ -87,18 +101,35 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     .filter((e: any) => e.type === "per_order")
     .reduce((s: number, e: any) => s + Number(e.amount), 0);
 
-  const { data, error } = await (supabase as any).rpc("get_daily_series", {
+  const args = {
     p_store_id: shop,
-    p_from_date: from,
-    p_to_date: to,
     p_monthly_expenses: monthlyExp,
     p_per_order_expenses: perOrderExp,
-  });
+    p_granularity: granularity,
+  };
 
-  if (error) {
-    console.error("[api.trend] get_daily_series failed:", error);
+  // Two RPCs in parallel — current and prior buckets aligned by index
+  const [curRes, priorRes] = await Promise.all([
+    (supabase as any).rpc("get_trend_series", {
+      ...args,
+      p_from_date: from,
+      p_to_date: to,
+    }),
+    (supabase as any).rpc("get_trend_series", {
+      ...args,
+      p_from_date: prior.from,
+      p_to_date: prior.to,
+    }),
+  ]);
+
+  if (curRes.error || priorRes.error) {
+    console.error("[api.trend] get_trend_series failed:", curRes.error || priorRes.error);
     return json({ error: "rpc_failed" }, { status: 500 });
   }
 
-  return json({ from, to, series: data ?? [] });
+  return json({
+    granularity,
+    current: { from, to, points: curRes.data ?? [] },
+    prior:   { from: prior.from, to: prior.to, points: priorRes.data ?? [] },
+  });
 };
