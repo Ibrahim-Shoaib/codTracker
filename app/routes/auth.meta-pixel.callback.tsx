@@ -7,6 +7,30 @@ import {
 } from "../lib/meta-pixel.server.js";
 import { metaPixelOAuthSession } from "../lib/meta-pixel-session.server.js";
 
+// Pull the granted Business id out of a debug_token response. Meta nests it
+// inside `granular_scopes` keyed by scope name; for FBL4B Conversions API
+// tokens, the business_management scope's target_ids[0] is the right value.
+type GranularScope = { scope?: string; target_ids?: string[] };
+type DebugTokenInfo = {
+  profile_id?: string;
+  granular_scopes?: GranularScope[];
+};
+
+function extractBusinessId(info: DebugTokenInfo): string | null {
+  const scopes = info.granular_scopes ?? [];
+  // Prefer business_management — it's the scope whose target_ids contains
+  // the Business ID itself (vs ads_management whose target_ids hold ad
+  // account ids that happen to be associated with the business).
+  for (const s of scopes) {
+    if (s.scope === "business_management" && s.target_ids?.length) {
+      return s.target_ids[0];
+    }
+  }
+  // Some legacy templates still set profile_id at the top level.
+  if (info.profile_id) return info.profile_id;
+  return null;
+}
+
 // Same popup-postMessage UX as auth.meta.callback — the embedded admin opens a
 // popup, this route runs in the popup, broadcasts the result back to the
 // iframe, and closes itself.
@@ -61,12 +85,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   try {
     const { access_token } = await exchangeCodeForBISU(code);
 
-    // Inspect the BISU token to find the business it grants access to.
-    // For BISU tokens the business id lives in `profile_id`.
+    // Inspect the BISU token to find the business it grants access to. For
+    // BISU tokens issued by FBL4B Conversions-API templates, the business id
+    // is NOT at the top level of debug_token's response — it lives inside
+    // `granular_scopes`, keyed by scope name. We check (in order):
+    //   1. granular_scopes[business_management].target_ids[0]   ← canonical
+    //   2. granular_scopes[ads_management].target_ids[0]        ← fallback
+    //   3. tokenInfo.profile_id                                 ← legacy
+    // The first non-empty match wins.
     const tokenInfo = await debugToken(access_token);
-    const businessId = tokenInfo.profile_id ?? tokenInfo.target_ids?.[0];
+    console.log("[meta-pixel oauth] debug_token response:", JSON.stringify(tokenInfo));
+    const businessId = extractBusinessId(tokenInfo);
     if (!businessId) {
-      throw new Error("BISU token has no associated business — re-grant required.");
+      throw new Error(
+        "BISU token has no associated business — make sure you selected a Business and granted Pixel + Ad Account access during the Meta consent flow."
+      );
     }
 
     // List datasets + ad accounts for the merchant to pick from.
