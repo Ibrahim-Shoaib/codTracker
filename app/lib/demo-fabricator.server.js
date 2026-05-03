@@ -46,12 +46,41 @@ const CITIES = [
 // see 55-65%) so the demo dashboard shows a profitable business — which
 // is the point of a demo. Returns at 15% still demonstrates real return
 // loss without dragging margins underwater.
+//
+// Used for orders whose transaction_date is within the last 14 days —
+// older orders use TERMINAL_STATUS_MIX since real COD shipments always
+// resolve within ~2 weeks (PostEx itself only retains them in its 20-day
+// rolling window).
 const STATUS_MIX = [
   { status: 'Delivered', weight: 0.70, code: '0005', flags: { is_delivered: true,  is_returned: false, is_in_transit: false } },
   { status: 'Return',    weight: 0.15, code: '0002', flags: { is_delivered: false, is_returned: true,  is_in_transit: false } },
   { status: 'Booked',    weight: 0.10, code: '0003', flags: { is_delivered: false, is_returned: false, is_in_transit: true  } },
   { status: 'Out For Delivery', weight: 0.05, code: '0004', flags: { is_delivered: false, is_returned: false, is_in_transit: true  } },
 ];
+
+// For orders >14 days old. The 15% "in transit" weight is redistributed
+// across the three terminal outcomes (so the long-run delivered/returned
+// proportion is preserved while a small Cancelled tail accounts for the
+// shipments that never actually shipped):
+//   * Delivered: 0.70 + 0.10 = 0.80   (the booked-but-shipped majority)
+//   * Returned:  0.15 + 0.02 = 0.17
+//   * Cancelled: 0.00 + 0.03 = 0.03   (terminal, not delivered, not returned)
+const TERMINAL_STATUS_MIX = [
+  { status: 'Delivered', weight: 0.80, code: '0005', flags: { is_delivered: true,  is_returned: false, is_in_transit: false } },
+  { status: 'Return',    weight: 0.17, code: '0002', flags: { is_delivered: false, is_returned: true,  is_in_transit: false } },
+  { status: 'Cancelled', weight: 0.03, code: '0009', flags: { is_delivered: false, is_returned: false, is_in_transit: false } },
+];
+
+const STALE_IN_TRANSIT_DAYS = 14;
+
+// Returns the right status mix for a given fabrication date — TERMINAL if
+// the date is older than STALE_IN_TRANSIT_DAYS, otherwise the regular mix.
+function statusMixForDate(dateYmd) {
+  const day = new Date(dateYmd + 'T00:00:00Z').getTime();
+  const ageMs = Date.now() - day;
+  const ageDays = Math.floor(ageMs / 86_400_000);
+  return ageDays > STALE_IN_TRANSIT_DAYS ? TERMINAL_STATUS_MIX : STATUS_MIX;
+}
 
 // Customer-name pool — first + last lists, joined to feel local.
 const FIRST_NAMES = [
@@ -207,7 +236,7 @@ function fabricateOrder({ rng, storeId, dateYmd, sequence, catalog }) {
     orderDetailParts.push(`[ ${qty} x ${title} ]`);
   }
 
-  const status = pickWeighted(rng, STATUS_MIX);
+  const status = pickWeighted(rng, statusMixForDate(dateYmd));
   const city = pickWeighted(rng, CITIES).name;
   const customer = `${FIRST_NAMES[Math.floor(rng() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(rng() * LAST_NAMES.length)]}`;
 
@@ -356,6 +385,77 @@ export async function fabricateDemoDataForDates({
   }
 
   return { ordersInserted, daysSkipped, daysFabricated, adSpendInserted };
+}
+
+// ── stale-in-transit sweep ────────────────────────────────────────────────
+// Flips any demo orders still flagged is_in_transit whose transaction_date
+// is older than STALE_IN_TRANSIT_DAYS to a terminal state. Run from the
+// daily cron so today's in-transit orders don't accumulate as the days
+// roll forward — they should resolve within ~2 weeks like real shipments.
+//
+// Outcome distribution mirrors the redistribution in TERMINAL_STATUS_MIX
+// (most resolve as Delivered). Per-order outcome is keyed off the tracking
+// number so the same row always lands the same way if accidentally swept
+// twice (irrelevant in practice — once swept, is_in_transit=false stops
+// the next sweep from picking it up).
+export async function sweepStaleInTransit(supabase, storeId) {
+  const cutoffDate = new Date(Date.now() - STALE_IN_TRANSIT_DAYS * 86_400_000);
+  const cutoffISO = cutoffDate.toISOString();
+
+  const { data: stale, error: fetchErr } = await supabase
+    .from('orders')
+    .select('id, tracking_number')
+    .eq('store_id', storeId)
+    .eq('is_in_transit', true)
+    .lt('transaction_date', cutoffISO);
+  if (fetchErr) {
+    console.error(`[sweepStaleInTransit ${storeId}] fetch failed:`, fetchErr);
+    return { swept: 0 };
+  }
+  if (!stale?.length) return { swept: 0 };
+
+  // Bucket each row into its terminal outcome
+  const deliveredIds = [];
+  const returnedIds  = [];
+  const cancelledIds = [];
+  for (const row of stale) {
+    const r = rng01(row.tracking_number);
+    if      (r < 0.80) deliveredIds.push(row.id);
+    else if (r < 0.97) returnedIds.push(row.id);
+    else               cancelledIds.push(row.id);
+  }
+
+  const now = new Date().toISOString();
+  // Three bulk UPDATEs — keeps round-trips at O(1) regardless of how many
+  // orders are stale (vs. one update per row).
+  if (deliveredIds.length) {
+    await supabase.from('orders').update({
+      transaction_status: 'Delivered',
+      is_delivered: true, is_returned: false, is_in_transit: false,
+      updated_at: now,
+    }).in('id', deliveredIds);
+  }
+  if (returnedIds.length) {
+    await supabase.from('orders').update({
+      transaction_status: 'Return',
+      is_delivered: false, is_returned: true, is_in_transit: false,
+      updated_at: now,
+    }).in('id', returnedIds);
+  }
+  if (cancelledIds.length) {
+    await supabase.from('orders').update({
+      transaction_status: 'Cancelled',
+      is_delivered: false, is_returned: false, is_in_transit: false,
+      updated_at: now,
+    }).in('id', cancelledIds);
+  }
+
+  return {
+    swept: stale.length,
+    delivered: deliveredIds.length,
+    returned:  returnedIds.length,
+    cancelled: cancelledIds.length,
+  };
 }
 
 // Convenience: build a list of YYYY-MM-DD strings spanning [from, to] inclusive.

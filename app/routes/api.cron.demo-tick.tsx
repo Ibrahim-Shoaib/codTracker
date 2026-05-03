@@ -6,6 +6,7 @@ import { sessionStorage } from "../shopify.server";
 import {
   fabricateDemoDataForDates,
   datesBetween,
+  sweepStaleInTransit,
 } from "../lib/demo-fabricator.server.js";
 import { getTodayPKT, formatPKTDate } from "../lib/dates.server.js";
 
@@ -88,6 +89,14 @@ async function tick(request: Request) {
         dates: reseedDates ?? [todayPkt],
       });
       totalOrders += result.ordersInserted;
+
+      // Resolve any in-transit orders past 14 days to terminal state — same
+      // way real PostEx shipments would have completed by now.
+      const sweepResult = await sweepStaleInTransit(supabase, store.store_id);
+      if (sweepResult.swept > 0) {
+        console.log(`[demo-tick ${store.store_id}] swept ${sweepResult.swept} stale in-transit (${sweepResult.delivered}d/${sweepResult.returned}r/${sweepResult.cancelled}c)`);
+      }
+
       await adminClient
         .from("stores")
         .update({ last_postex_sync_at: new Date().toISOString() })
