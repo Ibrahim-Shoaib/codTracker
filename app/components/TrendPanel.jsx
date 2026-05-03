@@ -346,6 +346,14 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
                     showLegend={false}
                     xAxisOptions={{ labelFormatter: axisFormatter }}
                     yAxisOptions={{ labelFormatter: compactPKR }}
+                    // Emphasize the zero baseline — separates "money in"
+                    // (Revenue, Profit above) from "money out" (inverted
+                    // Cost below). Without this every gridline looks the
+                    // same and the merchant has to hunt for zero.
+                    annotations={[
+                      { axis: "y", startKey: 0, label: "" },
+                    ]}
+                    renderAnnotationContent={() => null}
                     tooltipOptions={{
                       renderTooltipContent: (args) => (
                         <TrendTooltip
