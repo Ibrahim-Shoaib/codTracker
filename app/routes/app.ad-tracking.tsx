@@ -284,7 +284,12 @@ export default function AdTracking() {
       if (event.data?.type === "meta_pixel_oauth_complete") {
         revalidator.revalidate();
       } else if (event.data?.type === "meta_pixel_oauth_error") {
-        setOauthFailed(event.data?.reason ?? "unknown");
+        // Prefer the Meta-supplied detail message when present — it's far
+        // more diagnostic than our top-level `reason` code.
+        const reason = event.data?.detail
+          ? `${event.data.reason}: ${event.data.detail}`
+          : event.data?.reason ?? "unknown";
+        setOauthFailed(reason);
       }
     };
     window.addEventListener("message", handler);

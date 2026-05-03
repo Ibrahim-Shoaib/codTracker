@@ -99,10 +99,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       setCookie
     );
   } catch (err) {
+    // Surface the actual Meta error message into the UI rather than just
+    // "token_exchange". Meta returns specific strings like "redirect_uri does
+    // not match" or "Invalid client secret" that the merchant (or their
+    // developer support) can act on directly without pulling Railway logs.
+    const detail =
+      err instanceof Error
+        ? err.message.replace(/^Meta BISU exchange failed:\s*/, "")
+        : "unknown error";
     console.error("Meta Pixel BISU exchange failed:", err);
     const setCookie = await metaPixelOAuthSession.destroySession(oauthSession);
     return htmlResponse(
-      { type: "meta_pixel_oauth_error", reason: "token_exchange" },
+      { type: "meta_pixel_oauth_error", reason: "token_exchange", detail },
       returnTo,
       setCookie
     );
