@@ -125,6 +125,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 
+  // ── Section 2: Meta — disconnect ──────────────────────────────────────────
+  // Clears the connection (token + account + expiry + error). Historical
+  // ad_spend rows are intentionally left in place — past dashboard
+  // snapshots remain accurate for the merchant's records.
+  if (intent === "meta_disconnect") {
+    await supabase
+      .from("stores")
+      .update({
+        meta_access_token:     null,
+        meta_ad_account_id:    null,
+        meta_ad_account_name:  null,
+        meta_token_expires_at: null,
+        meta_sync_error:       null,
+      })
+      .eq("store_id", shop);
+    return json({ intent, success: true });
+  }
+
   // ── Section 2: Meta — save account after OAuth ────────────────────────────
   if (intent === "meta_save") {
     const adAccountId = String(formData.get("ad_account_id") ?? "");
@@ -395,19 +413,33 @@ export default function SettingsPage() {
                   </FormLayout>
                 </Form>
               ) : (
-                <Form method="post">
-                  <input type="hidden" name="intent" value="meta_connect" />
-                  <Button
-                    submit
-                    variant="primary"
-                    loading={submitting && currentIntent === "meta_connect"}
-                    onClick={() => {
-                      window.open("about:blank", "meta_oauth_window", "width=600,height=700,scrollbars=yes,resizable=yes");
-                    }}
-                  >
-                    Reconnect Meta Ads
-                  </Button>
-                </Form>
+                <InlineStack gap="200" blockAlign="center">
+                  <Form method="post">
+                    <input type="hidden" name="intent" value="meta_connect" />
+                    <Button
+                      submit
+                      variant="primary"
+                      loading={submitting && currentIntent === "meta_connect"}
+                      onClick={() => {
+                        window.open("about:blank", "meta_oauth_window", "width=600,height=700,scrollbars=yes,resizable=yes");
+                      }}
+                    >
+                      {store?.meta_access_token ? "Reconnect Meta Ads" : "Connect Meta Ads"}
+                    </Button>
+                  </Form>
+                  {store?.meta_access_token && (
+                    <Form method="post">
+                      <input type="hidden" name="intent" value="meta_disconnect" />
+                      <Button
+                        submit
+                        tone="critical"
+                        loading={submitting && currentIntent === "meta_disconnect"}
+                      >
+                        Disconnect
+                      </Button>
+                    </Form>
+                  )}
+                </InlineStack>
               )}
             </BlockStack>
           </Card>
