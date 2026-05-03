@@ -11,15 +11,13 @@ import {
   Popover,
   DatePicker,
   Spinner,
-  Tabs,
 } from "@shopify/polaris";
 import { CalendarIcon } from "@shopify/polaris-icons";
 import "@shopify/polaris-viz/build/esm/styles.css";
 
 // polaris-viz reads window.matchMedia synchronously during render and
-// crashes Remix SSR. We lazy-load both the chart + provider so the polaris-viz
-// JS module only evaluates in the browser, and gate the render behind a
-// `mounted` flag so SSR/hydration HTML stay aligned.
+// crashes Remix SSR. Lazy-load + mount-gate to keep the polaris-viz module
+// browser-only without losing the SSR'd panel chrome (header, KPIs, legend).
 const LazyLineChart = lazy(() =>
   import("@shopify/polaris-viz").then((m) => ({ default: m.LineChart }))
 );
@@ -27,46 +25,48 @@ const LazyVizProvider = lazy(() =>
   import("@shopify/polaris-viz").then((m) => ({ default: m.PolarisVizProvider }))
 );
 
-// ── metrics ────────────────────────────────────────────────────────────────
-const METRICS = [
-  { id: "sales",      label: "Total sales",  field: "sales",      kind: "money" },
-  { id: "net_profit", label: "Net profit",   field: "net_profit", kind: "money" },
-  { id: "total_cost", label: "Total cost",   field: "total_cost", kind: "money" },
-  { id: "orders",     label: "Orders",       field: "orders",     kind: "count" },
-];
+// ── colors (intentional palette discipline) ─────────────────────────────────
+// Revenue is the neutral baseline (blue). Profit is the only thing we
+// reward visually (green). Costs use orange — *not* red — because growing
+// costs alongside growing revenue is healthy; red would train the merchant
+// to panic on every scale-up.
+const COLOR_REVENUE = "#2C6ECB";
+const COLOR_PROFIT  = "#108043";
+const COLOR_COST    = "#C05717";
 
-// ── formatters ─────────────────────────────────────────────────────────────
+// ── formatters ──────────────────────────────────────────────────────────────
 const fmtPKR = (n) => `PKR ${Math.round(Number(n ?? 0)).toLocaleString()}`;
-const fmtInt = (n) => Math.round(Number(n ?? 0)).toLocaleString();
-const fmtSignedPct = (curr, prior) => {
-  const c = Number(curr ?? 0);
-  const p = Number(prior ?? 0);
-  if (p === 0) return c === 0 ? "0%" : "—";
-  const delta = ((c - p) / Math.abs(p)) * 100;
-  const sign = delta > 0 ? "↑" : delta < 0 ? "↓" : "";
-  return `${sign}${Math.abs(delta).toFixed(0)}% from comparison`;
+const fmtPKRSigned = (n) => {
+  const v = Math.round(Number(n ?? 0));
+  if (v < 0) return `-PKR ${Math.abs(v).toLocaleString()}`;
+  return `PKR ${v.toLocaleString()}`;
 };
 
-// Compact PKR for axis: 12,500 → 12.5K · 1.2L · 1.2Cr (Pakistani convention)
+// Compact PKR for axis labels: 12,500 → 12.5K · 1.2L · 1.2Cr (Pakistani convention)
 const compactPKR = (n) => {
   const v = Number(n ?? 0);
   const a = Math.abs(v);
   const sign = v < 0 ? "-" : "";
-  if (a >= 1e7) return `PKR ${sign}${(a / 1e7).toFixed(a >= 1e8 ? 0 : 1)}Cr`;
-  if (a >= 1e5) return `PKR ${sign}${(a / 1e5).toFixed(a >= 1e6 ? 0 : 1)}L`;
-  if (a >= 1e3) return `PKR ${sign}${(a / 1e3).toFixed(0)}K`;
-  return `PKR ${sign}${Math.round(a)}`;
-};
-const compactInt = (n) => {
-  const v = Math.round(Number(n ?? 0));
-  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-  if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
-  return String(v);
+  if (a >= 1e7) return `${sign}${(a / 1e7).toFixed(a >= 1e8 ? 0 : 1)}Cr`;
+  if (a >= 1e5) return `${sign}${(a / 1e5).toFixed(a >= 1e6 ? 0 : 1)}L`;
+  if (a >= 1e3) return `${sign}${(a / 1e3).toFixed(0)}K`;
+  return `${sign}${Math.round(a)}`;
 };
 
-// ── date helpers ───────────────────────────────────────────────────────────
+function pctDelta(curr, prior) {
+  const c = Number(curr ?? 0);
+  const p = Number(prior ?? 0);
+  if (p === 0) return null;
+  return ((c - p) / Math.abs(p)) * 100;
+}
+function fmtPctDelta(d) {
+  if (d == null) return "—";
+  const sign = d > 0 ? "↑" : d < 0 ? "↓" : "";
+  return `${sign}${Math.abs(d).toFixed(0)}%`;
+}
+
+// ── date helpers ────────────────────────────────────────────────────────────
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-
 function ymdParts(s) {
   const [y, m, d] = s.split("-").map(Number);
   return { y, m, d };
@@ -77,12 +77,11 @@ function ymdOfDate(date) {
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
-
 function fmtBucketShort(ymd, granularity) {
   const { y, m, d } = ymdParts(ymd);
   if (granularity === "year")  return String(y);
   if (granularity === "month") return `${MONTHS[m - 1]} ${y}`;
-  return `${MONTHS[m - 1]} ${d}`; // day
+  return `${MONTHS[m - 1]} ${d}`;
 }
 function fmtBucketLong(ymd, granularity) {
   const { y, m, d } = ymdParts(ymd);
@@ -90,8 +89,6 @@ function fmtBucketLong(ymd, granularity) {
   if (granularity === "month") return `${MONTHS[m - 1]} ${y}`;
   return `${MONTHS[m - 1]} ${d}, ${y}`;
 }
-
-// "Feb 1 – 28, 2026" or "Mar 5, 2025 – Apr 4, 2026"
 function fmtRange(fromYmd, toYmd) {
   const a = ymdParts(fromYmd);
   const b = ymdParts(toYmd);
@@ -100,9 +97,8 @@ function fmtRange(fromYmd, toYmd) {
   return `${MONTHS[a.m - 1]} ${a.d}, ${a.y} – ${MONTHS[b.m - 1]} ${b.d}, ${b.y}`;
 }
 
-// ── Adaptive X-axis tick density ────────────────────────────────────────────
-// Show roughly N labels evenly spaced; hide the rest. Without this, 90 daily
-// ticks overlap into a smear.
+// Adaptive X-axis tick density — show ~6 evenly spaced labels, blank the rest
+// so 90 daily ticks don't overlap into a smear.
 function makeAxisFormatter(granularity, count) {
   const target = 6;
   const step = Math.max(1, Math.ceil(count / target));
@@ -113,14 +109,13 @@ function makeAxisFormatter(granularity, count) {
   };
 }
 
-// ── main component ─────────────────────────────────────────────────────────
+// ── main component ──────────────────────────────────────────────────────────
 // Props from loader:
 //   initialPayload  { granularity, current:{from,to,points}, prior:{from,to,points} }
 //   backfillInProgress  boolean — hide entirely until first sync lands
 export default function TrendPanel({ initialPayload, backfillInProgress }) {
   const [days, setDays] = useState(30);
   const [payload, setPayload] = useState(initialPayload);
-  const [metricId, setMetricId] = useState("sales");
 
   // Custom-range popover
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -141,7 +136,6 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
       setPayload(fetcher.data);
     }
   }, [fetcher.data, fetcher.state]);
-
   const isLoading = fetcher.state !== "idle";
 
   const loadPreset = useCallback(
@@ -157,49 +151,59 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
     fetcher.load(`/app/api/trend?from=${f}&to=${t}`);
   }, [pickerSel, fetcher]);
 
-  // ── derive chart data ───────────────────────────────────────────────────
-  const metric = METRICS.find((m) => m.id === metricId) ?? METRICS[0];
   const { granularity, current, prior } = payload ?? {
     granularity: "day",
     current: { from: "", to: "", points: [] },
     prior:   { from: "", to: "", points: [] },
   };
 
-  const { chartData, periodTotalCurr, periodTotalPrior, axisFormatter } = useMemo(() => {
+  // ── derive series + period totals ──────────────────────────────────────────
+  const { chartData, totals, axisFormatter, currKeys } = useMemo(() => {
     const curr = current.points ?? [];
     const pri  = prior.points ?? [];
 
-    // Each point's bucket_start is a YYYY-MM-DD string from Postgres
-    const currKeys = curr.map((r) => String(r.bucket_start).slice(0, 10));
-    const currVals = curr.map((r) => Number(r[metric.field] ?? 0));
-    // Align by index — the prior array has the same length (equal-length range)
-    const priVals  = curr.map((_, i) => Number(pri[i]?.[metric.field] ?? 0));
+    const keys      = curr.map((r) => String(r.bucket_start).slice(0, 10));
+    const revenue   = curr.map((r) => Number(r.sales      ?? 0));
+    const profit    = curr.map((r) => Number(r.net_profit ?? 0));
+    const cost      = curr.map((r) => Number(r.total_cost ?? 0));
 
-    const sumCurr = currVals.reduce((a, b) => a + b, 0);
-    const sumPri  = priVals.reduce((a, b) => a + b, 0);
-
-    // polaris-viz LineChart series shape
     const data = [
       {
-        name: "Current",
-        color: "#2C6ECB",
-        data: currKeys.map((k, i) => ({ key: k, value: currVals[i] })),
+        name: "Revenue",
+        color: COLOR_REVENUE,
+        data: keys.map((k, i) => ({ key: k, value: revenue[i] })),
       },
       {
-        name: "Comparison",
-        color: "#9DBEEB",
-        isComparison: true,
-        data: currKeys.map((k, i) => ({ key: k, value: priVals[i] })),
+        name: "Profit",
+        color: COLOR_PROFIT,
+        styleOverride: { line: { strokeDasharray: "5,4" } },
+        data: keys.map((k, i) => ({ key: k, value: profit[i] })),
+      },
+      {
+        name: "Cost",
+        color: COLOR_COST,
+        styleOverride: { line: { strokeDasharray: "5,4" } },
+        data: keys.map((k, i) => ({ key: k, value: cost[i] })),
       },
     ];
 
+    const sumOf = (arr) => arr.reduce((a, b) => a + b, 0);
+    const t = {
+      revenueCurr: sumOf(revenue),
+      profitCurr:  sumOf(profit),
+      costCurr:    sumOf(cost),
+      revenuePrior: sumOf(pri.map((r) => Number(r.sales      ?? 0))),
+      profitPrior:  sumOf(pri.map((r) => Number(r.net_profit ?? 0))),
+      costPrior:    sumOf(pri.map((r) => Number(r.total_cost ?? 0))),
+    };
+
     return {
       chartData: data,
-      periodTotalCurr: sumCurr,
-      periodTotalPrior: sumPri,
-      axisFormatter: makeAxisFormatter(granularity, currKeys.length),
+      totals: t,
+      axisFormatter: makeAxisFormatter(granularity, keys.length),
+      currKeys: keys,
     };
-  }, [current, prior, metric, granularity]);
+  }, [current, prior, granularity]);
 
   if (backfillInProgress) return null;
 
@@ -208,21 +212,19 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
     (r) => Number(r.sales ?? 0) > 0 || Number(r.ad_spend ?? 0) > 0
   );
 
-  const headerRangeLabel = days ? `Last ${days} days` : fmtRange(current.from, current.to);
+  const headerRangeLabel  = days ? `Last ${days} days` : fmtRange(current.from, current.to);
   const compareRangeLabel = fmtRange(prior.from, prior.to);
 
-  // Tabs config — Polaris Tabs API
-  const tabs = METRICS.map((m) => ({
-    id: m.id,
-    content: m.label,
-    accessibilityLabel: m.label,
-    panelID: `metric-${m.id}`,
-  }));
+  // Period-over-period deltas — preserved here as compact badges so we
+  // don't need a fourth (dotted) comparison line in the chart itself.
+  const dRevenue = pctDelta(totals.revenueCurr, totals.revenuePrior);
+  const dProfit  = pctDelta(totals.profitCurr,  totals.profitPrior);
+  const dCost    = pctDelta(totals.costCurr,    totals.costPrior);
 
   return (
     <Card>
       <BlockStack gap="400">
-        {/* Header: window toggle */}
+        {/* Header: title + window toggle */}
         <InlineStack align="space-between" blockAlign="center" wrap={false}>
           <BlockStack gap="050">
             <Text as="h2" variant="headingMd">Performance</Text>
@@ -233,6 +235,9 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
                   <Spinner size="small" />
                 </span>
               )}
+              <Text as="span" tone="subdued" variant="bodySm">
+                {"  ·  vs "}{compareRangeLabel}
+              </Text>
             </Text>
           </BlockStack>
 
@@ -283,34 +288,36 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
           </InlineStack>
         </InlineStack>
 
-        {/* Metric tabs */}
-        <Tabs
-          tabs={tabs}
-          selected={METRICS.findIndex((m) => m.id === metricId)}
-          onSelect={(i) => setMetricId(METRICS[i].id)}
-          fitted
-        />
+        {/* KPI strip — period totals + % delta vs prior period.
+            Replaces the dotted comparison line: "are we trending better?"
+            answered as a compact number instead of a fourth chart series. */}
+        <InlineStack gap="600" wrap>
+          <KpiBadge
+            label="Revenue"
+            color={COLOR_REVENUE}
+            value={fmtPKR(totals.revenueCurr)}
+            delta={dRevenue}
+            // For revenue, up is good
+            goodIfPositive
+          />
+          <KpiBadge
+            label="Profit"
+            color={COLOR_PROFIT}
+            value={fmtPKRSigned(totals.profitCurr)}
+            delta={dProfit}
+            goodIfPositive
+          />
+          <KpiBadge
+            label="Cost"
+            color={COLOR_COST}
+            value={fmtPKR(totals.costCurr)}
+            delta={dCost}
+            // For cost, up is bad
+            goodIfPositive={false}
+          />
+        </InlineStack>
 
-        {/* Headline number — current period total + delta vs comparison */}
-        <BlockStack gap="050">
-          <Text as="p" variant="headingLg">
-            {metric.kind === "money" ? fmtPKR(periodTotalCurr) : fmtInt(periodTotalCurr)}
-          </Text>
-          <Text
-            as="p"
-            variant="bodySm"
-            tone={periodTotalCurr >= periodTotalPrior ? "success" : "critical"}
-          >
-            {fmtSignedPct(periodTotalCurr, periodTotalPrior)}
-            {"  ·  "}
-            <Text as="span" tone="subdued" variant="bodySm">
-              vs {metric.kind === "money" ? fmtPKR(periodTotalPrior) : fmtInt(periodTotalPrior)}{" "}
-              ({compareRangeLabel})
-            </Text>
-          </Text>
-        </BlockStack>
-
-        {/* Chart */}
+        {/* Chart — three lines on one axis */}
         {hasAnyData && hasAnyActivity ? (
           <div style={{ height: 280 }}>
             {mounted ? (
@@ -320,17 +327,12 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
                     data={chartData}
                     showLegend={false}
                     xAxisOptions={{ labelFormatter: axisFormatter }}
-                    yAxisOptions={{
-                      labelFormatter:
-                        metric.kind === "money" ? compactPKR : compactInt,
-                    }}
+                    yAxisOptions={{ labelFormatter: compactPKR }}
                     tooltipOptions={{
                       renderTooltipContent: (args) => (
                         <TrendTooltip
                           args={args}
                           currentPoints={current.points}
-                          priorPoints={prior.points}
-                          metric={metric}
                           granularity={granularity}
                         />
                       ),
@@ -353,27 +355,50 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
           </Box>
         )}
 
-        {/* Legend below — matches Shopify's layout */}
-        <InlineStack align="center" gap="400" blockAlign="center">
-          <LegendDot color="#2C6ECB" label={fmtRange(current.from, current.to)} />
-          <LegendDot color="#9DBEEB" label={compareRangeLabel} />
+        {/* Legend — one row, matches Shopify's compact bottom legend */}
+        <InlineStack align="center" gap="500" blockAlign="center">
+          <LegendDot color={COLOR_REVENUE} label="Revenue" />
+          <LegendDot color={COLOR_PROFIT}  label="Profit" dashed />
+          <LegendDot color={COLOR_COST}    label="Cost"   dashed />
         </InlineStack>
       </BlockStack>
     </Card>
   );
 }
 
-// ── tooltip — Shopify-style: metric name, current point, % delta, prior point
-function TrendTooltip({ args, currentPoints, priorPoints, metric, granularity }) {
+// ── KPI badge ───────────────────────────────────────────────────────────────
+// Big number + colored delta. `goodIfPositive` flips the green/red logic
+// so a rising cost goes red and a rising profit goes green.
+function KpiBadge({ label, color, value, delta, goodIfPositive }) {
+  const tone =
+    delta == null
+      ? "subdued"
+      : (goodIfPositive ? delta >= 0 : delta <= 0)
+      ? "success"
+      : "critical";
+  return (
+    <BlockStack gap="050">
+      <InlineStack gap="150" blockAlign="center">
+        <span style={{ width: 8, height: 8, borderRadius: 4, background: color, display: "inline-block" }} />
+        <Text as="span" variant="bodySm" tone="subdued">{label}</Text>
+      </InlineStack>
+      <Text as="p" variant="headingLg">{value}</Text>
+      <Text as="p" variant="bodySm" tone={tone}>{fmtPctDelta(delta)} vs prior</Text>
+    </BlockStack>
+  );
+}
+
+// ── tooltip — shows all three metrics for the hovered date ─────────────────
+function TrendTooltip({ args, currentPoints, granularity }) {
   const i = args?.activeIndex;
   if (i == null || i < 0) return null;
-  const cur = currentPoints?.[i];
-  const pri = priorPoints?.[i];
-  if (!cur) return null;
+  const row = currentPoints?.[i];
+  if (!row) return null;
 
-  const cVal = Number(cur[metric.field] ?? 0);
-  const pVal = Number(pri?.[metric.field] ?? 0);
-  const fmt = metric.kind === "money" ? fmtPKR : fmtInt;
+  const sales  = Number(row.sales      ?? 0);
+  const profit = Number(row.net_profit ?? 0);
+  const cost   = Number(row.total_cost ?? 0);
+  const margin = sales > 0 ? ((profit / sales) * 100).toFixed(1) : null;
 
   return (
     <div
@@ -387,51 +412,42 @@ function TrendTooltip({ args, currentPoints, priorPoints, metric, granularity })
         fontSize: 13,
       }}
     >
-      <div style={{ fontWeight: 600, marginBottom: 8 }}>{metric.label}</div>
-
-      <TooltipRow
-        dotColor="#2C6ECB"
-        label={fmtBucketLong(String(cur.bucket_start).slice(0, 10), granularity)}
-        value={fmt(cVal)}
-      />
-      <div
-        style={{
-          color: cVal >= pVal ? "#108043" : "#BF0711",
-          fontSize: 12,
-          padding: "4px 0 8px 18px",
-        }}
-      >
-        {fmtSignedPct(cVal, pVal)}
+      <div style={{ fontWeight: 600, marginBottom: 8 }}>
+        {fmtBucketLong(String(row.bucket_start).slice(0, 10), granularity)}
       </div>
-      {pri && (
-        <TooltipRow
-          dotColor="#9DBEEB"
-          label={fmtBucketLong(String(pri.bucket_start).slice(0, 10), granularity)}
-          value={fmt(pVal)}
-        />
+      <TooltipRow color={COLOR_REVENUE} label="Revenue" value={fmtPKR(sales)} />
+      <TooltipRow color={COLOR_PROFIT}  label="Profit"  value={fmtPKRSigned(profit)} valueColor={profit >= 0 ? COLOR_PROFIT : "#BF0711"} />
+      <TooltipRow color={COLOR_COST}    label="Cost"    value={fmtPKR(cost)} />
+      {margin != null && (
+        <div style={{ borderTop: "1px solid #E1E3E5", marginTop: 6, paddingTop: 6, color: "#6D7175", fontSize: 12 }}>
+          Margin: <span style={{ color: profit >= 0 ? COLOR_PROFIT : "#BF0711", fontWeight: 500 }}>{margin}%</span>
+        </div>
       )}
     </div>
   );
 }
 
-function TooltipRow({ dotColor, label, value }) {
+function TooltipRow({ color, label, value, valueColor }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 0" }}>
-      <span style={{ width: 8, height: 8, borderRadius: 4, background: dotColor, display: "inline-block" }} />
-      <div style={{ flex: 1 }}>
-        <div style={{ color: "#202223" }}>{label}</div>
-        <div style={{ background: "#F4F6F8", borderRadius: 4, padding: "2px 6px", display: "inline-block", marginTop: 2 }}>
-          <Text as="span" variant="bodySm" fontWeight="medium">{value}</Text>
-        </div>
-      </div>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "3px 0" }}>
+      <span style={{ width: 8, height: 8, borderRadius: 4, background: color, display: "inline-block", flexShrink: 0 }} />
+      <div style={{ flex: 1, color: "#6D7175" }}>{label}</div>
+      <div style={{ color: valueColor ?? "#202223", fontWeight: 500 }}>{value}</div>
     </div>
   );
 }
 
-function LegendDot({ color, label }) {
+function LegendDot({ color, label, dashed }) {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <span style={{ width: 10, height: 10, borderRadius: 5, background: color, display: "inline-block" }} />
+      <span
+        style={{
+          width: 18,
+          height: 0,
+          borderTop: dashed ? `2px dashed ${color}` : `2px solid ${color}`,
+          display: "inline-block",
+        }}
+      />
       <Text as="span" variant="bodySm" tone="subdued">{label}</Text>
     </span>
   );
