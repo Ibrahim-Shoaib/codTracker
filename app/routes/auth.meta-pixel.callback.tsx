@@ -109,9 +109,25 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       );
       businessId = await resolveClientBusinessId(access_token, tokenInfo.user_id);
     }
+    // If business discovery fails entirely, don't error out — route the
+    // merchant to a manual Pixel ID input instead. Meta's FBL4B "General"
+    // login variation sometimes issues BISUs that aren't bound to a Business
+    // Manager (a config quirk we can't fix server-side); this fallback lets
+    // those merchants connect anyway by pasting their Pixel ID directly.
     if (!businessId) {
-      throw new Error(
-        "BISU token has no associated business — make sure you selected a Business and granted Pixel + Ad Account access during the Meta consent flow."
+      console.log(
+        "[meta-pixel oauth] business_id discovery failed across all paths — routing to manual entry"
+      );
+      oauthSession.unset("state");
+      oauthSession.set("bisu_token", access_token);
+      oauthSession.set("business_id", null);
+      oauthSession.set("system_user_id", tokenInfo.user_id ?? null);
+      oauthSession.set("manual_entry_required", true);
+      const setCookie = await metaPixelOAuthSession.commitSession(oauthSession);
+      return htmlResponse(
+        { type: "meta_pixel_oauth_complete" },
+        returnTo,
+        setCookie
       );
     }
     console.log(`[meta-pixel oauth] resolved business_id=${businessId}`);

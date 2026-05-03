@@ -64,6 +64,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const pendingDatasets: DatasetOption[] | null =
     oauthSession.get("datasets") ?? null;
   const pendingBusinessId: string | null = oauthSession.get("business_id") ?? null;
+  const manualEntryRequired: boolean = !!oauthSession.get("manual_entry_required");
 
   const supabase = await getSupabaseForStore(shop);
 
@@ -98,6 +99,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       ? {
           datasets: pendingDatasets ?? [],
           businessId: pendingBusinessId,
+          manualEntryRequired,
         }
       : null,
     recentEvents: (recentRes.data ?? []) as RecentEvent[],
@@ -144,9 +146,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const bisu: string | null = oauthSession.get("bisu_token") ?? null;
     const businessId: string | null = oauthSession.get("business_id") ?? null;
     const datasets: DatasetOption[] = oauthSession.get("datasets") ?? [];
+    const manualEntry: boolean = !!oauthSession.get("manual_entry_required");
 
-    if (!bisu || !businessId) {
+    // Manual entry flow: business_id couldn't be discovered, so we accept the
+    // Pixel ID directly typed by the merchant. business_id stays null on the
+    // saved connection — CAPI doesn't need it, only the dataset_id matters.
+    if (!bisu) {
       return json({ intent, error: "OAuth session expired — please connect again." });
+    }
+    if (!businessId && !manualEntry) {
+      return json({ intent, error: "OAuth session expired — please connect again." });
+    }
+
+    // Validate the manually-entered Pixel ID is a numeric Meta dataset id.
+    if (manualEntry && !/^\d{10,20}$/.test(datasetId)) {
+      return json({
+        intent,
+        error: "Pixel ID should be a 15-16 digit number from Events Manager.",
+      });
     }
 
     const dataset = datasets.find((d) => d.id === datasetId);
@@ -175,7 +192,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           store_id: shop,
           config_id: process.env.META_PIXEL_CONFIG_ID ?? "",
           bisu_token: encryptSecret(bisu),
-          business_id: businessId,
+          // For manual entry, business_id is unknown — store empty string
+          // (the column is NOT NULL). CAPI relay only needs dataset_id +
+          // BISU; business_id is purely informational.
+          business_id: businessId ?? "",
           business_name: null,
           dataset_id: datasetId,
           dataset_name: dataset?.name ?? null,
@@ -480,6 +500,77 @@ export default function AdTracking() {
                       </InlineStack>
                     ))}
                   </BlockStack>
+                )}
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        </Layout>
+      </Page>
+    );
+  }
+
+  // ── Manual Pixel ID entry — auto-discovery failed, ask user to type it ─────
+  if (pending && (pending as { manualEntryRequired?: boolean }).manualEntryRequired) {
+    return (
+      <Page>
+        <TitleBar title="Ad Tracking" />
+        <Layout>
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <BlockStack gap="100">
+                  <Text as="h2" variant="headingLg">Enter your Pixel ID</Text>
+                  <Text as="p" variant="bodyMd" tone="subdued">
+                    Meta authorized your account but didn't return your Business
+                    Manager's Pixel list directly. No problem — just paste your
+                    Pixel ID below and we'll connect.
+                  </Text>
+                </BlockStack>
+
+                <Banner tone="info">
+                  <BlockStack gap="100">
+                    <Text as="p" variant="bodyMd">
+                      <strong>How to find your Pixel ID:</strong>
+                    </Text>
+                    <Text as="p" variant="bodyMd">
+                      1. Open <a href="https://business.facebook.com/events_manager2" target="_blank" rel="noopener noreferrer">Meta Events Manager</a>
+                    </Text>
+                    <Text as="p" variant="bodyMd">
+                      2. Click your Pixel/Dataset in the left sidebar
+                    </Text>
+                    <Text as="p" variant="bodyMd">
+                      3. Copy the 15–16 digit number shown under the Pixel name (e.g. <code>1234567890123456</code>)
+                    </Text>
+                  </BlockStack>
+                </Banner>
+
+                <Form method="post">
+                  <input type="hidden" name="intent" value="save_dataset" />
+                  <BlockStack gap="300">
+                    <input
+                      type="text"
+                      name="dataset_id"
+                      placeholder="1234567890123456"
+                      pattern="[0-9]{10,20}"
+                      required
+                      style={{
+                        padding: "10px 12px",
+                        border: "1px solid #ccc",
+                        borderRadius: "8px",
+                        fontSize: "16px",
+                        fontFamily: "monospace",
+                      }}
+                    />
+                    <InlineStack>
+                      <Button submit variant="primary" loading={submitting}>
+                        Save & install pixel on storefront
+                      </Button>
+                    </InlineStack>
+                  </BlockStack>
+                </Form>
+
+                {actionData && "error" in actionData && actionData.error && (
+                  <Banner tone="critical">{actionData.error}</Banner>
                 )}
               </BlockStack>
             </Card>
