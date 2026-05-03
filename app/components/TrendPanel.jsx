@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, lazy, Suspense } from "react";
 import { useFetcher } from "@remix-run/react";
 import {
   Card,
@@ -13,12 +13,20 @@ import {
   Spinner,
 } from "@shopify/polaris";
 import { CalendarIcon } from "@shopify/polaris-icons";
-import {
-  PolarisVizProvider,
-  ComboChart,
-} from "@shopify/polaris-viz";
-// Polaris-viz ships its own stylesheet — required for axes / grid / tooltip
+// CSS-only import is SSR-safe (Vite emits a stylesheet link); the JS module
+// is the part that touches `window`, so we lazy-load that below.
 import "@shopify/polaris-viz/build/esm/styles.css";
+
+// polaris-viz reads `window.matchMedia` during render and crashes Remix SSR.
+// We lazy-load it so the import + first render only happen in the browser,
+// and gate it behind a `mounted` flag so the SSR'd HTML and the first
+// hydration render agree (no hydration mismatch).
+const LazyComboChart = lazy(() =>
+  import("@shopify/polaris-viz").then((m) => ({ default: m.ComboChart }))
+);
+const LazyVizProvider = lazy(() =>
+  import("@shopify/polaris-viz").then((m) => ({ default: m.PolarisVizProvider }))
+);
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 const PKR = (n) => {
@@ -173,6 +181,13 @@ export default function TrendPanel({
   // Day selected by clicking a bar in the chart. When set, the cost
   // breakdown shows that single day; otherwise it shows the period total.
   const [focusedDay, setFocusedDay] = useState(null);
+
+  // Defer the chart's first render until after hydration. polaris-viz reads
+  // `window.matchMedia` synchronously during render, so SSR-ing it crashes
+  // the loader. Rendering on mount also keeps SSR HTML and first-hydration
+  // HTML identical (no React mismatch warning).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   const fetcher = useFetcher();
 
@@ -365,21 +380,27 @@ export default function TrendPanel({
           </InlineStack>
         </InlineStack>
 
-        {/* Chart */}
+        {/* Chart — client-only because polaris-viz reads window during render */}
         {hasAnyData && hasAnyActivity ? (
           <div style={{ height: 280 }}>
-            <PolarisVizProvider>
-              <ComboChart
-                data={chartData}
-                showLegend
-                xAxisOptions={{
-                  labelFormatter: (v) => (typeof v === "string" ? shortDate(v) : String(v)),
-                }}
-                renderTooltipContent={(args) => (
-                  <TrendTooltip args={args} rows={series} onPin={setFocusedDay} />
-                )}
-              />
-            </PolarisVizProvider>
+            {mounted ? (
+              <Suspense fallback={<ChartSkeletonBox />}>
+                <LazyVizProvider>
+                  <LazyComboChart
+                    data={chartData}
+                    showLegend
+                    xAxisOptions={{
+                      labelFormatter: (v) => (typeof v === "string" ? shortDate(v) : String(v)),
+                    }}
+                    renderTooltipContent={(args) => (
+                      <TrendTooltip args={args} rows={series} onPin={setFocusedDay} />
+                    )}
+                  />
+                </LazyVizProvider>
+              </Suspense>
+            ) : (
+              <ChartSkeletonBox />
+            )}
           </div>
         ) : (
           <Box padding="600">
@@ -459,6 +480,28 @@ function TrendTooltip({ args, rows, onPin }) {
       <Row label="Orders"    value={String(row.orders)} sub={`${row.delivered} delivered · ${row.returns} returned`} />
       <Row label="Net profit" value={PKRSigned(profit)} valueColor={profit >= 0 ? "#108043" : "#BF0711"} />
       {margin != null && <Row label="Margin" value={`${margin}%`} />}
+    </div>
+  );
+}
+
+// Plain neutral box used while the chart JS chunk is loading on the client.
+// Same height as the chart so the layout doesn't jump on hydration.
+function ChartSkeletonBox() {
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        background: "#F4F6F8",
+        borderRadius: 8,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "#6D7175",
+        fontSize: 13,
+      }}
+    >
+      Loading chart…
     </div>
   );
 }
