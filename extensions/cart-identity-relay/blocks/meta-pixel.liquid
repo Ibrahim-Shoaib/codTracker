@@ -1,0 +1,37 @@
+{%- comment -%}
+  COD Tracker — Browser-Side Meta Pixel
+  ======================================
+  App embed block. Loads the standard Meta Pixel browser script (fbevents.js)
+  and fires fbq('init', PIXEL_ID) + fbq('track', 'PageView') so:
+
+    1. Meta Pixel Helper detects the pixel as installed
+    2. PageView events flow browser-side with full client-side identity
+       (auto-set _fbp / _fbc cookies, browser User-Agent, viewport)
+    3. Server-side CAPI continues firing the same events with matching
+       deterministic event_ids, so Meta deduplicates — the merchant's
+       reported event count and audience size are unaffected
+
+  Dual-firing with event_id dedup is the gold standard for ROAS optimization
+  per Meta's own docs (https://developers.facebook.com/docs/marketing-api/conversions-api/deduplicate-pixel-and-server-events).
+
+  The Pixel ID itself is fetched at runtime from /apps/tracking/config (App
+  Proxy, HMAC-signed). This avoids needing a write_metafields scope, which
+  would force an existing-install re-auth.
+
+  Merchants enable this from Online Store → Themes → Customize → App embeds.
+{%- endcomment -%}
+
+<script src="{{ 'meta-pixel.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "COD Tracker Meta Pixel",
+  "target": "head",
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "Adds the standard Meta Pixel browser script to your storefront. Required for Meta Pixel Helper to detect your pixel and for maximum Event Match Quality. Pulls the connected Pixel ID automatically from the COD Tracker app — no manual configuration needed."
+    }
+  ]
+}
+{% endschema %}

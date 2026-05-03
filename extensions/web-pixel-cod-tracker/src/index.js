@@ -81,15 +81,44 @@ register(({ analytics, browser, init, settings }) => {
     return `${eventName.toLowerCase()}:${accountID}:${resourceId}`;
   }
 
-  // Per-page-load random id, used as a fallback when no resource id is in
-  // scope. Computed once and reused so retries within the same page hit dedup.
-  const PAGE_SESSION = (function () {
-    const rand = Math.floor(Math.random() * 1e12).toString(36);
-    return `${Date.now()}.${rand}`;
-  })();
+  // Per-page-load id, used as a fallback when no resource id is in scope.
+  // We persist it to a cookie (`_codprofit_psid`) so the unsandboxed theme
+  // app embed (which fires browser-side fbq() for Meta Pixel Helper) can
+  // read the same value and produce matching event_ids — Meta dedupes on
+  // event_id, and without a shared session key the browser-side PageView
+  // and the server-side PageView would double-count.
+  //
+  // Cookie reads/writes via browser.cookie are async and not always
+  // available in every sandbox build, so we wrap the whole thing in a
+  // promise. The cookie has a 30-minute TTL — long enough for one browsing
+  // session but short enough that stale ids don't leak across visitors.
+  const PSID_COOKIE = "_codprofit_psid";
+  const PSID_TTL = 30 * 60; // 30 minutes
 
-  function fallbackId(eventName) {
-    return `${eventName.toLowerCase()}:${accountID}:${PAGE_SESSION}`;
+  async function resolvePageSession() {
+    try {
+      const existing = await browser.cookie.get(PSID_COOKIE);
+      if (existing) return existing;
+    } catch (_) {
+      /* cookie read failed — fall through to generate a fresh one */
+    }
+    const rand = Math.floor(Math.random() * 1e12).toString(36);
+    const psid = `${Date.now()}.${rand}`;
+    try {
+      await browser.cookie.set(PSID_COOKIE, psid, { maxAge: PSID_TTL });
+    } catch (_) {
+      /* swallow — id still works for this page even if not persisted */
+    }
+    return psid;
+  }
+
+  // Resolved once at register-time so all subscriptions share the same id.
+  // The promise is awaited inside fallbackId where needed.
+  const pageSessionPromise = resolvePageSession();
+
+  async function fallbackId(eventName) {
+    const psid = await pageSessionPromise;
+    return `${eventName.toLowerCase()}:${accountID}:${psid}`;
   }
 
   // ─── Beacon ─────────────────────────────────────────────────────────────────
@@ -113,11 +142,17 @@ register(({ analytics, browser, init, settings }) => {
     }
   }
 
+  // track() now resolves eventId before sending. eventId may be a string
+  // (deterministic, when a resource id is in scope) OR a Promise<string>
+  // (fallback, when we have to read the shared page-session cookie). The
+  // wrapper normalizes both so subscribe handlers stay tidy.
   async function track(eventName, eventId, customData = {}) {
+    const resolvedId =
+      typeof eventId === "string" ? eventId : await eventId;
     const { fbp, fbc } = await ensureFbCookies();
     send({
       event: eventName,
-      event_id: eventId,
+      event_id: resolvedId,
       event_time: Date.now(),
       url: init.context.window.location.href,
       fbp,
