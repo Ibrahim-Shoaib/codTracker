@@ -54,6 +54,41 @@ type RecentEvent = {
   sent_at: string;
 };
 
+// ─── Theme app embed activation deep link ────────────────────────────────────
+//
+// Shopify provides a deep-link URL format that opens the theme editor with a
+// specific app embed pre-toggled to ON — the merchant just clicks Save in
+// the top-right and the embed is enabled. This lets us complete the "install
+// the browser pixel + cart relay" step in 1 click instead of the 6-step
+// "navigate to themes → customize → app embeds → toggle → save" flow.
+//
+// Format reference:
+//   https://admin.shopify.com/store/{handle}/themes/current/editor
+//     ?context=apps
+//     &template=index
+//     &activateAppId={extension_uuid}/{block_handle}
+//
+// extension_uuid comes from extensions/cart-identity-relay/shopify.extension.toml
+// (the `uid` field). Hard-coded here because it's stable across deploys —
+// Shopify only re-generates it if the extension is deleted and recreated.
+//
+// We activate `meta-pixel` (the new block) since it's the more likely missing
+// one for existing merchants. The cart-identity-relay block is shown side by
+// side in the editor — merchants visually confirm both are enabled before
+// saving.
+const CART_RELAY_EXT_UUID = "53765f90-3a3e-f68c-8285-3ae78dd9fa2f31183fee";
+
+function buildThemeActivationUrl(shop: string): string {
+  // shop is "the-trendy-homes-pk.myshopify.com" → handle is the-trendy-homes-pk
+  const shopHandle = shop.replace(/\.myshopify\.com$/, "");
+  const params = new URLSearchParams({
+    context: "apps",
+    template: "index",
+    activateAppId: `${CART_RELAY_EXT_UUID}/meta-pixel`,
+  });
+  return `https://admin.shopify.com/store/${shopHandle}/themes/current/editor?${params}`;
+}
+
 // ─── Loader ───────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -96,6 +131,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const latestEMQ = emqRes.data?.[0] ?? null;
 
   return json({
+    shop,
     connection: conn,
     pending: pendingToken
       ? {
@@ -216,7 +252,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const destroy = await metaPixelOAuthSession.destroySession(oauthSession);
     return json(
-      { intent, success: true },
+      {
+        intent,
+        success: true,
+        themeActivationUrl: buildThemeActivationUrl(shop),
+      },
       { headers: { "Set-Cookie": destroy } }
     );
   }
@@ -370,7 +410,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AdTracking() {
-  const { connection, pending, recentEvents, latestEMQ } =
+  const { shop, connection, pending, recentEvents, latestEMQ } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
@@ -395,6 +435,21 @@ export default function AdTracking() {
       }
     }
   }, [actionData]);
+
+  // After save_dataset completes successfully, auto-open the theme editor in
+  // a new tab with our app embed pre-toggled. The merchant just needs to
+  // click Save — turning a 6-step manual flow into 1 click. Done as a
+  // useEffect (not inline in the action) so the new tab is initiated by an
+  // actual user gesture chain (the original Connect click) and isn't blocked
+  // by popup blockers.
+  const themeActivationUrl =
+    actionData && "themeActivationUrl" in actionData
+      ? (actionData.themeActivationUrl as string | undefined)
+      : undefined;
+  useEffect(() => {
+    if (!themeActivationUrl) return;
+    window.open(themeActivationUrl, "_blank", "noopener,noreferrer");
+  }, [themeActivationUrl]);
 
   // Listen for the popup's postMessage on completion.
   useEffect(() => {
@@ -440,10 +495,12 @@ export default function AdTracking() {
                 </InlineStack>
 
                 {(() => {
-                  // If they connected but no Purchase has fired yet, the
-                  // Theme App Extension probably isn't enabled — without it
-                  // cart attributes don't carry fbp/fbc into the order, and
-                  // EMQ stays low. Surface this prominently.
+                  // If they connected but no events have fired yet, one or
+                  // both Theme App Embed blocks probably aren't enabled.
+                  // Without them: (1) browser-side fbq() doesn't init so
+                  // Meta Pixel Helper shows nothing, (2) cart attributes
+                  // don't carry fbp/fbc so server-side EMQ stays low.
+                  // Surface this with a one-click activation button.
                   const connectedAgo =
                     Date.now() - new Date(connection.connected_at).getTime();
                   const noEventsYet =
@@ -453,18 +510,31 @@ export default function AdTracking() {
                   );
                   if (noEventsYet || (connectedAgo > 24 * 60 * 60 * 1000 && !hasPurchase)) {
                     return (
-                      <Banner tone="warning" title="Enable the Theme block to start tracking">
-                        <BlockStack gap="100">
+                      <Banner tone="warning" title="Enable the Theme blocks to start tracking">
+                        <BlockStack gap="200">
                           <Text as="p" variant="bodyMd">
-                            We installed the storefront pixel, but the
-                            <strong> COD Tracker Cart Relay </strong>
-                            theme app block isn't active yet. Without it, server-side
-                            Purchase events miss the fbp/fbc identity that drives match quality.
+                            We installed the storefront pixel, but the two
+                            theme app embeds aren't both active yet:
                           </Text>
                           <Text as="p" variant="bodyMd">
-                            Online Store → Themes → Customize → App embeds →
-                            toggle <strong>COD Tracker Cart Relay</strong> on.
+                            • <strong>COD Tracker Meta Pixel</strong> — fires
+                            browser-side fbq() so Meta Pixel Helper detects
+                            your pixel.
                           </Text>
+                          <Text as="p" variant="bodyMd">
+                            • <strong>COD Tracker Cart Relay</strong> —
+                            carries fbp/fbc identity onto every order for
+                            high-EMQ server-side matching.
+                          </Text>
+                          <InlineStack gap="200">
+                            <Button
+                              url={buildThemeActivationUrl(shop)}
+                              target="_blank"
+                              variant="primary"
+                            >
+                              Open theme editor (1-click activate)
+                            </Button>
+                          </InlineStack>
                         </BlockStack>
                       </Banner>
                     );
@@ -479,6 +549,15 @@ export default function AdTracking() {
                   <Text as="p" variant="bodyMd">
                     {connection.dataset_name ?? "(unnamed)"} · ID {connection.dataset_id}
                   </Text>
+                  <InlineStack gap="200">
+                    <Button
+                      url={buildThemeActivationUrl(shop)}
+                      target="_blank"
+                      variant="plain"
+                    >
+                      Open theme editor (activate Meta Pixel + Cart Relay)
+                    </Button>
+                  </InlineStack>
                 </BlockStack>
 
                 <BlockStack gap="200">
