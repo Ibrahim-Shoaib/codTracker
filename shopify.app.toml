@@ -30,11 +30,13 @@ api_version = "2025-10"
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 # Required scopes (existing): read_orders, read_products, read_inventory
 # New scopes for Ad Tracking:
-#   - read_customers     → email/phone/name on order webhooks for hashed identity
-#   - read_checkouts     → checkout webhooks for InitiateCheckout
+#   - read_customers       → email/phone/name on order webhooks for hashed identity
+#   - read_checkouts       → checkout webhooks for InitiateCheckout
 #   - write_pixels, read_pixels → install/manage Custom Web Pixel via Admin GraphQL
-#   - read_marketing_events → optional, for Meta channel cross-reference
-scopes = "read_orders,read_products,read_inventory,read_customers,read_checkouts,write_pixels,read_pixels"
+#   - read_customer_events → REQUIRED by webPixelCreate; lets the Web Pixel
+#                            receive checkout/purchase events from Shopify's
+#                            customer events stream inside the LavaMoat sandbox.
+scopes = "read_orders,read_products,read_inventory,read_customers,read_checkouts,write_pixels,read_pixels,read_customer_events"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
