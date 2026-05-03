@@ -8,7 +8,7 @@ import {
   useRevalidator,
 } from "@remix-run/react";
 import { useEffect, useState } from "react";
-import { randomBytes, randomUUID } from "crypto";
+import { randomBytes } from "crypto";
 import {
   Page,
   Layout,
@@ -219,21 +219,100 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 
-  // ── Send a test event ───────────────────────────────────────────────────────
+  // ── Send test events ────────────────────────────────────────────────────────
+  // Fire one of every event the integration emits in production, with full
+  // (dummy) identity hashed in. The test_event_code keeps these out of the
+  // merchant's real audience — they only show in Events Manager → Test Events.
+  // This lets the merchant verify the entire pipeline (PageView → Purchase) in
+  // a single click instead of having to walk through a real checkout.
   if (intent === "test_event") {
-    const event = buildCAPIEvent({
-      eventName: "PageView",
-      eventId: randomUUID(),
-      eventTime: new Date(),
-      eventSourceUrl: `https://${shop}/`,
-      userData: buildUserData({
-        clientUa: "COD-Tracker-Test/1.0",
-        clientIp: "127.0.0.1",
-      }),
+    const now = new Date();
+    const ts = Math.floor(now.getTime() / 1000);
+    const testUserData = buildUserData({
+      email: "test@codprofit.co",
+      phone: "+923001234567",
+      firstName: "Test",
+      lastName: "User",
+      city: "Karachi",
+      state: "Sindh",
+      zip: "75200",
+      country: "PK",
+      externalId: `test-${shop}`,
+      clientIp: "127.0.0.1",
+      clientUa: "COD-Tracker-Test/1.0",
+      fbp: `fb.1.${ts}000.1234567890`,
     });
+    const productId = "TEST-PRODUCT-1";
+    const orderId = `test-order-${ts}`;
+    const productCustom = {
+      content_ids: [productId],
+      content_type: "product",
+      value: 1000,
+      currency: "PKR",
+    };
+    const checkoutCustom = { ...productCustom, num_items: 1 };
+
+    const events = [
+      buildCAPIEvent({
+        eventName: "PageView",
+        eventId: `test:pageview:${shop}:${ts}`,
+        eventTime: now,
+        eventSourceUrl: `https://${shop}/`,
+        userData: testUserData,
+      }),
+      buildCAPIEvent({
+        eventName: "ViewContent",
+        eventId: `test:viewcontent:${shop}:${ts}`,
+        eventTime: now,
+        eventSourceUrl: `https://${shop}/products/test-product`,
+        userData: testUserData,
+        customData: productCustom,
+      }),
+      buildCAPIEvent({
+        eventName: "Search",
+        eventId: `test:search:${shop}:${ts}`,
+        eventTime: now,
+        eventSourceUrl: `https://${shop}/search?q=test`,
+        userData: testUserData,
+        customData: { search_string: "test product" },
+      }),
+      buildCAPIEvent({
+        eventName: "AddToCart",
+        eventId: `test:addtocart:${shop}:${ts}`,
+        eventTime: now,
+        eventSourceUrl: `https://${shop}/products/test-product`,
+        userData: testUserData,
+        customData: productCustom,
+      }),
+      buildCAPIEvent({
+        eventName: "InitiateCheckout",
+        eventId: `test:initiatecheckout:${shop}:${ts}`,
+        eventTime: now,
+        eventSourceUrl: `https://${shop}/checkout`,
+        userData: testUserData,
+        customData: checkoutCustom,
+      }),
+      buildCAPIEvent({
+        eventName: "AddPaymentInfo",
+        eventId: `test:addpaymentinfo:${shop}:${ts}`,
+        eventTime: now,
+        eventSourceUrl: `https://${shop}/checkout`,
+        userData: testUserData,
+        customData: checkoutCustom,
+      }),
+      buildCAPIEvent({
+        eventName: "Purchase",
+        eventId: `test:purchase:${shop}:${orderId}`,
+        eventTime: now,
+        eventSourceUrl: `https://${shop}/thank-you`,
+        userData: testUserData,
+        customData: { ...checkoutCustom, order_id: orderId },
+      }),
+    ];
+
     const result = await sendCAPIEventsForShop({
       storeId: shop,
-      events: [event],
+      events,
       testEventCode: process.env.META_TEST_EVENT_CODE,
     });
     return json({ intent, testResult: result });
@@ -411,10 +490,14 @@ export default function AdTracking() {
                   return (
                     <Banner tone={tr.ok ? "success" : "warning"}>
                       {tr.ok
-                        ? `Test event accepted by Meta${
+                        ? `${
+                            "eventsReceived" in tr && tr.eventsReceived
+                              ? tr.eventsReceived
+                              : 7
+                          } test events accepted by Meta — check Events Manager → Test Events${
                             "traceId" in tr && tr.traceId ? ` · trace ${tr.traceId}` : ""
                           }.`
-                        : `Test event failed: ${("reason" in tr && tr.reason) || "unknown error"}.`}
+                        : `Test events failed: ${("reason" in tr && tr.reason) || "unknown error"}.`}
                     </Banner>
                   );
                 })()}
