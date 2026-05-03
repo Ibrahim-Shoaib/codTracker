@@ -30,6 +30,7 @@ import WarningBanner from "../components/WarningBanner.jsx";
 import DetailPanel from "../components/DetailPanel.jsx";
 import CityLossPanel from "../components/CityLossPanel.jsx";
 import BreakEvenSection from "../components/BreakEvenSection.jsx";
+import TrendPanel from "../components/TrendPanel.jsx";
 
 const STEP_ROUTES: Record<number, string> = {
   1: "/app/onboarding/step1-postex",
@@ -138,6 +139,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // 3. Parallel RPC calls — 4 KPI stats + 3 prior-period stats (Today reuses
   // Yesterday) + 3 break-even windows + 1 banner count + 1 city breakdown
+  // + 1 daily trend series (initial 30 days; the chart fetcher swaps this
+  // window client-side via /app/api/trend without reloading the dashboard).
   const [
     todayRes,
     yesterdayRes,
@@ -151,6 +154,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     win90Res,
     { count: unmatchedCount },
     cityRes,
+    trendRes,
   ] = await Promise.all([
     statsRpc(supabase, shop, todayFrom, todayTo, monthlyExp, perOrderExp),
     statsRpc(supabase, shop, yestFrom,  yestTo,  monthlyExp, perOrderExp),
@@ -171,6 +175,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       p_store_id:  shop,
       p_from_date: cityFromDate,
       p_to_date:   cityToDate,
+    }),
+    (supabase as any).rpc("get_daily_series", {
+      p_store_id:           shop,
+      p_from_date:          window30From,
+      p_to_date:            windowTo,
+      p_monthly_expenses:   monthlyExp,
+      p_per_order_expenses: perOrderExp,
     }),
   ]);
 
@@ -309,6 +320,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       from:   cityFromDate,
       to:     cityToDate,
     },
+    trend: {
+      series: trendRes?.data ?? [],
+      from:   window30From,
+      to:     windowTo,
+    },
     unfulfilledPipeline,
   });
 };
@@ -328,7 +344,7 @@ export default function Dashboard() {
   const { periods, expensesList, unmatchedCOGSCount,
           metaConnected, isMetaExpired, isMetaExpiringSoon, metaExpiresAt,
           metaSyncError,
-          backfillInProgress, cityBreakdown, breakEven,
+          backfillInProgress, cityBreakdown, breakEven, trend,
           unfulfilledPipeline } = data;
 
   // Empty state: no orders in any period
@@ -386,6 +402,13 @@ export default function Dashboard() {
             </InlineGrid>
 
             {breakEven && <BreakEvenSection {...breakEven} />}
+
+            <TrendPanel
+              initialSeries={trend.series}
+              initialFrom={trend.from}
+              initialTo={trend.to}
+              backfillInProgress={backfillInProgress}
+            />
 
             <CityLossPanel
               initialCities={cityBreakdown.cities}
