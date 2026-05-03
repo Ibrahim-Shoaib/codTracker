@@ -165,6 +165,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     supabase
       .from("orders")
       .select("id", { count: "exact", head: true })
+      .eq("store_id", shop)
       .eq("cogs_match_source", "none"),
     (supabase as any).rpc("get_city_breakdown", {
       p_store_id:  shop,

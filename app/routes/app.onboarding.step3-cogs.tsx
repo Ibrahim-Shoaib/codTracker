@@ -34,7 +34,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const { data: existingCosts } = await supabase
     .from("product_costs")
-    .select("shopify_variant_id, unit_cost");
+    .select("shopify_variant_id, unit_cost")
+    .eq("store_id", shop);
 
   const costsMap: Record<string, number> = {};
   for (const row of existingCosts ?? []) {
