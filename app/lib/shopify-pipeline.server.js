@@ -93,3 +93,52 @@ export async function fetchUnfulfilledPipeline(session, ranges) {
   }
   return buckets;
 }
+
+// Single-range variant — returns { count, value } for the Unfulfilled pill
+// on a custom-date KPI card. One Shopify Admin call, scoped to [from, to]
+// by created_at_min only — orders dated after `to` are filtered out in JS
+// to avoid a second range param the REST endpoint doesn't reliably accept.
+//
+// Returns { count: 0, value: 0 } on any failure so the caller can render
+// the pill at zero rather than blowing up the dashboard.
+export async function fetchUnfulfilledForRange(session, fromYmd, toYmd) {
+  if (!session?.accessToken || !session?.shop) return { count: 0, value: 0 };
+
+  const createdAtMin = `${fromYmd}T00:00:00+05:00`;
+  const headers = {
+    'X-Shopify-Access-Token': session.accessToken,
+    'Content-Type': 'application/json',
+  };
+
+  let url =
+    `https://${session.shop}/admin/api/${API_VERSION}/orders.json` +
+    `?fulfillment_status=unfulfilled&status=open` +
+    `&created_at_min=${encodeURIComponent(createdAtMin)}` +
+    `&limit=250&fields=id,created_at,total_price`;
+
+  let count = 0;
+  let value = 0;
+  for (let page = 0; page < 4 && url; page++) {
+    let res;
+    try {
+      res = await fetch(url, { headers });
+    } catch (err) {
+      console.error('Shopify single-range pipeline fetch network error:', err);
+      return { count, value };
+    }
+    if (!res.ok) {
+      console.error(`Shopify single-range pipeline fetch failed: ${res.status}`);
+      return { count, value };
+    }
+    const { orders } = await res.json();
+    for (const o of orders ?? []) {
+      const pkt = formatPKTDate(new Date(o.created_at));
+      if (pkt >= fromYmd && pkt <= toYmd) {
+        count += 1;
+        value += Number(o.total_price) || 0;
+      }
+    }
+    url = parseNextUrl(res.headers.get('link'));
+  }
+  return { count, value };
+}

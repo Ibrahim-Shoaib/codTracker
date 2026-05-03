@@ -213,11 +213,14 @@ export default function KPICard({
   const loading = fetcher.state === "loading";
   const presets = computePresets();
 
-  // The Unfulfilled pill is keyed off the loader's default date ranges. When
-  // the merchant picks a custom date for this card the displayed period no
-  // longer matches the deferred bucket, so we suppress it. In Transit comes
-  // from the per-period SQL stats and stays valid on every range.
+  // Unfulfilled pill rendering rules:
+  //   * Default range (no fetcher.data) → use the deferred Shopify promise
+  //     bucketed by period the dashboard loader supplied.
+  //   * Custom date range → /app/api/stats now returns an `unfulfilled`
+  //     value scoped to the picked range. Pass that direct value to the
+  //     pills component so the pill stays visible (was previously hidden).
   const usingDefaultRange = !fetcher.data;
+  const unfulfilledForRange = fetcher.data?.unfulfilled ?? null;
 
   const salesDelta     = computeSalesDelta(stats?.sales,      priorStats?.sales);
   const netProfitDelta = computeNetProfitDelta(stats?.net_profit, priorStats?.net_profit);
@@ -385,6 +388,7 @@ export default function KPICard({
             <PipelinePills
               inTransitValue={stats?.in_transit_value}
               unfulfilledPromise={usingDefaultRange ? unfulfilledPromise : null}
+              unfulfilledValue={usingDefaultRange ? null : unfulfilledForRange}
               period={period}
             />
           </BlockStack>

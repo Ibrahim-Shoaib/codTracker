@@ -4,6 +4,8 @@ import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { getPriorEqualLengthRange } from "../lib/dates.server.js";
 import { effectiveStoreId } from "../lib/demo-pool.server.js";
+import { fetchUnfulfilledForRange } from "../lib/shopify-pipeline.server.js";
+import { fetchDemoUnfulfilledForRange } from "../lib/demo-pipeline.server.js";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -41,7 +43,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // dashboard's preset cards use, applied to whatever range the picker hands us.
   const prior = getPriorEqualLengthRange(from, to);
 
-  const [{ data }, { data: priorData }] = await Promise.all([
+  // Unfulfilled pill for the selected range:
+  //   * Real merchants — live Shopify call scoped to [from, to].
+  //   * Demo merchants — pool query, only non-zero when today PKT is in
+  //     the requested range (matches the default-card "today only" rule).
+  const unfulfilledPromise = storeRow?.is_demo
+    ? fetchDemoUnfulfilledForRange(supabase, dataStoreId, from, to)
+    : fetchUnfulfilledForRange(session, from, to);
+
+  const [{ data }, { data: priorData }, unfulfilled] = await Promise.all([
     (supabase as any).rpc("get_dashboard_stats", {
       p_store_id:           dataStoreId,
       p_from_date:          from,
@@ -56,10 +66,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       p_monthly_expenses:   monthlyExp,
       p_per_order_expenses: perOrderExp,
     }),
+    unfulfilledPromise.catch((err: Error) => {
+      console.error("[api.stats] unfulfilled fetch failed:", err);
+      return { count: 0, value: 0 };
+    }),
   ]);
 
   return json({
-    stats:      data?.[0]      ?? null,
-    priorStats: priorData?.[0] ?? null,
+    stats:       data?.[0]      ?? null,
+    priorStats:  priorData?.[0] ?? null,
+    unfulfilled,                  // { count, value } for the selected range
   });
 };

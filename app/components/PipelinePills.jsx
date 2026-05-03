@@ -4,8 +4,13 @@ import { Badge, InlineStack } from "@shopify/polaris";
 import PillSkeleton from "./PillSkeleton.jsx";
 
 // Two pills under the headline Sales number on each KPI card:
-//   • Unfulfilled (yellow) — Shopify orders placed in this period that
-//     haven't been shipped yet. Suspends on the deferred Shopify promise.
+//   • Unfulfilled (yellow) — orders placed in this period that haven't
+//     been shipped yet. Sourced two ways:
+//       - Default range  → the deferred Shopify promise from the dashboard
+//                          loader, bucketed by period.
+//       - Custom range   → a direct {count,value} from /app/api/stats,
+//                          which fetches Shopify (real) or the demo pool
+//                          (demo) for that exact range.
 //   • In Transit (blue)    — pipeline PKR for non-terminal courier orders
 //     (Booked, Unbooked, Out for Delivery, Under Verification, Attempted).
 //     Comes from the synchronous SQL stats — no skeleton needed.
@@ -13,15 +18,19 @@ import PillSkeleton from "./PillSkeleton.jsx";
 // Props:
 //   inTransitValue       number | null                     — from RPC
 //   unfulfilledPromise   Promise<{<period>:{count,value}}> | null
+//   unfulfilledValue     {count, value} | null              (direct path)
 //   period               'today' | 'yesterday' | 'mtd' | 'lastMonth'
 //
-// Pass a null `unfulfilledPromise` to suppress the Unfulfilled pill (e.g.
-// when the user has changed the card's date range — the default-range
-// promise no longer matches the displayed period).
+// Pass null for both unfulfilled props to suppress the pill entirely.
 
 const fmtPKR = (n) => `PKR ${Math.round(Number(n)).toLocaleString()}`;
 
-export default function PipelinePills({ inTransitValue, unfulfilledPromise, period }) {
+export default function PipelinePills({
+  inTransitValue,
+  unfulfilledPromise,
+  unfulfilledValue,
+  period,
+}) {
   const inTransitNum = Number(inTransitValue ?? 0);
 
   return (
@@ -39,6 +48,11 @@ export default function PipelinePills({ inTransitValue, unfulfilledPromise, peri
             }}
           </Await>
         </Suspense>
+      )}
+      {!unfulfilledPromise && unfulfilledValue && (
+        <Badge tone="attention">
+          {`${fmtPKR(unfulfilledValue.value ?? 0)} · Unfulfilled`}
+        </Badge>
       )}
       <Badge tone="info">
         {`${fmtPKR(inTransitNum)} · In Transit`}
