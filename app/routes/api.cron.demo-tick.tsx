@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
+import { createClient } from "@supabase/supabase-js";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import {
   DEMO_POOL_STORE_ID,
@@ -7,6 +8,22 @@ import {
   reseedPool,
   tickPool,
 } from "../lib/demo-pool.server.js";
+
+// Returns true when at least one is_demo merchant store exists (the
+// sentinel pool row itself is excluded). Drives the early-exit at the
+// top of the cron so we don't keep generating data for nobody.
+async function activeDemoStoresExist() {
+  const admin = createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  const { count } = await admin
+    .from("stores")
+    .select("store_id", { count: "exact", head: true })
+    .eq("is_demo", true)
+    .neq("store_id", DEMO_POOL_STORE_ID);
+  return (count ?? 0) > 0;
+}
 
 // Daily cron: keeps the shared demo pool's data rolling forward by
 // appending today + sweeping any in-transit orders past the 14-day window.
@@ -36,6 +53,19 @@ async function tick(request: Request) {
   const url = new URL(request.url);
   const reseed = url.searchParams.get("reseed") === "1";
   const reseedDays = Number(url.searchParams.get("days") ?? 90);
+  const force = url.searchParams.get("force") === "1";
+
+  // No active demo merchants → don't generate or maintain pool data.
+  // The pool gets re-seeded automatically by step 1's ensurePoolSeeded
+  // call the next time someone enters the demo key. Pass ?force=1 to
+  // override (useful for staging or manual smoke tests).
+  if (!force && !(await activeDemoStoresExist())) {
+    return json({
+      mode: reseed ? "reseed-skipped" : "tick-skipped",
+      reason: "no_active_demo_stores",
+      pool: DEMO_POOL_STORE_ID,
+    });
+  }
 
   // The pool runs under its own sentinel store_id — getSupabaseForStore
   // sets the RLS context to it (no-op since service-role bypasses RLS,
