@@ -41,6 +41,14 @@ const fmtPKRSigned = (n) => {
   if (v < 0) return `-PKR ${Math.abs(v).toLocaleString()}`;
   return `PKR ${v.toLocaleString()}`;
 };
+// Cost-style formatter — always renders with a leading minus, matching
+// the "-PKR …" convention used by KPI card line items like Ad Spend.
+// Treats the input as the magnitude of an outflow.
+const fmtPKRCost = (n) => {
+  const v = Math.round(Number(n ?? 0));
+  if (v === 0) return "PKR 0";
+  return `-PKR ${Math.abs(v).toLocaleString()}`;
+};
 
 // Compact PKR for axis labels: 12,500 → 12.5K · 1.2L · 1.2Cr (Pakistani convention)
 const compactPKR = (n) => {
@@ -315,7 +323,7 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
           <KpiBadge
             label="Cost"
             color={COLOR_COST}
-            value={fmtPKR(totals.costCurr)}
+            value={fmtPKRCost(totals.costCurr)}
             delta={dCost}
             // For cost, up is bad
             goodIfPositive={false}
@@ -422,7 +430,7 @@ function TrendTooltip({ args, currentPoints, granularity }) {
       </div>
       <TooltipRow color={COLOR_REVENUE} label="Revenue" value={fmtPKR(sales)} />
       <TooltipRow color={COLOR_PROFIT}  label="Profit"  value={fmtPKRSigned(profit)} valueColor={profit >= 0 ? COLOR_PROFIT : "#BF0711"} />
-      <TooltipRow color={COLOR_COST}    label="Cost"    value={fmtPKR(cost)} />
+      <TooltipRow color={COLOR_COST}    label="Cost"    value={fmtPKRCost(cost)} />
       {margin != null && (
         <div style={{ borderTop: "1px solid #E1E3E5", marginTop: 6, paddingTop: 6, color: "#6D7175", fontSize: 12 }}>
           Margin: <span style={{ color: profit >= 0 ? COLOR_PROFIT : "#BF0711", fontWeight: 500 }}>{margin}%</span>
