@@ -158,46 +158,102 @@
   // beacon).
   function installCheckoutClickHooks(shop, psid) {
     var fired = false;
-    function fireOnce() {
+    function fireOnce(reason) {
       if (fired) return;
       fired = true;
-      var customData = { currency: getCurrency() };
-      // Match the Custom Web Pixel's fallbackId("checkout_started") so
-      // server CAPI from the beacon dedupes with this fbq fire.
-      var eventId = "checkout_started:" + shop + ":" + psid;
-      fireEvent("InitiateCheckout", eventId, customData);
+      try {
+        if (window.console && window.console.debug) {
+          window.console.debug("[codprofit] InitiateCheckout fired —", reason);
+        }
+      } catch (_) {}
+      fireEvent(
+        "InitiateCheckout",
+        "checkout_started:" + shop + ":" + psid,
+        { currency: getCurrency() }
+      );
     }
 
-    var checkoutPathRe = /^\/(checkout|checkouts\/)/i;
+    // Path regex for any URL pointing into the checkout flow:
+    //   /checkout, /checkouts/c/<token>, /<shop_id>/checkouts/<token>, etc.
+    var CHECKOUT_PATH_RE = /\/checkouts?(\/|\b|$)/i;
 
+    function safePathOf(href) {
+      if (!href) return "";
+      try {
+        return new URL(href, location.href).pathname || "";
+      } catch (_) {
+        return typeof href === "string" ? href : "";
+      }
+    }
+
+    // Decide whether `node` is a checkout-bound trigger. Permissive on
+    // purpose — themes vary widely and a false positive only ever fires
+    // ONE extra InitiateCheckout per session (we cap with `fired`).
     function isCheckoutTrigger(node) {
       if (!node || node.nodeType !== 1) return false;
-      // <button name="checkout"> / <input name="checkout"> — the
-      // canonical Shopify cart-form submit button.
+      var tag = node.tagName;
+
+      // Pattern 1 — Shopify default: <button|input name="checkout">.
+      if ((tag === "BUTTON" || tag === "INPUT") && node.name === "checkout") {
+        return true;
+      }
+
+      // Pattern 2 — <a href> pointing into the checkout flow.
+      if (tag === "A") {
+        var href = node.getAttribute && node.getAttribute("href");
+        if (href && CHECKOUT_PATH_RE.test(safePathOf(href))) return true;
+      }
+
+      // Pattern 3 — Shopify's accelerated-checkout web components
+      // (shop-pay-button, dynamic-checkout, etc.). Tag names start
+      // with SHOPIFY-... when expressed as custom elements.
+      if (tag && /^SHOPIFY-/i.test(tag) && /CHECKOUT|PAY/i.test(tag)) {
+        return true;
+      }
+
+      // Pattern 4 — class / data attribute hints used by themes.
+      var cls = typeof node.className === "string" ? node.className : "";
       if (
-        (node.tagName === "BUTTON" || node.tagName === "INPUT") &&
-        node.getAttribute &&
-        node.getAttribute("name") === "checkout"
+        /\b(checkout|cart-?checkout)(-button|-btn|-cta|__button|__btn)?\b/i.test(cls)
       ) {
         return true;
       }
-      // <a href="/checkout"> or /checkouts/...
-      if (node.tagName === "A") {
-        var href = node.getAttribute && node.getAttribute("href");
-        if (href && checkoutPathRe.test(href)) return true;
+      if (node.dataset) {
+        if (node.dataset.checkout != null) return true;
+        if (node.dataset.action === "checkout") return true;
       }
+
+      // Pattern 5 — text content for themes that don't use any of the
+      // above signals. Keep the regex tight to avoid matching navigation
+      // or copy that mentions "checkout" incidentally.
+      if (
+        (tag === "BUTTON" || tag === "A" || tag === "INPUT") &&
+        typeof node.textContent === "string"
+      ) {
+        var text = node.textContent.trim().toLowerCase();
+        if (text.length > 0 && text.length < 40) {
+          if (
+            /^(check\s*out|proceed to (check\s*out|payment)|continue to (check\s*out|payment)|place (your )?order|complete order|buy (it )?now)$/i.test(
+              text
+            )
+          ) {
+            return true;
+          }
+        }
+      }
+
       return false;
     }
 
+    // Hook 1: capture-phase click. Walks up to 8 ancestors so a click
+    // on an icon/span inside a button still resolves to the button.
     document.addEventListener(
       "click",
       function (ev) {
-        // Walk up — the click target is often a child of the button
-        // (e.g. an inner <span> inside <button name="checkout">).
         var node = ev.target;
-        for (var i = 0; node && i < 5; i++) {
+        for (var i = 0; node && node !== document && i < 8; i++) {
           if (isCheckoutTrigger(node)) {
-            fireOnce();
+            fireOnce("click:" + (node.tagName || "?"));
             return;
           }
           node = node.parentNode;
@@ -206,18 +262,52 @@
       true
     );
 
-    // Form-submit shape: <form action="/checkout">. Some themes don't
-    // give the button a name="checkout" and rely on the form action.
+    // Hook 2: form submit. Shopify's classic cart form POSTs to /cart
+    // and the server detects the name="checkout" submit button. Also
+    // covers themes that POST directly to /checkout.
     document.addEventListener(
       "submit",
       function (ev) {
         var form = ev.target;
-        if (form && form.action && checkoutPathRe.test(new URL(form.action, location.href).pathname)) {
-          fireOnce();
+        if (!form) return;
+        var actionPath = safePathOf(form.action);
+        if (CHECKOUT_PATH_RE.test(actionPath)) {
+          fireOnce("submit-action");
+          return;
+        }
+        // /cart submit + name="checkout" submitter = Shopify default.
+        if (/^\/cart\b/.test(actionPath)) {
+          if (ev.submitter && ev.submitter.name === "checkout") {
+            fireOnce("submit-cart-with-checkout-btn");
+            return;
+          }
+          var btn = form.querySelector(
+            'button[name="checkout"], input[name="checkout"]'
+          );
+          if (btn) {
+            fireOnce("submit-cart-with-checkout-btn-selector");
+          }
         }
       },
       true
     );
+
+    // Hook 3: programmatic navigation. Cart drawers and shop-pay
+    // buttons sometimes call window.location.assign / .href = ... to
+    // jump straight to the checkout. Wrap the assign method so we still
+    // catch them.
+    try {
+      var origAssign = window.location.assign.bind(window.location);
+      window.location.assign = function (url) {
+        if (typeof url === "string" && CHECKOUT_PATH_RE.test(safePathOf(url))) {
+          fireOnce("location.assign");
+        }
+        return origAssign(url);
+      };
+    } catch (_) {
+      /* some browsers freeze location; the click/submit hooks still cover
+         the typical paths */
+    }
   }
 
   // Wire AddToCart firing to actual cart-add network calls. Three hooks
