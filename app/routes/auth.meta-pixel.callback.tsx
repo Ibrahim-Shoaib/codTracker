@@ -5,6 +5,7 @@ import {
   debugToken,
   extractBusinessId,
   discoverPixelsFromBISU,
+  discoverPixelsViaAdAccounts,
   listDatasets,
   resolveClientBusinessId,
 } from "../lib/meta-pixel.server.js";
@@ -165,65 +166,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       );
     }
 
-    // Diagnostic — query /me with the BISU and log the raw response.
-    // Helps us identify what entity Meta thinks this token represents
-    // (Admin System User vs Business System User vs something else) and
-    // which connections exist. Cheap and never blocks the flow.
-    try {
-      const meRes = await fetch(
-        `https://graph.facebook.com/v24.0/me?fields=id,name,businesses,owned_apps,assigned_business_users,managed_businesses,permissions&access_token=${encodeURIComponent(
-          access_token
-        )}`
-      );
-      const meBody = await meRes.json().catch(() => null);
-      console.log(
-        `[meta-pixel oauth] DIAG /me response (status ${meRes.status}):`,
-        JSON.stringify(meBody)
-      );
-    } catch (err) {
-      console.log("[meta-pixel oauth] DIAG /me threw:", String(err));
-    }
-
-    // Diagnostic — /me/permissions returns the raw permission grants. For
-    // some FBL4B template variants the permission objects carry asset
-    // refs that aren't in granular_scopes.
-    try {
-      const permRes = await fetch(
-        `https://graph.facebook.com/v24.0/me/permissions?access_token=${encodeURIComponent(
-          access_token
-        )}`
-      );
-      const permBody = await permRes.json().catch(() => null);
-      console.log(
-        `[meta-pixel oauth] DIAG /me/permissions (status ${permRes.status}):`,
-        JSON.stringify(permBody)
-      );
-    } catch (err) {
-      console.log("[meta-pixel oauth] DIAG /me/permissions threw:", String(err));
-    }
-
-    // Diagnostic — query the system_user_id with metadata=1. Returns the
-    // node's full metadata (supported fields + connections) and is the
-    // one Meta-documented way to introspect an unknown object's shape.
-    if (tokenInfo?.user_id) {
-      try {
-        const metaRes = await fetch(
-          `https://graph.facebook.com/v24.0/${tokenInfo.user_id}?metadata=1&access_token=${encodeURIComponent(
-            access_token
-          )}`
-        );
-        const metaBody = await metaRes.json().catch(() => null);
-        console.log(
-          `[meta-pixel oauth] DIAG /${tokenInfo.user_id}?metadata=1 (status ${metaRes.status}):`,
-          JSON.stringify(metaBody?.metadata ?? metaBody)
-        );
-      } catch (err) {
-        console.log(
-          "[meta-pixel oauth] DIAG metadata probe threw:",
-          String(err)
-        );
-      }
-    }
+    // The earlier diagnostic probes (/me with field list, /me/permissions,
+    // /{user_id}?metadata=1) confirmed the BISU shape: Admin System User
+    // with scopes but no asset bindings exposed through any Business-Manager
+    // pathway. The discovery flow below now leads with /me/adaccounts —
+    // that's the path that actually surfaces granted assets for this token
+    // shape.
 
     // Discovery order, cheapest to most expensive. We MUST exhaust all paths
     // before giving up — failing here drops the merchant on a useless error
@@ -237,27 +185,38 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     let pixels: DiscoveredPixel[] = [];
     let businessId: string | null = null;
 
-    // Path A — probe candidates from granular_scopes target_ids. Per Meta's
-    //   official Conversions API Get Started docs, target_ids on the
-    //   ads_management / business_management scopes hold the granted Pixel
-    //   IDs. We walk every scope's target_ids and probe each via
-    //   GET /{id}?fields=id,name,owner_business — Pixels return 200, every
-    //   other object type returns 400 "nonexisting field (owner_business)".
-    pixels = (await discoverPixelsFromBISU(
-      access_token,
-      tokenInfo
+    // Path A — /me/adaccounts → /act_<id>/adspixels.
+    //   The path that fixes this BISU shape. Meta grants the Admin System
+    //   User access to the merchant's chosen ad account, and the merchant's
+    //   chosen Pixel is associated with that ad account in Meta's data
+    //   model. This is documented in Meta's Marketing API reference and
+    //   works regardless of business binding, granular_scopes target_ids,
+    //   or Business-Manager presence.
+    pixels = (await discoverPixelsViaAdAccounts(
+      access_token
     )) as DiscoveredPixel[];
     console.log(
-      `[meta-pixel oauth] path A: discoverPixelsFromBISU → ${pixels.length} Pixel(s)`
+      `[meta-pixel oauth] path A: discoverPixelsViaAdAccounts → ${pixels.length} Pixel(s)`
     );
 
-    // Path B — list pixels via the Business id. Three sources, in order:
-    //   1. client_business_id from the BISU exchange response (best)
+    // Path B — granular_scopes target_id walk. Kept for templates where
+    //   Meta DOES populate target_ids (newer FBL4B flows). Will quietly
+    //   find nothing on Admin-System-User-shaped BISUs like the current
+    //   merchant's, which is fine — Path A already ran.
+    if (!pixels.length) {
+      pixels = (await discoverPixelsFromBISU(
+        access_token,
+        tokenInfo
+      )) as DiscoveredPixel[];
+      console.log(
+        `[meta-pixel oauth] path B: discoverPixelsFromBISU → ${pixels.length} Pixel(s)`
+      );
+    }
+
+    // Path C — list pixels via Business id (when present). Three sources:
+    //   1. client_business_id from the BISU exchange response
     //   2. granular_scopes[business_management].target_ids[0]
     //   3. resolveClientBusinessId Graph-API fallback
-    // We always try this path even when Path A returned a Pixel — multi-
-    // Pixel Businesses should show the full list in the selection screen,
-    // and the dedup by id below avoids inflating the count.
     if (exchangeBusinessId) {
       businessId = exchangeBusinessId;
     } else {
@@ -266,7 +225,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (businessId) {
       const businessPixels = await listDatasets(access_token, businessId);
       console.log(
-        `[meta-pixel oauth] path B: businessId=${businessId} → listDatasets → ${businessPixels.length} Pixel(s)`
+        `[meta-pixel oauth] path C: businessId=${businessId} → listDatasets → ${businessPixels.length} Pixel(s)`
       );
       const ids = new Set(pixels.map((p) => p.id));
       for (const bp of businessPixels) {
@@ -277,11 +236,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }
     } else {
       console.log(
-        "[meta-pixel oauth] path B: no business_id in BISU exchange or granular_scopes"
+        "[meta-pixel oauth] path C: no business_id in BISU exchange or granular_scopes"
       );
     }
 
-    // Path C — Graph-API business resolution + listDatasets. Last automated
+    // Path D — Graph-API business resolution + listDatasets. Last automated
     //   path; only fires when the cheaper paths gave us zero Pixels.
     if (!pixels.length) {
       const resolved = await resolveClientBusinessId(
@@ -292,11 +251,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         businessId = resolved;
         pixels = await listDatasets(access_token, resolved);
         console.log(
-          `[meta-pixel oauth] path C: resolveClientBusinessId=${resolved} → listDatasets → ${pixels.length} Pixel(s)`
+          `[meta-pixel oauth] path D: resolveClientBusinessId=${resolved} → listDatasets → ${pixels.length} Pixel(s)`
         );
       } else {
         console.log(
-          "[meta-pixel oauth] path C: resolveClientBusinessId returned null"
+          "[meta-pixel oauth] path D: resolveClientBusinessId returned null"
         );
       }
     }

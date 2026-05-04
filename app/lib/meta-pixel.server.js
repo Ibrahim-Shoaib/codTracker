@@ -325,6 +325,88 @@ export async function discoverPixelsFromBISU(accessToken, tokenInfo) {
   return results.filter(Boolean);
 }
 
+// ─── Ad-account-driven discovery ──────────────────────────────────────────────
+
+// For FBL4B "Pixel Tracking" templates that issue an Admin System User BISU
+// (one system user per app, NOT per merchant), the granted Pixel is NOT
+// exposed through:
+//   - granular_scopes target_ids  (Meta returns scopes with no targets)
+//   - /me/businesses              (returns empty, no business binding)
+//   - /{system_user_id}?fields=business  (System User has no `business` field)
+//
+// But the BISU's `ads_read` permission lets it list ad accounts assigned to
+// it via /me/adaccounts, and from each ad account we can pull its associated
+// AdsPixels via /{ad_account_id}/adspixels. This is the documented path
+// per Meta's Marketing API reference.
+//
+// Returns array of { id, name } for every Pixel found across every accessible
+// ad account, deduped.
+export async function discoverPixelsViaAdAccounts(accessToken) {
+  // Step 1: list ad accounts the BISU can read.
+  const accountsParams = new URLSearchParams({
+    fields: "id,name",
+    access_token: accessToken,
+    limit: "100",
+  });
+  let accountsBody;
+  try {
+    const res = await fetch(`${GRAPH_BASE}/me/adaccounts?${accountsParams}`);
+    accountsBody = await res.json().catch(() => null);
+    console.log(
+      `[meta-pixel] /me/adaccounts (status ${res.status}):`,
+      JSON.stringify(accountsBody)
+    );
+    if (!res.ok) return [];
+  } catch (err) {
+    console.log("[meta-pixel] /me/adaccounts threw:", String(err));
+    return [];
+  }
+
+  const accounts = accountsBody?.data ?? [];
+  if (!accounts.length) return [];
+
+  // Step 2: for each ad account, list its associated AdsPixels in parallel.
+  const seen = new Set();
+  const out = [];
+  await Promise.all(
+    accounts.map(async (acc) => {
+      try {
+        const params = new URLSearchParams({
+          fields: "id,name,owner_business",
+          access_token: accessToken,
+          limit: "100",
+        });
+        const res = await fetch(`${GRAPH_BASE}/${acc.id}/adspixels?${params}`);
+        const body = await res.json().catch(() => null);
+        console.log(
+          `[meta-pixel] /${acc.id}/adspixels (status ${res.status}):`,
+          JSON.stringify(body)
+        );
+        if (!res.ok) return;
+        for (const p of body?.data ?? []) {
+          const id = String(p?.id ?? "");
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          out.push({
+            id,
+            name: p?.name ?? null,
+            owner_business: p?.owner_business ?? null,
+            owned: true,
+            via_ad_account: acc.id,
+          });
+        }
+      } catch (err) {
+        console.log(
+          `[meta-pixel] /${acc.id}/adspixels threw:`,
+          String(err)
+        );
+      }
+    })
+  );
+
+  return out;
+}
+
 // ─── Business assets (legacy path — kept as fallback) ────────────────────────
 
 // List all datasets (a.k.a. pixels) owned by the business associated with the
