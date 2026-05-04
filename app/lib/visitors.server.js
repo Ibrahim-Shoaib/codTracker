@@ -60,23 +60,33 @@ export function resolveVisitorId(cookieHeader) {
   return { visitorId: mintVisitorId(), isNew: true };
 }
 
-// Build the Set-Cookie header value for the visitor id.
+// Build a Set-Cookie header value for the visitor id.
 //
-// HTTP-set (not document.cookie) so Safari ITP grants the full
-// Max-Age — same pattern Aimerce / Triple Whale / Stape use to bypass
-// ITP's 7-day cap on JS-set first-party cookies.
+// IMPORTANT: Shopify's App Proxy strips response Set-Cookie headers
+// before they reach the client. Verified empirically via the test
+// harness — only Shopify's own cookies (_shopify_y, _shopify_s) make
+// it through. So this header is effectively a no-op when called from
+// /apps/tracking/* routes; we keep it for any future non-proxy paths
+// (admin / direct Railway hits) but don't rely on it for visitor
+// persistence in the storefront flow.
 //
-// HttpOnly: theme block doesn't read this directly — it gets the
-// visitor_id from /apps/tracking/config's response body. HttpOnly
-// closes the XSS-exfiltration vector.
+// The actual cookie persistence happens client-side: the theme block
+// reads visitor_id from /apps/tracking/config's response body and
+// writes a `cod_visitor_id` cookie via document.cookie. Effective
+// lifetime is then bounded by the browser's cookie policy:
+//   - Chrome / Firefox / Edge: full 1 year
+//   - Safari (ITP): 7-day rolling, refreshed on every visit
+// 7-day rolling is fine in practice for COD merchants — most return
+// visitors come back within a week, and the cookie's TTL gets
+// re-extended on every page load.
 //
-// SameSite=Lax: App Proxy delivers from the merchant's storefront
-// origin, which is technically a cross-site context for cookies set
-// by the proxy. Lax is the right balance — cookies travel on top-
-// level navigations and same-site subrequests.
+// HttpOnly is FALSE because the theme block needs JS read access.
+// XSS exposure is acceptable: the cookie value is an opaque random
+// UUID, not a credential — leaking it lets an attacker mis-attribute
+// future events to the wrong visitor row, but no PII or auth state.
 export function visitorCookieHeader(visitorId) {
   const ONE_YEAR = 60 * 60 * 24 * 365;
-  return `cod_visitor_id=${visitorId}; Max-Age=${ONE_YEAR}; Path=/; HttpOnly; Secure; SameSite=Lax`;
+  return `cod_visitor_id=${visitorId}; Max-Age=${ONE_YEAR}; Path=/; Secure; SameSite=Lax`;
 }
 
 // Append-and-cap helper for the jsonb history arrays. Dedups by

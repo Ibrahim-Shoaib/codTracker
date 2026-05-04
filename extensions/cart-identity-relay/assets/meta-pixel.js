@@ -522,8 +522,60 @@
 
   // ── 4. Bootstrap. Fetch connected Pixel ID + visitor id, init fbq,
   //    fire context-appropriate events.
+  //
+  // Visitor-id persistence: Shopify's App Proxy strips both incoming
+  // Cookie headers AND outgoing Set-Cookie headers, so we can't use
+  // server-set HTTP cookies for cross-session identity. Instead, the
+  // theme block reads/writes localStorage + document.cookie on the
+  // storefront origin (visitor-local, Shopify doesn't touch those)
+  // and echoes the value back to /apps/tracking/config via a `vid`
+  // query parameter so the server can stitch this page load to the
+  // same visitor row across sessions.
+  //
+  // Effective lifetime is browser-policy bound:
+  //   - Chrome / Firefox / Edge: full 12 months
+  //   - Safari (ITP for "tracker"-classified domains): 7-day rolling,
+  //     refreshed on every visit. As long as the visitor returns
+  //     within 7 days the cookie + localStorage stay alive.
+  // 7-day rolling is fine in practice: most return visitors come back
+  // within a week, and the TTL re-extends on every page load.
+  function readPersistedVisitorId() {
+    var fromCookie = getCookie("cod_visitor_id");
+    if (fromCookie && /^[a-f0-9-]{32,40}$/i.test(fromCookie)) return fromCookie;
+    try {
+      var fromLs = window.localStorage && window.localStorage.getItem("cod_visitor_id");
+      if (fromLs && /^[a-f0-9-]{32,40}$/i.test(fromLs)) return fromLs;
+    } catch (_) { /* localStorage may be disabled */ }
+    return null;
+  }
+
+  function writePersistedVisitorId(id) {
+    if (!id) return;
+    setCookie("cod_visitor_id", id, 365 * 24 * 60 * 60);
+    try {
+      if (window.localStorage) window.localStorage.setItem("cod_visitor_id", id);
+    } catch (_) { /* swallow */ }
+  }
+
   function bootstrap() {
-    fetch("/apps/tracking/config", {
+    // Stage any existing id BEFORE the fetch — beacons fired earlier in
+    // the page lifecycle still get a real visitor_id even if the fetch
+    // is slow.
+    var existingVisitorId = readPersistedVisitorId();
+    if (existingVisitorId) {
+      window.__codprofitVisitorId = existingVisitorId;
+    }
+
+    // Echo the existing visitor_id to the server as `?vid=` so we get
+    // back the SAME id on every page load. Without this, every fetch
+    // would mint a fresh id on the server side because App Proxy
+    // strips the storefront cookie.
+    var configUrl = "/apps/tracking/config";
+    if (existingVisitorId) {
+      configUrl += "?vid=" + encodeURIComponent(existingVisitorId);
+    }
+
+    fetch(configUrl, {
       credentials: "same-origin",
       headers: { Accept: "application/json" },
     })
@@ -531,13 +583,12 @@
         return r.ok ? r.json() : null;
       })
       .then(function (cfg) {
-        // Stash visitor_id globally so identity-relay AND every beacon
-        // can echo it back to the server. /apps/tracking/config also
-        // sets the cod_visitor_id cookie HTTP-side, but the cookie is
-        // HttpOnly so we can't read it from JS — we use this body
-        // value instead.
+        // Stash visitor_id globally and persist it client-side. The
+        // server returns the same id we sent (if any) so this is
+        // idempotent across reloads.
         if (cfg && cfg.visitor_id) {
           window.__codprofitVisitorId = cfg.visitor_id;
+          writePersistedVisitorId(cfg.visitor_id);
         }
 
         if (!cfg || !cfg.connected || !cfg.pixel_id) return;

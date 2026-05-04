@@ -43,9 +43,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return new Response("missing shop", { status: 400 });
   }
 
-  // Read existing cookie if present, otherwise mint a fresh visitor id.
-  const cookieHeader = request.headers.get("Cookie");
-  const { visitorId } = resolveVisitorId(cookieHeader);
+  // Resolve visitor_id. CRITICAL: Shopify's App Proxy strips both
+  // incoming Cookie and outgoing Set-Cookie headers (verified
+  // empirically). So cookies are useless for cross-session identity
+  // through this endpoint. Instead, the theme block stores
+  // visitor_id in localStorage + document.cookie on the storefront
+  // origin (which Shopify doesn't strip — those are visitor's-browser-
+  // local), and echoes the value back to us via the `vid` query
+  // parameter on subsequent calls. We mint a fresh id only when the
+  // theme block doesn't supply one (first visit).
+  //
+  // The `vid` round-trip is invisible to the merchant or visitor —
+  // it's a JS-level handoff between our theme block and our server.
+  const echoedVid = u.searchParams.get("vid");
+  const isValidVid =
+    typeof echoedVid === "string" && /^[a-f0-9-]{32,40}$/i.test(echoedVid);
+  const { visitorId } = isValidVid
+    ? { visitorId: echoedVid }
+    : resolveVisitorId(null); // mints fresh
 
   const supabase = createClient(
     process.env.SUPABASE_URL ?? "",
@@ -59,15 +74,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     .eq("status", "active")
     .maybeSingle();
 
-  // Set-Cookie always — re-asserts the cookie's Max-Age on every page
-  // load so a returning visitor's TTL gets refreshed instead of running
-  // down. Without this, a visitor who returns at month 11 would have
-  // 1 month left; with it, every page view resets back to 12 months.
   const headers = new Headers();
+  // We still emit Set-Cookie for any non-App-Proxy callers (admin
+  // routes, direct Railway tests). Shopify's App Proxy will strip it.
   headers.set("Set-Cookie", visitorCookieHeader(visitorId));
   // Cache-control deliberately NOT public — visitor_id is per-visitor
-  // and the cookie must be re-set on every request so a Safari ITP
-  // visitor whose previous cookie was truncated gets a fresh one.
+  // and the response must be fresh per request (otherwise a CDN cache
+  // would serve one merchant's visitor_id to another).
   headers.set("Cache-Control", "no-store, private");
   headers.set("Content-Type", "application/json");
 

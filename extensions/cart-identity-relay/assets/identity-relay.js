@@ -63,18 +63,35 @@
     return out;
   }
 
-  // ── Resolve the visitor id from /apps/tracking/config if the
-  //    meta-pixel block hasn't already staged it. Race-safe: on first
-  //    page load identity-relay can DOMContentLoaded-fire before
-  //    meta-pixel.js's async config fetch resolves, and we don't want
-  //    the cart write to miss the visitor id. The fetch is cached by
-  //    the browser (Shopify CDN gives it 60s public cache headers
-  //    NO — we set no-store on this endpoint, but the second caller
-  //    still sees the cookie/server returning the same visitor_id
-  //    because the cookie is now set). Either way, idempotent and at
-  //    most one extra round trip per page load.
+  // ── Resolve the visitor id, in priority order:
+  //    1. window.__codprofitVisitorId (staged by meta-pixel.js)
+  //    2. document.cookie cod_visitor_id (set by meta-pixel.js bootstrap)
+  //    3. localStorage cod_visitor_id (same source, redundancy for
+  //       cookie-clearing visitors)
+  //    4. fetch /apps/tracking/config?vid=<existing> as last resort
+  //
+  // Race-safe: on first page load identity-relay can DOMContentLoaded-
+  // fire before meta-pixel.js's async config fetch resolves. We don't
+  // want the cart write to miss the visitor id, so we re-read the
+  // persistence layer here too.
+  function readPersistedVid() {
+    const m = document.cookie.match(/(?:^|;\s*)cod_visitor_id=([a-f0-9-]{32,40})/i);
+    if (m) return m[1];
+    try {
+      const v = window.localStorage && window.localStorage.getItem("cod_visitor_id");
+      if (v && /^[a-f0-9-]{32,40}$/i.test(v)) return v;
+    } catch (_) {}
+    return null;
+  }
   async function ensureVisitorId() {
     if (window.__codprofitVisitorId) return window.__codprofitVisitorId;
+    const persisted = readPersistedVid();
+    if (persisted) {
+      window.__codprofitVisitorId = persisted;
+      return persisted;
+    }
+    // Last resort: round-trip to /apps/tracking/config (echoes any vid
+    // we don't have, otherwise mints one).
     try {
       const res = await fetch("/apps/tracking/config", {
         credentials: "same-origin",
@@ -84,6 +101,9 @@
         const cfg = await res.json();
         if (cfg && cfg.visitor_id) {
           window.__codprofitVisitorId = cfg.visitor_id;
+          // Persist for next page load.
+          setCookie("cod_visitor_id", cfg.visitor_id, 365);
+          try { window.localStorage && window.localStorage.setItem("cod_visitor_id", cfg.visitor_id); } catch (_) {}
           return cfg.visitor_id;
         }
       }

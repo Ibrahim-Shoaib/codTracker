@@ -200,46 +200,50 @@ async function main() {
   );
 
   // ─── Test 3: App Proxy /apps/tracking/config end-to-end ──────────
+  // Note: Shopify's App Proxy strips both incoming Cookie headers and
+  // outgoing Set-Cookie response headers. So we don't test cookies
+  // through this path — the theme block manages persistence
+  // client-side via document.cookie + localStorage and echoes the
+  // visitor_id back via the `?vid=` query parameter on subsequent
+  // page loads.
   console.log("\n═══ 3. App Proxy /apps/tracking/config (live) ═══");
 
   const cfgRes = await fetch(STOREFRONT + "/apps/tracking/config");
   check("config returns 200", cfgRes.status === 200);
-  const setCookie = cfgRes.headers.get("set-cookie") || "";
-  check(
-    "config sets cod_visitor_id cookie",
-    /cod_visitor_id=[0-9a-f-]{32,40}/.test(setCookie),
-    "Set-Cookie: " + setCookie.slice(0, 100)
-  );
-  check(
-    "cookie has Max-Age=31536000 (1 year)",
-    /Max-Age=31536000/i.test(setCookie)
-  );
-  check(
-    "cookie has HttpOnly + Secure + SameSite=Lax",
-    /HttpOnly/i.test(setCookie) && /Secure/i.test(setCookie) && /SameSite=Lax/i.test(setCookie)
-  );
   const cfg = await cfgRes.json();
   check("config response includes visitor_id", typeof cfg.visitor_id === "string");
-  check("config response includes pixel_id (connected)", cfg.connected && cfg.pixel_id);
+  check(
+    "config response includes pixel_id (connected)",
+    cfg.connected && cfg.pixel_id
+  );
+  check(
+    "fresh call (no ?vid=) mints UUID-format id",
+    /^[0-9a-f-]{36}$/i.test(cfg.visitor_id)
+  );
   const cfgVisitorId = cfg.visitor_id;
   createdVisitorIds.push(cfgVisitorId);
 
-  // Same cookie should return same visitor_id (re-read scenario)
-  const cookieMatch = setCookie.match(/cod_visitor_id=([0-9a-f-]+)/);
-  if (cookieMatch) {
-    const cfgRes2 = await fetch(STOREFRONT + "/apps/tracking/config", {
-      headers: { Cookie: "cod_visitor_id=" + cookieMatch[1] },
-    });
-    const cfg2 = await cfgRes2.json();
-    check(
-      "config returns SAME visitor_id when cookie present",
-      cfg2.visitor_id === cookieMatch[1]
-    );
-  } else {
-    console.log(
-      "  - SKIP cookie-readback test (no cod_visitor_id in response — Railway may not be deployed yet)"
-    );
-  }
+  // Echo the same vid back via ?vid= — server should return the same id
+  const cfgRes2 = await fetch(
+    STOREFRONT + "/apps/tracking/config?vid=" + cfgVisitorId
+  );
+  const cfg2 = await cfgRes2.json();
+  check(
+    "echoing ?vid= returns the SAME visitor_id (cross-session stitching)",
+    cfg2.visitor_id === cfgVisitorId
+  );
+
+  // Garbage vid → server mints fresh (validates input)
+  const cfgRes3 = await fetch(
+    STOREFRONT + "/apps/tracking/config?vid=garbage-not-hex-format"
+  );
+  const cfg3 = await cfgRes3.json();
+  check(
+    "invalid ?vid= rejected — server mints fresh",
+    cfg3.visitor_id !== "garbage-not-hex-format" &&
+      /^[0-9a-f-]{36}$/i.test(cfg3.visitor_id)
+  );
+  createdVisitorIds.push(cfg3.visitor_id);
 
   // ─── Test 4: App Proxy /apps/tracking/track UPSERTs visitor ──────
   console.log("\n═══ 4. App Proxy /apps/tracking/track UPSERT ═══");
@@ -267,10 +271,9 @@ async function main() {
     body: JSON.stringify(beacon),
   });
   check("track returns 200", trackRes.status === 200);
-  check(
-    "track response sets cookie",
-    /cod_visitor_id=/.test(trackRes.headers.get("set-cookie") || "")
-  );
+  // Set-Cookie is intentionally NOT tested — Shopify's App Proxy
+  // strips response cookies. The theme block persists visitor_id
+  // client-side via document.cookie + localStorage instead.
 
   // Wait briefly for async UPSERT to land (track returns before
   // upsertVisitor completes — that's by design for latency).
