@@ -149,19 +149,25 @@
 
         // PageView event_id MUST match the server-side Web Pixel beacon's
         // page_viewed id so Meta dedupes. Web Pixel uses
-        //   fallbackId("page_viewed") = `pageview:<shop>:<psid>`
-        // (lowercased event-name colon shop colon page-session-id). The
-        // canonical .myshopify.com domain is preferred — the Custom Web
-        // Pixel uses init.context.window.location.origin which Shopify maps
-        // to the .myshopify.com host inside its sandbox. window.Shopify.shop
-        // exposes the same value to us here. If it's missing for any reason,
-        // we still fire PageView with a synthesized id (worst case: the
-        // pageview is double-counted on Meta's side, which is far less bad
-        // than not firing at all).
+        //   fallbackId("page_viewed") = `pageview:<canonical-shop>:<psid>`
+        // (lowercased event-name colon shop colon page-session-id) where
+        // <canonical-shop> is always the .myshopify.com host (the Web Pixel
+        // sandbox uses init.context.window.location.origin which Shopify
+        // pins to the canonical domain). We have two reliable sources for it
+        // here:
+        //   1. window.Shopify.shop — set by Shopify's bundled storefront
+        //      script on every standard theme.
+        //   2. cfg.shop — echoed from /apps/tracking/config (we control it).
+        // We deliberately do NOT fall back to window.location.hostname,
+        // because on a custom domain that returns the merchant's vanity host
+        // (e.g. thetrendyhome.pk) and the resulting event_id wouldn't match
+        // the Web Pixel's canonical-domain id — Meta would count two
+        // PageViews instead of dedup'ing to one. Better to fire fbq init
+        // (so Pixel Helper still detects the pixel) and skip the PageView
+        // than emit a mismatched id.
         var shop =
-          (window.Shopify && window.Shopify.shop) ||
-          (cfg && cfg.shop) ||
-          window.location.hostname;
+          (window.Shopify && window.Shopify.shop) || (cfg && cfg.shop);
+        if (!shop) return;
         var psid = getOrCreatePageSession();
         var eventId = "pageview:" + shop + ":" + psid;
 
