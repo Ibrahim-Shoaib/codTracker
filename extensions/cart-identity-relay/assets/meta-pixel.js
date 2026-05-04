@@ -122,15 +122,121 @@
     return Object.keys(out).length ? out : undefined;
   }
 
-  // ── 3. Event firing helpers. Each event uses a deterministic event_id
-  //    matching what the sandboxed Custom Web Pixel emits, so Meta dedupes
-  //    the dual fire (browser fbq + server CAPI from the beacon).
-  function fireEvent(eventName, eventId, customData) {
+  // ── 3. Event firing helpers.
+  //
+  // Each event ALWAYS dual-fires:
+  //   1. Browser fbq (visible to Pixel Helper, sent direct to Meta CDN)
+  //   2. Beacon to /apps/tracking/track → server CAPI (full hashed
+  //      identity, immune to ad blockers, immune to fbq script-load
+  //      failures)
+  //
+  // Both paths use the same deterministic event_id so Meta merges them
+  // into one event with combined identity (max EMQ).
+  //
+  // Why dual-fire from the theme block (not just Custom Web Pixel
+  // beacon): the Custom Web Pixel sandbox is gated on the visitor's
+  // marketing-consent state via Shopify's Customer Privacy API. In
+  // incognito sessions, fresh visitors, or stores using strict consent
+  // banners, the sandbox stays silent and nothing beacons to our
+  // server. The theme block has no sandbox and no consent gate — it
+  // ships every event to server CAPI reliably. The Custom Web Pixel
+  // remains in place as a backup for the Search event (which we don't
+  // detect from DOM) and for visitors who DID consent (where it gives
+  // higher-quality event data via Shopify's analytics API).
+
+  function buildBeaconPayload(shopifyEventName, eventId, customData) {
+    var fbp = getCookie("_fbp");
+    var fbc = getCookie("_fbc");
+    var payload = {
+      event: shopifyEventName,
+      event_id: eventId,
+      event_time: Date.now(),
+      url: location.href,
+      user_agent: navigator && navigator.userAgent,
+    };
+    if (fbp) payload.fbp = fbp;
+    if (fbc) payload.fbc = fbc;
+    // Lift Advanced Matching identity out of the staging block where
+    // available — server CAPI hashes server-side per Meta's spec.
+    var am = window.__codprofitAM || {};
+    if (am.em) payload.email = am.em;
+    if (am.ph) payload.phone = am.ph;
+    if (am.external_id) payload.external_id = am.external_id;
+    // Custom-data passthrough (currency, value, content_ids, etc.).
+    if (customData) {
+      var keys = Object.keys(customData);
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        if (customData[k] != null) payload[k] = customData[k];
+      }
+    }
+    return payload;
+  }
+
+  function beaconCAPI(shopifyEventName, eventId, customData) {
     try {
-      window.fbq("track", eventName, customData || {}, { eventID: eventId });
+      var payload = buildBeaconPayload(shopifyEventName, eventId, customData);
+      var body = JSON.stringify(payload);
+      var sent = false;
+      try {
+        if (navigator && typeof navigator.sendBeacon === "function") {
+          // sendBeacon returns false if the browser refused to queue
+          // (offline, quota, etc.). Don't trust the return value blindly
+          // — fall through to fetch when that happens.
+          sent = navigator.sendBeacon(
+            "/apps/tracking/track",
+            new Blob([body], { type: "application/json" })
+          );
+        }
+      } catch (_) {
+        sent = false;
+      }
+      if (!sent) {
+        // Best-effort fetch fallback. keepalive=true lets the request
+        // survive page unload (important for InitiateCheckout fired on
+        // a click that immediately navigates away).
+        fetch("/apps/tracking/track", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: body,
+          keepalive: true,
+          credentials: "same-origin",
+        }).catch(function () {
+          /* swallow */
+        });
+      }
+    } catch (_) {
+      /* never crash storefront */
+    }
+  }
+
+  // Each event call dual-fires fbq (browser) AND beacon (server CAPI).
+  // metaEvent: the Meta standard event name ("PageView", "AddToCart", ...)
+  // shopifyEvent: matching Shopify customer-event name ("page_viewed",
+  //   "product_added_to_cart", ...) — server CAPI maps it back to Meta
+  //   via shopifyEventToMeta in proxy.tracking.track.tsx.
+  function track(metaEvent, shopifyEvent, eventId, customData) {
+    try {
+      window.fbq("track", metaEvent, customData || {}, { eventID: eventId });
     } catch (_) {
       /* swallow */
     }
+    beaconCAPI(shopifyEvent, eventId, customData);
+  }
+
+  // Backwards-compat alias for the InitiateCheckout click hook block,
+  // which still calls fireEvent. Routes through track() with the right
+  // shopifyEvent name so server CAPI fires too.
+  function fireEvent(metaEvent, eventId, customData) {
+    var shopifyEvent =
+      metaEvent === "PageView" ? "page_viewed" :
+      metaEvent === "ViewContent" ? "product_viewed" :
+      metaEvent === "AddToCart" ? "product_added_to_cart" :
+      metaEvent === "InitiateCheckout" ? "checkout_started" :
+      metaEvent === "AddPaymentInfo" ? "payment_info_submitted" :
+      metaEvent === "Purchase" ? "checkout_completed" :
+      "page_viewed";
+    track(metaEvent, shopifyEvent, eventId, customData);
   }
 
   function getCurrency() {
