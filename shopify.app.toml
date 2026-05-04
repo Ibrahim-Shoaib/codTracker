@@ -16,8 +16,17 @@ api_version = "2025-10"
   # of truth for Purchase events; refunds fire negative-value Purchase.
   # Checkouts give us InitiateCheckout; cart attributes carry _fbp/_fbc/_fbclid
   # from the storefront into the order payload via note_attributes.
+  #
+  # ORDERS_CREATE is the conversion-trigger for COD stores (Pakistan, India,
+  # MENA): payment is captured later (often days later, manually), so
+  # orders/paid would arrive long after the visitor has churned and Meta's
+  # 7-day attribution window may already be gone. Firing Purchase on
+  # ORDERS_CREATE with the same deterministic event_id as ORDERS_PAID means
+  # the canonical conversion lands at order placement; if orders/paid
+  # eventually fires too, Meta dedupes by event_id (purchase:<shop>:<id>).
   [[webhooks.subscriptions]]
   topics = [
+    "orders/create",
     "orders/paid",
     "orders/edited",
     "refunds/create",

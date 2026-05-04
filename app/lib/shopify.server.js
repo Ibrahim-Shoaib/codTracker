@@ -205,3 +205,49 @@ export async function registerUninstallWebhook(session) {
     throw new Error(`registerUninstallWebhook failed: ${res.status}`);
   }
 }
+
+// Registers the meta-pixel webhook subscriptions (orders, checkouts, refunds).
+// shopify.app.toml's [[webhooks.subscriptions]] should auto-register these on
+// every install via managed installation, but we observed in production that
+// merchants installed before the webhook config was added had only the
+// uninstall webhook registered — the toml-declared subs never retroactively
+// registered for them. This function is a safety net: called from afterAuth,
+// it re-asserts every required subscription using REST `webhooks.json` (POST),
+// and 422 ("address is taken") is a no-op for already-registered subs.
+//
+// Topics MUST match exactly what api.webhooks.meta-pixel.tsx switches on
+// (case-insensitive in Shopify's payload, but we use the lowercase form here
+// because that's what the REST API accepts).
+export async function registerMetaPixelWebhooks(session) {
+  const { shop, accessToken } = session;
+  const callbackUrl = `${process.env.SHOPIFY_APP_URL}/api/webhooks/meta-pixel`;
+  const topics = [
+    'orders/create',
+    'orders/paid',
+    'orders/edited',
+    'refunds/create',
+    'checkouts/create',
+    'checkouts/update',
+  ];
+  for (const topic of topics) {
+    try {
+      const res = await fetch(adminUrl(shop, 'webhooks.json'), {
+        method: 'POST',
+        headers: adminHeaders(accessToken),
+        body: JSON.stringify({
+          webhook: { topic, address: callbackUrl, format: 'json' },
+        }),
+      });
+      if (!res.ok && res.status !== 422) {
+        const body = await res.text();
+        console.warn(
+          `[shopify-webhooks] register ${topic} for ${shop} → HTTP ${res.status}: ${body.slice(0, 200)}`
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `[shopify-webhooks] register ${topic} for ${shop} threw: ${String(err)}`
+      );
+    }
+  }
+}

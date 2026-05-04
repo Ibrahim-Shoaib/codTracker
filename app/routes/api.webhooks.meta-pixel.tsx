@@ -29,7 +29,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // We do the work synchronously but with strict timeouts inside.
   try {
     switch (topic) {
+      case "ORDERS_CREATE":
       case "ORDERS_PAID":
+        // Both topics route to the same Purchase handler; the deterministic
+        // event_id (purchase:<shop>:<order_id>) ensures Meta dedupes when
+        // both fire (which happens for traditional-payment stores —
+        // orders/create + orders/paid land seconds apart). For COD stores,
+        // only ORDERS_CREATE fires at conversion time; ORDERS_PAID may
+        // fire days later when the merchant marks payment received, by
+        // which point Meta's 7-day attribution window has often closed,
+        // so ORDERS_CREATE is what actually drives optimization.
         await handleOrderPaid(shop, payload as ShopifyOrder);
         break;
       case "ORDERS_EDITED":

@@ -6,7 +6,10 @@ import {
 } from "@shopify/shopify-app-remix/server";
 import { PostgreSQLSessionStorage } from "@shopify/shopify-app-session-storage-postgresql";
 import { createClient } from "@supabase/supabase-js";
-import { registerUninstallWebhook } from "./lib/shopify.server.js";
+import {
+  registerUninstallWebhook,
+  registerMetaPixelWebhooks,
+} from "./lib/shopify.server.js";
 
 if (!process.env.SUPABASE_DATABASE_URL) {
   throw new Error("SUPABASE_DATABASE_URL is not set. Add it to Railway environment variables.");
@@ -65,6 +68,18 @@ const shopify = shopifyApp({
       // Register shop-specific uninstall webhook (TOML covers app-level; this is belt-and-suspenders)
       await registerUninstallWebhook(session).catch((err) =>
         console.error(`registerUninstallWebhook failed for ${shop}:`, err)
+      );
+
+      // Re-assert ad-tracking webhook subscriptions (orders/checkouts/refunds).
+      // Belt-and-suspenders: shopify.app.toml's managed-install config is
+      // supposed to handle these, but we hit production cases where merchants
+      // installed before the toml subs were added and Shopify never
+      // retroactively registered them — every order completed without a
+      // Purchase event reaching CAPI. Calling this on every auth run means
+      // even a re-auth (e.g. for a new scope) is enough to repair a
+      // broken subscription set.
+      await registerMetaPixelWebhooks(session).catch((err) =>
+        console.error(`registerMetaPixelWebhooks failed for ${shop}:`, err)
       );
     },
   },
