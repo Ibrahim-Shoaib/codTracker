@@ -59,8 +59,12 @@ export function getMetaPixelAuthUrl(state) {
 }
 
 // Exchange the auth code for a BISU access token (no expiry).
-// Returns { access_token, token_type } — note that expires_in is 0/missing
-// for BISU tokens since they're long-lived.
+//
+// Returns the full Meta response (NOT just access_token). For FBL4B
+// "Pixel Tracking" / Conversions API templates, this can also include
+// `client_business_id` — the canonical Business id we'd otherwise have to
+// resolve via debug_token.granular_scopes. The callback should consume
+// every key it can.
 export async function exchangeCodeForBISU(code) {
   const params = new URLSearchParams({
     client_id: process.env.META_APP_ID,
@@ -75,7 +79,15 @@ export async function exchangeCodeForBISU(code) {
       `Meta BISU exchange failed: ${err.error?.message ?? res.status}`
     );
   }
-  return res.json();
+  const body = await res.json();
+  // Log the response shape (minus the actual token) so future template
+  // changes are immediately visible in Railway logs.
+  const safe = { ...body };
+  if (typeof safe.access_token === "string") {
+    safe.access_token = safe.access_token.slice(0, 8) + "…";
+  }
+  console.log("[meta-pixel] BISU exchange response (token redacted):", safe);
+  return body;
 }
 
 // Inspect the BISU token to find the granted business_id and the user_id of
@@ -215,58 +227,47 @@ export function extractBusinessId(tokenInfo) {
   return null;
 }
 
-// ─── Pixel auto-discovery (preferred path) ───────────────────────────────────
+// ─── Pixel auto-discovery (granular_scopes-driven) ───────────────────────────
 
-// Probe the BISU token directly for the granted Pixel(s). This works WITHOUT
-// needing a business_id, which is the right primitive for FBL4B "Pixel
-// Tracking" templates — the BISU is scoped to the asset (Pixel), not to a
-// Business Manager.
+// For FBL4B "Pixel Tracking" / Conversions API templates, Meta exposes the
+// merchant's granted Pixel/Dataset IDs as `target_ids` inside debug_token's
+// `granular_scopes` array — specifically under the `ads_management` and/or
+// `business_management` scope entries (Meta's official Get Started docs +
+// confirmed by the AdsPixel SDK schema).
 //
-// Strategy (in candidate-priority order):
-//   1. tokenInfo.user_id — for FBL4B "Pixel Tracking" / Conversions API
-//      templates, Meta creates a per-Pixel virtual system user whose id
-//      equals the Pixel id. This is the highest-confidence candidate and
-//      the path that fixes the user's onboarding regression where
-//      granular_scopes carried no Pixel-shaped target_ids but user_id
-//      itself was the Pixel.
-//   2. /me with the BISU — Graph resolves to the authenticated entity, which
-//      for these BISUs is the Pixel-bound system user (id == Pixel id).
-//   3. granular_scopes[*].target_ids — for older or alternative FBL4B
-//      template variations that put the granted Pixel id under a scope's
-//      target_ids list.
+// The BISU's own `user_id` is NOT a Pixel — it's the auto-provisioned
+// system-user id Meta creates for the app on first grant. Its query shape
+// happens to coincide with a Pixel's "no `business` field" error pattern,
+// which is misleading; do NOT treat user_id as a Pixel candidate.
 //
-// For each candidate, we probe `GET /{id}?fields=id,name,last_fired_time`.
-// `last_fired_time` is a Pixel-only field — Meta returns 400
-// "Tried accessing nonexisting field (last_fired_time)" for non-Pixel
-// objects (Businesses, Ad accounts, etc.), which makes this query a clean
-// Pixel-vs-not discriminator.
+// Validation: probe each candidate via `GET /{id}?fields=id,name,owner_business`.
+//   - If it's a Pixel/Dataset: 200 with { id, name, owner_business: { id, name } }.
+//   - If it's a Business / SystemUser / Ad-account: 400 with
+//     "Tried accessing nonexisting field (owner_business)" — clean drop.
+// `owner_business` is the safest single discriminator per Meta's AdsPixel
+// schema. `last_fired_time` is also Pixel-only but null for fresh pixels and
+// some templates omit it; `owner_business` is always present.
 export async function discoverPixelsFromBISU(accessToken, tokenInfo) {
   const seen = new Set();
   const candidateIds = [];
 
-  // Helper: add a candidate after light sanity-checking. Pixel ids are pure
-  // numeric strings; we accept any length ≥ 10 here because some legacy
-  // datasets are 12 digits and brand-new ones can hit 18+. The probe below
-  // is what actually validates "this is a Pixel" — the regex just keeps us
-  // from probing things that obviously aren't asset ids (act_*, GIDs, etc.).
   function addCandidate(maybeId) {
     if (maybeId == null) return;
     const v = String(maybeId).trim();
+    // Numeric ids only. Length filter is permissive (10–20) — the probe is
+    // the real gate, the regex just keeps obvious non-asset strings out
+    // (e.g. `act_<n>` ad-account ids, app GIDs).
     if (!/^\d{10,20}$/.test(v)) return;
     if (seen.has(v)) return;
     seen.add(v);
     candidateIds.push(v);
   }
 
-  // Path 1 — user_id from debug_token. For FBL4B Pixel Tracking BISUs this
-  // IS the Pixel id, so probe it FIRST. Logs from a real OAuth confirmed
-  // the assumption: user_id 122097749475301638 returned a Pixel-shaped
-  // object that lacked a `business` field (the Graph error pattern that
-  // distinguishes Pixels from Users / Businesses).
-  addCandidate(tokenInfo?.user_id);
-
-  // Path 2 — granular_scopes target_ids. Some templates expose the Pixel
-  // here under ads_management / business_management instead of via user_id.
+  // Walk every target_id across every scope. Don't restrict to specific
+  // scope names — Meta's template variants put the Pixel id under different
+  // scopes (sometimes `ads_management`, sometimes `business_management`,
+  // occasionally a dedicated pixel scope). Probing them all is cheap and
+  // future-proof.
   const scopes = tokenInfo?.granular_scopes ?? [];
   for (const s of scopes) {
     for (const id of s?.target_ids ?? []) {
@@ -274,51 +275,48 @@ export async function discoverPixelsFromBISU(accessToken, tokenInfo) {
     }
   }
 
-  // Path 3 — /me with the BISU. Cheap fallback for templates where neither
-  // user_id nor target_ids reveal the Pixel: Meta resolves /me to the
-  // authenticated entity, and for FBL4B Conversions API BISUs that's the
-  // Pixel-bound system user (id == Pixel id, just like Path 1).
-  try {
-    const meRes = await fetch(
-      `${GRAPH_BASE}/me?fields=id&access_token=${encodeURIComponent(
-        accessToken
-      )}`
-    );
-    if (meRes.ok) {
-      const meData = await meRes.json().catch(() => null);
-      addCandidate(meData?.id);
-    }
-  } catch {
-    /* swallow — Path 3 is a nice-to-have */
-  }
-
   if (!candidateIds.length) return [];
 
-  // Probe each candidate concurrently with `fields=id,name,last_fired_time`.
-  // - If the object IS a Pixel: 200 OK with { id, name, last_fired_time }
-  // - If the object is NOT a Pixel: 400 with
-  //   "Tried accessing nonexisting field (last_fired_time)" — handled by
-  //   the !res.ok branch and silently dropped.
-  // - Network / unknown errors: dropped.
   const results = await Promise.all(
     candidateIds.map(async (id) => {
       try {
         const params = new URLSearchParams({
-          fields: "id,name,last_fired_time",
+          fields: "id,name,owner_business",
           access_token: accessToken,
         });
         const res = await fetch(`${GRAPH_BASE}/${id}?${params}`);
-        if (!res.ok) return null;
+        if (!res.ok) {
+          // Optional verbose-debug hook — surface the actual rejection
+          // shape so Railway logs let us spot future template changes.
+          try {
+            const errBody = await res.json();
+            console.log(
+              `[meta-pixel] candidate ${id} rejected: ${
+                errBody?.error?.message ?? `HTTP ${res.status}`
+              }`
+            );
+          } catch {
+            /* swallow */
+          }
+          return null;
+        }
         const data = await res.json().catch(() => null);
-        // A real Pixel response always has id matching what we queried.
         if (!data?.id || String(data.id) !== id) return null;
+        // owner_business present (or even null) confirms Pixel object type.
+        // If the field came back at all in the response, it's a Pixel — Meta
+        // wouldn't have returned 200 if owner_business didn't exist on the
+        // schema (that's the "nonexisting field" 400 case above).
         return {
           id: String(data.id),
           name: data.name ?? null,
-          last_fired_time: data.last_fired_time ?? null,
+          owner_business: data.owner_business ?? null,
           owned: true,
         };
-      } catch {
+      } catch (err) {
+        console.log(
+          `[meta-pixel] candidate ${id} probe threw:`,
+          String(err?.message ?? err)
+        );
         return null;
       }
     })

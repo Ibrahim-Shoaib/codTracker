@@ -129,13 +129,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   try {
-    const { access_token } = await exchangeCodeForBISU(code);
+    const exchangeResp = await exchangeCodeForBISU(code);
+    const access_token: string = exchangeResp.access_token;
+    // Some FBL4B templates return client_business_id on the exchange
+    // response itself — when present, this is the most reliable way to get
+    // the merchant's Business id and skip half the discovery dance.
+    const exchangeBusinessId: string | null =
+      exchangeResp.client_business_id != null
+        ? String(exchangeResp.client_business_id)
+        : null;
 
     const tokenInfo = await debugToken(access_token);
+    // Stringify granular_scopes verbosely so we can spot template changes
+    // from Railway logs without redeploying. Token-level fields stay
+    // visible for future debugging.
     console.log(
       "[meta-pixel oauth] debug_token response:",
-      JSON.stringify(tokenInfo)
+      JSON.stringify({
+        user_id: tokenInfo.user_id,
+        profile_id: tokenInfo.profile_id,
+        scopes: tokenInfo.scopes,
+        granular_scopes: tokenInfo.granular_scopes,
+        is_valid: tokenInfo.is_valid,
+        type: tokenInfo.type,
+      })
     );
+    if (exchangeBusinessId) {
+      console.log(
+        `[meta-pixel oauth] BISU exchange returned client_business_id=${exchangeBusinessId}`
+      );
+    }
 
     // Discovery order, cheapest to most expensive. We MUST exhaust all paths
     // before giving up — failing here drops the merchant on a useless error
@@ -149,14 +172,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     let pixels: DiscoveredPixel[] = [];
     let businessId: string | null = null;
 
-    // Path A — direct Pixel discovery. For FBL4B "Pixel Tracking" /
-    //   Conversions API BISUs, the highest-confidence Pixel-id source is
-    //   tokenInfo.user_id itself (Meta creates a per-Pixel virtual system
-    //   user whose id == Pixel id). discoverPixelsFromBISU now probes
-    //   user_id, /me, and every granular_scopes target_id via the
-    //   `last_fired_time` discriminator — anything that verifies as a Pixel
-    //   is returned. This is the fastest path: at most 1 round-trip per
-    //   candidate, all fired concurrently.
+    // Path A — probe candidates from granular_scopes target_ids. Per Meta's
+    //   official Conversions API Get Started docs, target_ids on the
+    //   ads_management / business_management scopes hold the granted Pixel
+    //   IDs. We walk every scope's target_ids and probe each via
+    //   GET /{id}?fields=id,name,owner_business — Pixels return 200, every
+    //   other object type returns 400 "nonexisting field (owner_business)".
     pixels = (await discoverPixelsFromBISU(
       access_token,
       tokenInfo
@@ -165,19 +186,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       `[meta-pixel oauth] path A: discoverPixelsFromBISU → ${pixels.length} Pixel(s)`
     );
 
-    // Path B — business_id from granular_scopes[business_management] +
-    //   listDatasets. Catches the case where a single BISU has access to
-    //   multiple Pixels under a Business; Path A returns the directly-bound
-    //   one but the merchant might want to pick a different Pixel from the
-    //   same Business. We MERGE Path B's results onto Path A's so multi-
-    //   Pixel businesses see the full list in the selection screen.
-    businessId = extractBusinessId(tokenInfo);
+    // Path B — list pixels via the Business id. Three sources, in order:
+    //   1. client_business_id from the BISU exchange response (best)
+    //   2. granular_scopes[business_management].target_ids[0]
+    //   3. resolveClientBusinessId Graph-API fallback
+    // We always try this path even when Path A returned a Pixel — multi-
+    // Pixel Businesses should show the full list in the selection screen,
+    // and the dedup by id below avoids inflating the count.
+    if (exchangeBusinessId) {
+      businessId = exchangeBusinessId;
+    } else {
+      businessId = extractBusinessId(tokenInfo);
+    }
     if (businessId) {
       const businessPixels = await listDatasets(access_token, businessId);
       console.log(
-        `[meta-pixel oauth] path B: extractBusinessId=${businessId} → listDatasets → ${businessPixels.length} Pixel(s)`
+        `[meta-pixel oauth] path B: businessId=${businessId} → listDatasets → ${businessPixels.length} Pixel(s)`
       );
-      // Merge, dedup by id.
       const ids = new Set(pixels.map((p) => p.id));
       for (const bp of businessPixels) {
         if (!ids.has(bp.id)) {
@@ -187,12 +212,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }
     } else {
       console.log(
-        "[meta-pixel oauth] path B: no business_management target_ids in granular_scopes"
+        "[meta-pixel oauth] path B: no business_id in BISU exchange or granular_scopes"
       );
     }
 
-    // Path C — resolve Business id via Graph API, then listDatasets.
-    //   Last automated path. Only fires if A and B both yielded zero.
+    // Path C — Graph-API business resolution + listDatasets. Last automated
+    //   path; only fires when the cheaper paths gave us zero Pixels.
     if (!pixels.length) {
       const resolved = await resolveClientBusinessId(
         access_token,
