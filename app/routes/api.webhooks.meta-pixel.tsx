@@ -290,8 +290,14 @@ type ShopifyOrder = {
   total_price?: string | number;
   currency?: string;
   presentment_currency?: string;
+  created_at?: string;
   processed_at?: string;
   order_status_url?: string;
+  // landing_site is the URL the visitor first hit. For Meta-ad clicks it
+  // carries ?fbclid=... — extractIdentityFromOrder reads this as a fallback
+  // when cart attributes are empty (Buy It Now flow, FB in-app browser).
+  landing_site?: string;
+  referring_site?: string;
   note_attributes?: Array<{ name?: string; key?: string; value?: string }>;
   attributes?: Array<{ name?: string; key?: string; value?: string }>;
   client_details?: { browser_ip?: string; user_agent?: string };

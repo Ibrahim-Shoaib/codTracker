@@ -27,6 +27,24 @@ function pickAttr(attrs, candidates) {
   return null;
 }
 
+// Pulls `fbclid` (and similar Meta click params) out of a URL's query string.
+// Used as a fallback when cart attributes are empty — typical for visitors
+// who use Shopify's "Buy It Now" button (skips the persistent cart entirely)
+// or come through Facebook's iOS in-app browser (cookie restrictions).
+// Shopify's order webhook payload exposes the landing URL as `landing_site`.
+function extractFbclidFromUrl(maybeUrl) {
+  if (!maybeUrl) return null;
+  try {
+    // landing_site can be either a full URL or just a path. URL constructor
+    // requires an absolute URL; pass any base for path-only forms.
+    const u = new URL(maybeUrl, "https://example.com");
+    const params = u.searchParams;
+    return params.get("fbclid") ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Order webhook payload uses `note_attributes`. Checkout uses `attributes`.
 // Some webhooks also surface them under `cart_token`+`presentment_currency`.
 export function extractIdentityFromOrder(order) {
@@ -34,13 +52,30 @@ export function extractIdentityFromOrder(order) {
 
   const fbp = pickAttr(attrs, KEYS.fbp);
   let fbc = pickAttr(attrs, KEYS.fbc);
-  const fbclid = pickAttr(attrs, KEYS.fbclid);
+  let fbclid = pickAttr(attrs, KEYS.fbclid);
 
-  // Synthesize _fbc from fbclid if cart attribute didn't include one. This
-  // covers the case where the Theme App Extension snippet wasn't installed
-  // but the customer landed via a Meta ad (URL had ?fbclid=...).
+  // Fallback: if neither cart attributes carry fbclid, parse it from the
+  // order's landing URL. This covers Buy It Now (no cart write happened),
+  // Facebook in-app browsers (cookies stripped), and any path where
+  // identity-relay didn't get a chance to persist the click id. Without
+  // this, every paid Meta-ad click that goes through Buy It Now would lose
+  // its attribution server-side.
+  if (!fbclid && order?.landing_site) {
+    fbclid = extractFbclidFromUrl(order.landing_site);
+  }
+
+  // Synthesize _fbc from fbclid if cart attribute didn't include one. The
+  // timestamp anchor for the _fbc cookie format must be the click time —
+  // we use the order's processed_at when available so the synthesized
+  // value is closer to the real click than `now()` (which can be hours
+  // off for COD orders that webhook later than purchase).
   if (!fbc && fbclid) {
-    fbc = `fb.1.${Date.now()}.${fbclid}`;
+    const clickTs = order?.processed_at
+      ? new Date(order.processed_at).getTime()
+      : order?.created_at
+      ? new Date(order.created_at).getTime()
+      : Date.now();
+    fbc = `fb.1.${clickTs}.${fbclid}`;
   }
 
   return {
