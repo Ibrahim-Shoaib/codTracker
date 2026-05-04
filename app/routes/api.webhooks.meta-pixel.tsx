@@ -174,6 +174,39 @@ async function handleCheckout(
       : null;
   if (!eventName) return;
 
+  // Meta CAPI rejects events whose user_data carries no matching parameter
+  // with HTTP 400 "Invalid parameter" — wastes a delivery attempt and adds
+  // a red row to the merchant's "Recent events" feed. CHECKOUTS_CREATE
+  // fires the moment a visitor reaches the checkout page, BEFORE they've
+  // entered email/phone, and if the cart-relay theme block hasn't yet
+  // pushed fbp/fbc to cart attributes (race on first page-load), the
+  // resulting user_data is genuinely empty. Skip the fire in that case —
+  // an InitiateCheckout with no identity is worthless to Meta anyway, and
+  // the eventual orders/paid webhook will carry full identity for the
+  // canonical Purchase event.
+  //
+  // "Has any matching field" means: any hashed PII key, fbp, fbc, or the
+  // (client_ip_address + client_user_agent) tuple per Meta's spec.
+  const hasMatchableIdentity =
+    !!userData.em ||
+    !!userData.ph ||
+    !!userData.fn ||
+    !!userData.ln ||
+    !!userData.ct ||
+    !!userData.st ||
+    !!userData.zp ||
+    !!userData.country ||
+    !!userData.external_id ||
+    !!userData.fbp ||
+    !!userData.fbc ||
+    (!!userData.client_ip_address && !!userData.client_user_agent);
+  if (!hasMatchableIdentity) {
+    console.log(
+      `[meta-pixel webhook ${topic} ${shop}] skipping ${eventName} — empty user_data (visitor hit checkout before identity-relay could write cart attrs)`
+    );
+    return;
+  }
+
   // Use the event_id from cart attributes so the browser-side equivalent and
   // this server-side equivalent dedup. Fall back to a deterministic id keyed
   // by checkout token + event name so webhook retries (CHECKOUTS_UPDATE fires
