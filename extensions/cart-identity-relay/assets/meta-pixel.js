@@ -140,6 +140,86 @@
     );
   }
 
+  // Wire InitiateCheckout firing to "user is heading to checkout" intent.
+  // Theme app embeds don't run on the new Shopify checkout runtime
+  // (Checkout Extensibility), so we can't fire from the checkout page —
+  // we have to catch the click that's about to navigate there. Three
+  // shapes covered:
+  //   - <button name="checkout">           (Shopify default cart form)
+  //   - <input type="submit" name="checkout">
+  //   - <a href="/checkout"> / <a href="/checkouts/...">  (text links,
+  //     custom themes, ajax cart drawers)
+  //   - <form action="/checkout"> submission (some themes wrap the
+  //     button in a form that POSTs to /checkout)
+  //
+  // Idempotent within a session: psid-based event_id matches what the
+  // sandboxed Custom Web Pixel emits via fallbackId("checkout_started"),
+  // so Meta dedupes the dual fire (theme block fbq + server CAPI from
+  // beacon).
+  function installCheckoutClickHooks(shop, psid) {
+    var fired = false;
+    function fireOnce() {
+      if (fired) return;
+      fired = true;
+      var customData = { currency: getCurrency() };
+      // Match the Custom Web Pixel's fallbackId("checkout_started") so
+      // server CAPI from the beacon dedupes with this fbq fire.
+      var eventId = "checkout_started:" + shop + ":" + psid;
+      fireEvent("InitiateCheckout", eventId, customData);
+    }
+
+    var checkoutPathRe = /^\/(checkout|checkouts\/)/i;
+
+    function isCheckoutTrigger(node) {
+      if (!node || node.nodeType !== 1) return false;
+      // <button name="checkout"> / <input name="checkout"> — the
+      // canonical Shopify cart-form submit button.
+      if (
+        (node.tagName === "BUTTON" || node.tagName === "INPUT") &&
+        node.getAttribute &&
+        node.getAttribute("name") === "checkout"
+      ) {
+        return true;
+      }
+      // <a href="/checkout"> or /checkouts/...
+      if (node.tagName === "A") {
+        var href = node.getAttribute && node.getAttribute("href");
+        if (href && checkoutPathRe.test(href)) return true;
+      }
+      return false;
+    }
+
+    document.addEventListener(
+      "click",
+      function (ev) {
+        // Walk up — the click target is often a child of the button
+        // (e.g. an inner <span> inside <button name="checkout">).
+        var node = ev.target;
+        for (var i = 0; node && i < 5; i++) {
+          if (isCheckoutTrigger(node)) {
+            fireOnce();
+            return;
+          }
+          node = node.parentNode;
+        }
+      },
+      true
+    );
+
+    // Form-submit shape: <form action="/checkout">. Some themes don't
+    // give the button a name="checkout" and rely on the form action.
+    document.addEventListener(
+      "submit",
+      function (ev) {
+        var form = ev.target;
+        if (form && form.action && checkoutPathRe.test(new URL(form.action, location.href).pathname)) {
+          fireOnce();
+        }
+      },
+      true
+    );
+  }
+
   // Wire AddToCart firing to actual cart-add network calls. Three hooks
   // because Shopify themes use any of these:
   //   - fetch() to /cart/add.js (most modern themes)
@@ -289,70 +369,25 @@
           );
         }
 
-        // ── InitiateCheckout on the checkout flow.
-        // Shopify checkout URLs:
-        //   /checkout, /checkouts/<token>, /<shop_id>/checkouts/<token>
-        // We match any of these. Prefer the deterministic token-keyed id
-        // when present so the webhook-driven server CAPI for
-        // CHECKOUTS_CREATE dedupes.
-        if (
-          path === "/checkout" ||
-          path.indexOf("/checkout/") === 0 ||
-          path.indexOf("/checkouts/") !== -1
-        ) {
-          var token =
-            (window.Shopify &&
-              window.Shopify.checkout &&
-              window.Shopify.checkout.token) ||
-            null;
-          var icEventId = token
-            ? "initiatecheckout:" + shop + ":" + token
-            : "checkout_started:" + shop + ":" + psid;
-          var icCustomData = { currency: getCurrency() };
-          if (
-            window.Shopify &&
-            window.Shopify.checkout &&
-            window.Shopify.checkout.total_price != null
-          ) {
-            icCustomData.value =
-              Number(window.Shopify.checkout.total_price) / 100;
-          }
-          fireEvent("InitiateCheckout", icEventId, icCustomData);
-        }
+        // ── InitiateCheckout: fire BEFORE navigation to checkout.
+        // Modern Shopify (post Checkout Extensibility, Aug 2024) renders
+        // /checkouts/c/<token> in a separate runtime that doesn't load
+        // theme app embeds — so we can't fire from the checkout page
+        // itself. Hooking the click on the checkout button while still on
+        // the storefront/cart page is the only browser-side path to get
+        // InitiateCheckout into Pixel Helper.
+        installCheckoutClickHooks(shop, psid);
 
-        // ── Purchase on the order-status / thank-you page.
-        // Shopify order-status URL patterns:
-        //   /<shop_id>/orders/<token>
-        //   /checkouts/<token>/thank_you
-        //   /checkouts/<token>/post_purchase
-        //   /<shop_id>/checkouts/<token>/thank_you
-        var isThankYou =
-          /\/(thank_you|post_purchase)(\/|$)/.test(path) ||
-          /^\/\d+\/orders\//.test(path);
-        if (isThankYou) {
-          var orderId =
-            (window.Shopify &&
-              window.Shopify.checkout &&
-              (window.Shopify.checkout.order_id ||
-                window.Shopify.checkout.orderId)) ||
-            null;
-          if (orderId) {
-            var pCustomData = { currency: getCurrency() };
-            if (
-              window.Shopify &&
-              window.Shopify.checkout &&
-              window.Shopify.checkout.total_price != null
-            ) {
-              pCustomData.value =
-                Number(window.Shopify.checkout.total_price) / 100;
-            }
-            fireEvent(
-              "Purchase",
-              "purchase:" + shop + ":" + orderId,
-              pCustomData
-            );
-          }
-        }
+        // ── Purchase: SERVER-SIDE ONLY.
+        // Post-purchase / thank-you pages also run in the new checkout
+        // runtime — theme app embeds don't load there. We rely entirely
+        // on the orders/paid webhook → server CAPI for Purchase events.
+        // Pixel Helper won't see a Purchase row (this is the same trade-
+        // off Triple Whale, Klaviyo, and wetracked.io accept), but Meta
+        // gets a fully-identified Purchase event with the merchant's
+        // hashed PII via the webhook path. Order-page event_id is
+        // purchase:<shop>:<order_id>, deterministic for dedup with the
+        // Custom Web Pixel beacon's checkout_completed fire.
 
         // ── AddToCart hooks. Wire once; fires whenever /cart/add hits.
         installCartAddHooks(shop, psid);
