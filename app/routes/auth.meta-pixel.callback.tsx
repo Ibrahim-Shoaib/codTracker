@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   exchangeCodeForBISU,
   debugToken,
+  extractBusinessId,
   discoverPixelsFromBISU,
   listDatasets,
   resolveClientBusinessId,
@@ -136,42 +137,94 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       JSON.stringify(tokenInfo)
     );
 
-    // Primary path — directly discover the Pixel(s) the BISU was granted
-    // access to. Works for any FBL4B template variation and doesn't depend
-    // on the BISU being bound to a Business Manager.
-    let pixels = await discoverPixelsFromBISU(access_token, tokenInfo);
-    console.log(
-      `[meta-pixel oauth] discoverPixelsFromBISU → ${pixels.length} verified Pixel(s)`
-    );
-
-    // Fallback — for the rare BISU where granular_scopes carry no usable
-    // target_ids (some legacy template variants), try the business-id route.
+    // Discovery order, cheapest to most expensive. We MUST exhaust all paths
+    // before giving up — failing here drops the merchant on a useless error
+    // page even though they correctly granted Pixel access.
+    type DiscoveredPixel = {
+      id: string;
+      name?: string | null;
+      owned?: boolean;
+      last_fired_time?: string | null;
+    };
+    let pixels: DiscoveredPixel[] = [];
     let businessId: string | null = null;
-    if (!pixels.length) {
+
+    // Path A — business_id from granular_scopes[business_management].
+    //   This is the single most reliable signal for FBL4B Pixel Tracking
+    //   BISUs. When Meta grants the BISU access to a Business Manager, the
+    //   business id always appears here. With it we can list owned + client
+    //   pixels and find the granted dataset deterministically.
+    businessId = extractBusinessId(tokenInfo);
+    if (businessId) {
+      pixels = await listDatasets(access_token, businessId);
       console.log(
-        "[meta-pixel oauth] no pixels via direct discovery, falling back to business-id path"
+        `[meta-pixel oauth] path A: extractBusinessId=${businessId} → listDatasets → ${pixels.length} Pixel(s)`
       );
-      businessId = await resolveClientBusinessId(
+    } else {
+      console.log(
+        "[meta-pixel oauth] path A: no business_management target_ids in granular_scopes"
+      );
+    }
+
+    // Path B — walk granular_scopes target_ids and probe each as a Pixel.
+    //   For BISUs that don't carry business_management (rare, some
+    //   shared-user variants), the granted asset id occasionally shows up
+    //   under another scope's target_ids. Probe each candidate via
+    //   GET /{id}?fields=id,name,last_fired_time and keep what verifies.
+    if (!pixels.length) {
+      // discoverPixelsFromBISU is a JS module; its filtered return is typed
+      // as `(... | null)[]` here but is guaranteed non-null at runtime by
+      // the .filter(Boolean) inside the function.
+      pixels = (await discoverPixelsFromBISU(
+        access_token,
+        tokenInfo
+      )) as DiscoveredPixel[];
+      console.log(
+        `[meta-pixel oauth] path B: discoverPixelsFromBISU → ${pixels.length} Pixel(s)`
+      );
+    }
+
+    // Path C — resolve Business id via Graph API, then listDatasets.
+    //   Last automated path. /{system_user_id}?fields=business sometimes
+    //   returns the Business when granular_scopes was empty. This is the
+    //   slowest because it makes 1–4 network round trips.
+    if (!pixels.length) {
+      const resolved = await resolveClientBusinessId(
         access_token,
         tokenInfo.user_id
       );
-      if (businessId) {
-        pixels = await listDatasets(access_token, businessId);
+      if (resolved) {
+        businessId = resolved;
+        pixels = await listDatasets(access_token, resolved);
         console.log(
-          `[meta-pixel oauth] fallback listDatasets(business=${businessId}) → ${pixels.length} Pixel(s)`
+          `[meta-pixel oauth] path C: resolveClientBusinessId=${resolved} → listDatasets → ${pixels.length} Pixel(s)`
+        );
+      } else {
+        console.log(
+          "[meta-pixel oauth] path C: resolveClientBusinessId returned null"
         );
       }
     }
 
+    // All automated discovery paths failed → fall back to manual entry.
+    // The merchant DID grant a Pixel (otherwise consent wouldn't have
+    // succeeded), so the right move is to ask them to paste the Pixel ID
+    // rather than reject the connection. This preserves onboarding even
+    // for FBL4B template variants we haven't seen yet.
     if (!pixels.length) {
       console.error(
-        "[meta-pixel oauth] no Pixel access could be discovered through any path — merchant likely skipped Pixel selection in the consent dialog"
+        "[meta-pixel oauth] all automatic discovery paths failed — falling back to manual Pixel ID entry"
       );
-      const setCookie = await metaPixelOAuthSession.destroySession(
+      oauthSession.unset("state");
+      oauthSession.set("bisu_token", access_token);
+      oauthSession.set("business_id", businessId);
+      oauthSession.set("system_user_id", tokenInfo.user_id ?? null);
+      oauthSession.set("manual_entry_required", true);
+      const setCookie = await metaPixelOAuthSession.commitSession(
         oauthSession
       );
       return htmlResponse(
-        { type: "meta_pixel_oauth_error", reason: "no_pixel_granted" },
+        { type: "meta_pixel_oauth_complete" },
         returnTo,
         setCookie
       );

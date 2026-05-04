@@ -92,6 +92,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const pendingToken: string | null = oauthSession.get("bisu_token") ?? null;
   const pendingDatasets: DatasetOption[] | null =
     oauthSession.get("datasets") ?? null;
+  const manualEntryRequired: boolean =
+    oauthSession.get("manual_entry_required") === true;
 
   const supabase = await getSupabaseForStore(shop);
 
@@ -124,7 +126,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     shop,
     connection: conn,
     pending: pendingToken
-      ? { datasets: pendingDatasets ?? [] }
+      ? {
+          datasets: pendingDatasets ?? [],
+          manualEntryRequired,
+        }
       : null,
     recentEvents: (recentRes.data ?? []) as RecentEvent[],
     latestEMQ,
@@ -174,9 +179,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const bisu: string | null = oauthSession.get("bisu_token") ?? null;
     const businessId: string | null = oauthSession.get("business_id") ?? null;
     const datasets: DatasetOption[] = oauthSession.get("datasets") ?? [];
+    const manualEntry: boolean =
+      oauthSession.get("manual_entry_required") === true;
 
     if (!bisu) {
       return json({ intent, error: "OAuth session expired — please connect again." });
+    }
+
+    // Manual entry path: validate the merchant typed a numeric Meta dataset
+    // id. Range is permissive (10–20 digits) — Pixel IDs vary in length
+    // across vintages, and we'd rather accept a slightly old format than
+    // reject a real Pixel.
+    if (manualEntry && !/^\d{10,20}$/.test(datasetId)) {
+      return json({
+        intent,
+        error: "Pixel ID should be a 10–20 digit number from Events Manager.",
+      });
     }
 
     const dataset = datasets.find((d) => d.id === datasetId);
@@ -722,6 +740,91 @@ export default function AdTracking() {
                       </InlineStack>
                     ))}
                   </BlockStack>
+                )}
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        </Layout>
+      </Page>
+    );
+  }
+
+  // ── Manual Pixel ID entry — auto-discovery failed for this BISU shape ────
+  // We only land here when every automatic discovery path in the OAuth
+  // callback came up empty. The merchant has already granted Pixel access in
+  // the consent screen — the BISU just doesn't expose the granted asset
+  // through any of the documented Graph API paths. Asking for the Pixel ID
+  // (which they can copy from Events Manager in 10 seconds) is strictly
+  // better than blocking onboarding.
+  if (pending?.manualEntryRequired) {
+    return (
+      <Page>
+        <TitleBar title="Ad Tracking" />
+        <Layout>
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <BlockStack gap="100">
+                  <Text as="h2" variant="headingLg">Almost there — paste your Pixel ID</Text>
+                  <Text as="p" variant="bodyMd" tone="subdued">
+                    Meta authorized your account but didn't return your
+                    Pixel's ID directly through the API for this Business
+                    Manager configuration. Paste your Pixel ID below and
+                    we'll connect — takes 10 seconds.
+                  </Text>
+                </BlockStack>
+
+                <Banner tone="info">
+                  <BlockStack gap="100">
+                    <Text as="p" variant="bodyMd" fontWeight="semibold">
+                      How to find your Pixel ID
+                    </Text>
+                    <Text as="p" variant="bodyMd">
+                      1. Open{" "}
+                      <Link
+                        url="https://business.facebook.com/events_manager2"
+                        target="_blank"
+                      >
+                        Meta Events Manager
+                      </Link>
+                    </Text>
+                    <Text as="p" variant="bodyMd">
+                      2. Click your Pixel/Dataset in the left sidebar
+                    </Text>
+                    <Text as="p" variant="bodyMd">
+                      3. Copy the 10–20 digit number shown under the Pixel
+                      name (e.g. <code>1234567890123456</code>)
+                    </Text>
+                  </BlockStack>
+                </Banner>
+
+                <Form method="post">
+                  <input type="hidden" name="intent" value="save_dataset" />
+                  <BlockStack gap="300">
+                    <input
+                      type="text"
+                      name="dataset_id"
+                      placeholder="1234567890123456"
+                      pattern="[0-9]{10,20}"
+                      required
+                      style={{
+                        padding: "10px 12px",
+                        border: "1px solid #ccc",
+                        borderRadius: "8px",
+                        fontSize: "16px",
+                        fontFamily: "monospace",
+                      }}
+                    />
+                    <InlineStack>
+                      <Button submit variant="primary" loading={submitting}>
+                        Save & install pixel on storefront
+                      </Button>
+                    </InlineStack>
+                  </BlockStack>
+                </Form>
+
+                {actionData && "error" in actionData && actionData.error && (
+                  <Banner tone="critical">{actionData.error}</Banner>
                 )}
               </BlockStack>
             </Card>

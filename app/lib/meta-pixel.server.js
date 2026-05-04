@@ -187,6 +187,34 @@ export async function resolveClientBusinessId(accessToken, systemUserId) {
   return null;
 }
 
+// ─── Business id extraction (cheapest path) ──────────────────────────────────
+
+// Pull the granted Business id straight out of debug_token's granular_scopes.
+// For FBL4B "Pixel Tracking" BISUs, the `business_management` scope's
+// target_ids[0] is the merchant's Business Manager id — Meta exposes it here
+// even when the BISU has no other way to introspect itself (e.g. when it's a
+// "client" system user shared in from another business).
+//
+// This was the workhorse path in the original implementation. It's the one
+// that matters for FBL4B Conversions API templates: the business_id lets us
+// call /{business}/owned_pixels + /{business}/client_pixels and find the
+// granted Pixel reliably.
+//
+// `profile_id` is a legacy fallback used by older FBL templates that set the
+// Business id at the top level of debug_token's response.
+export function extractBusinessId(tokenInfo) {
+  const scopes = tokenInfo?.granular_scopes ?? [];
+  // Prefer business_management — its target_ids[0] is the canonical Business id.
+  for (const s of scopes) {
+    if (s?.scope === "business_management" && s?.target_ids?.length) {
+      return String(s.target_ids[0]);
+    }
+  }
+  // Some legacy tokens still set profile_id at the top level.
+  if (tokenInfo?.profile_id) return String(tokenInfo.profile_id);
+  return null;
+}
+
 // ─── Pixel auto-discovery (preferred path) ───────────────────────────────────
 
 // Probe the BISU token directly for the granted Pixel(s). This works WITHOUT
