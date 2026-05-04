@@ -128,6 +128,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     );
   }
 
+  // Build-marker log: appears once at the top of every callback hit so we
+  // can confirm from Railway logs whether the latest deploy is actually
+  // serving the request (vs a stale build). Bump the marker when shipping
+  // any meaningful change to this file's discovery flow.
+  console.log(
+    "[meta-pixel oauth] >>> START callback (build: 2026-05-04T18:30 — owner_business probe + /me metadata diag)"
+  );
+
   try {
     const exchangeResp = await exchangeCodeForBISU(code);
     const access_token: string = exchangeResp.access_token;
@@ -140,9 +148,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         : null;
 
     const tokenInfo = await debugToken(access_token);
-    // Stringify granular_scopes verbosely so we can spot template changes
-    // from Railway logs without redeploying. Token-level fields stay
-    // visible for future debugging.
     console.log(
       "[meta-pixel oauth] debug_token response:",
       JSON.stringify({
@@ -158,6 +163,66 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       console.log(
         `[meta-pixel oauth] BISU exchange returned client_business_id=${exchangeBusinessId}`
       );
+    }
+
+    // Diagnostic — query /me with the BISU and log the raw response.
+    // Helps us identify what entity Meta thinks this token represents
+    // (Admin System User vs Business System User vs something else) and
+    // which connections exist. Cheap and never blocks the flow.
+    try {
+      const meRes = await fetch(
+        `https://graph.facebook.com/v24.0/me?fields=id,name,businesses,owned_apps,assigned_business_users,managed_businesses,permissions&access_token=${encodeURIComponent(
+          access_token
+        )}`
+      );
+      const meBody = await meRes.json().catch(() => null);
+      console.log(
+        `[meta-pixel oauth] DIAG /me response (status ${meRes.status}):`,
+        JSON.stringify(meBody)
+      );
+    } catch (err) {
+      console.log("[meta-pixel oauth] DIAG /me threw:", String(err));
+    }
+
+    // Diagnostic — /me/permissions returns the raw permission grants. For
+    // some FBL4B template variants the permission objects carry asset
+    // refs that aren't in granular_scopes.
+    try {
+      const permRes = await fetch(
+        `https://graph.facebook.com/v24.0/me/permissions?access_token=${encodeURIComponent(
+          access_token
+        )}`
+      );
+      const permBody = await permRes.json().catch(() => null);
+      console.log(
+        `[meta-pixel oauth] DIAG /me/permissions (status ${permRes.status}):`,
+        JSON.stringify(permBody)
+      );
+    } catch (err) {
+      console.log("[meta-pixel oauth] DIAG /me/permissions threw:", String(err));
+    }
+
+    // Diagnostic — query the system_user_id with metadata=1. Returns the
+    // node's full metadata (supported fields + connections) and is the
+    // one Meta-documented way to introspect an unknown object's shape.
+    if (tokenInfo?.user_id) {
+      try {
+        const metaRes = await fetch(
+          `https://graph.facebook.com/v24.0/${tokenInfo.user_id}?metadata=1&access_token=${encodeURIComponent(
+            access_token
+          )}`
+        );
+        const metaBody = await metaRes.json().catch(() => null);
+        console.log(
+          `[meta-pixel oauth] DIAG /${tokenInfo.user_id}?metadata=1 (status ${metaRes.status}):`,
+          JSON.stringify(metaBody?.metadata ?? metaBody)
+        );
+      } catch (err) {
+        console.log(
+          "[meta-pixel oauth] DIAG metadata probe threw:",
+          String(err)
+        );
+      }
     }
 
     // Discovery order, cheapest to most expensive. We MUST exhaust all paths
