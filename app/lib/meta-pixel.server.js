@@ -222,42 +222,84 @@ export function extractBusinessId(tokenInfo) {
 // Tracking" templates — the BISU is scoped to the asset (Pixel), not to a
 // Business Manager.
 //
-// Strategy:
-//   1. Walk every `target_id` across all `granular_scopes` returned by
-//      debug_token. For Pixel-Tracking BISUs the granted Pixel ID typically
-//      shows up as a target_id under one of the scopes (commonly
-//      `ads_management` or a dedicated Pixel scope).
-//   2. For each candidate that looks like a numeric Meta asset id (15–17
-//      digits), probe `GET /{id}?fields=id,name,last_fired_time` with the
-//      BISU. If the response is 200 and shape matches a Pixel/Dataset, keep it.
-//   3. De-dup by id, return the verified set.
+// Strategy (in candidate-priority order):
+//   1. tokenInfo.user_id — for FBL4B "Pixel Tracking" / Conversions API
+//      templates, Meta creates a per-Pixel virtual system user whose id
+//      equals the Pixel id. This is the highest-confidence candidate and
+//      the path that fixes the user's onboarding regression where
+//      granular_scopes carried no Pixel-shaped target_ids but user_id
+//      itself was the Pixel.
+//   2. /me with the BISU — Graph resolves to the authenticated entity, which
+//      for these BISUs is the Pixel-bound system user (id == Pixel id).
+//   3. granular_scopes[*].target_ids — for older or alternative FBL4B
+//      template variations that put the granted Pixel id under a scope's
+//      target_ids list.
 //
-// This replaces the legacy "find business_id → list owned/client_pixels"
-// path for any BISU where business resolution fails (the common case for
-// non-business-owned Pixels).
+// For each candidate, we probe `GET /{id}?fields=id,name,last_fired_time`.
+// `last_fired_time` is a Pixel-only field — Meta returns 400
+// "Tried accessing nonexisting field (last_fired_time)" for non-Pixel
+// objects (Businesses, Ad accounts, etc.), which makes this query a clean
+// Pixel-vs-not discriminator.
 export async function discoverPixelsFromBISU(accessToken, tokenInfo) {
   const seen = new Set();
   const candidateIds = [];
+
+  // Helper: add a candidate after light sanity-checking. Pixel ids are pure
+  // numeric strings; we accept any length ≥ 10 here because some legacy
+  // datasets are 12 digits and brand-new ones can hit 18+. The probe below
+  // is what actually validates "this is a Pixel" — the regex just keeps us
+  // from probing things that obviously aren't asset ids (act_*, GIDs, etc.).
+  function addCandidate(maybeId) {
+    if (maybeId == null) return;
+    const v = String(maybeId).trim();
+    if (!/^\d{10,20}$/.test(v)) return;
+    if (seen.has(v)) return;
+    seen.add(v);
+    candidateIds.push(v);
+  }
+
+  // Path 1 — user_id from debug_token. For FBL4B Pixel Tracking BISUs this
+  // IS the Pixel id, so probe it FIRST. Logs from a real OAuth confirmed
+  // the assumption: user_id 122097749475301638 returned a Pixel-shaped
+  // object that lacked a `business` field (the Graph error pattern that
+  // distinguishes Pixels from Users / Businesses).
+  addCandidate(tokenInfo?.user_id);
+
+  // Path 2 — granular_scopes target_ids. Some templates expose the Pixel
+  // here under ads_management / business_management instead of via user_id.
   const scopes = tokenInfo?.granular_scopes ?? [];
   for (const s of scopes) {
-    const ids = s?.target_ids ?? [];
-    for (const id of ids) {
-      const v = String(id).trim();
-      // Pixel/Dataset ids are 15–17 digit numeric strings. Ad account ids
-      // (act_xxx) and business ids (10-digit) are filtered out by this regex.
-      if (!/^\d{14,18}$/.test(v)) continue;
-      if (seen.has(v)) continue;
-      seen.add(v);
-      candidateIds.push(v);
+    for (const id of s?.target_ids ?? []) {
+      addCandidate(id);
     }
+  }
+
+  // Path 3 — /me with the BISU. Cheap fallback for templates where neither
+  // user_id nor target_ids reveal the Pixel: Meta resolves /me to the
+  // authenticated entity, and for FBL4B Conversions API BISUs that's the
+  // Pixel-bound system user (id == Pixel id, just like Path 1).
+  try {
+    const meRes = await fetch(
+      `${GRAPH_BASE}/me?fields=id&access_token=${encodeURIComponent(
+        accessToken
+      )}`
+    );
+    if (meRes.ok) {
+      const meData = await meRes.json().catch(() => null);
+      addCandidate(meData?.id);
+    }
+  } catch {
+    /* swallow — Path 3 is a nice-to-have */
   }
 
   if (!candidateIds.length) return [];
 
-  // Probe each candidate concurrently. Endpoints that return non-Pixel objects
-  // (e.g. a business id snuck through the digit filter) just don't have the
-  // expected shape and get filtered out — no need to be clever about which
-  // type each id is up front.
+  // Probe each candidate concurrently with `fields=id,name,last_fired_time`.
+  // - If the object IS a Pixel: 200 OK with { id, name, last_fired_time }
+  // - If the object is NOT a Pixel: 400 with
+  //   "Tried accessing nonexisting field (last_fired_time)" — handled by
+  //   the !res.ok branch and silently dropped.
+  // - Network / unknown errors: dropped.
   const results = await Promise.all(
     candidateIds.map(async (id) => {
       try {
@@ -269,11 +311,9 @@ export async function discoverPixelsFromBISU(accessToken, tokenInfo) {
         if (!res.ok) return null;
         const data = await res.json().catch(() => null);
         // A real Pixel response always has id matching what we queried.
-        // Datasets also expose `last_fired_time` (we requested it). If the
-        // returned object lacks it, it's probably a different asset type.
-        if (!data?.id || data.id !== id) return null;
+        if (!data?.id || String(data.id) !== id) return null;
         return {
-          id: data.id,
+          id: String(data.id),
           name: data.name ?? null,
           last_fired_time: data.last_fired_time ?? null,
           owned: true,
