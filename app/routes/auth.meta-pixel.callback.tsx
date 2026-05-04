@@ -1,37 +1,16 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
+import { createClient } from "@supabase/supabase-js";
 import {
   exchangeCodeForBISU,
   debugToken,
+  discoverPixelsFromBISU,
   listDatasets,
-  listAdAccounts,
   resolveClientBusinessId,
 } from "../lib/meta-pixel.server.js";
 import { metaPixelOAuthSession } from "../lib/meta-pixel-session.server.js";
-
-// Pull the granted Business id out of a debug_token response. Meta nests it
-// inside `granular_scopes` keyed by scope name; for FBL4B Conversions API
-// tokens, the business_management scope's target_ids[0] is the right value.
-type GranularScope = { scope?: string; target_ids?: string[] };
-type DebugTokenInfo = {
-  profile_id?: string;
-  user_id?: string;
-  granular_scopes?: GranularScope[];
-};
-
-function extractBusinessId(info: DebugTokenInfo): string | null {
-  const scopes = info.granular_scopes ?? [];
-  // Prefer business_management — it's the scope whose target_ids contains
-  // the Business ID itself (vs ads_management whose target_ids hold ad
-  // account ids that happen to be associated with the business).
-  for (const s of scopes) {
-    if (s.scope === "business_management" && s.target_ids?.length) {
-      return s.target_ids[0];
-    }
-  }
-  // Some legacy templates still set profile_id at the top level.
-  if (info.profile_id) return info.profile_id;
-  return null;
-}
+import { encryptSecret } from "../lib/crypto.server.js";
+import { installWebPixel } from "../lib/web-pixel-install.server.js";
+import { sessionStorage } from "../shopify.server";
 
 // Same popup-postMessage UX as auth.meta.callback — the embedded admin opens a
 // popup, this route runs in the popup, broadcasts the result back to the
@@ -59,6 +38,69 @@ function htmlResponse(
   );
 }
 
+// Persist the connection + install the Custom Web Pixel in one shot. Called
+// from the callback when exactly one Pixel was discovered — bypasses the
+// merchant-facing "pick a Pixel" screen entirely so onboarding is one click.
+async function autoCompleteConnection(args: {
+  shop: string;
+  bisu: string;
+  businessId: string | null;
+  dataset: { id: string; name: string | null };
+}) {
+  const supabase = createClient(
+    process.env.SUPABASE_URL ?? "",
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
+  );
+
+  // Look up the Shopify Admin access token from the session store. We don't
+  // have the request session here (we're in the popup callback), so we go via
+  // the persisted offline session that shopify-app-remix maintains.
+  const offlineSession = await sessionStorage.loadSession(
+    `offline_${args.shop}`
+  );
+
+  let webPixelId: string | null = null;
+  if (offlineSession?.accessToken) {
+    try {
+      const wp = await installWebPixel({
+        shop: args.shop,
+        accessToken: offlineSession.accessToken,
+      });
+      webPixelId = wp?.id ?? null;
+    } catch (err) {
+      console.error(
+        `[meta-pixel oauth] Web Pixel auto-install failed for ${args.shop}:`,
+        err
+      );
+      // Non-fatal — connection still saved, server-side CAPI will work via
+      // webhooks; only the (already-redundant) browser beacon path is
+      // affected.
+    }
+  } else {
+    console.warn(
+      `[meta-pixel oauth] no offline session found for ${args.shop} — skipping Web Pixel install (will retry on next admin visit)`
+    );
+  }
+
+  await supabase.from("meta_pixel_connections").upsert(
+    {
+      store_id: args.shop,
+      config_id: process.env.META_PIXEL_CONFIG_ID ?? "",
+      bisu_token: encryptSecret(args.bisu),
+      business_id: args.businessId ?? "",
+      business_name: null,
+      dataset_id: args.dataset.id,
+      dataset_name: args.dataset.name,
+      web_pixel_id: webPixelId,
+      status: "active",
+      status_reason: null,
+      connected_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "store_id" }
+  );
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
@@ -68,6 +110,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const cookieHeader = request.headers.get("Cookie");
   const oauthSession = await metaPixelOAuthSession.getSession(cookieHeader);
   const savedState: string | null = oauthSession.get("state") ?? null;
+  const shop: string | null = oauthSession.get("shop") ?? null;
   const returnTo: string =
     oauthSession.get("returnTo") ?? "https://admin.shopify.com";
 
@@ -87,61 +130,46 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   try {
     const { access_token } = await exchangeCodeForBISU(code);
 
-    // Inspect the BISU token to find the business it grants access to. For
-    // BISU tokens issued by FBL4B Conversions-API templates, the business id
-    // is NOT at the top level of debug_token's response — it lives inside
-    // `granular_scopes`, keyed by scope name. We check (in order):
-    //   1. granular_scopes[business_management].target_ids[0]   ← canonical
-    //   2. granular_scopes[ads_management].target_ids[0]        ← fallback
-    //   3. tokenInfo.profile_id                                 ← legacy
-    // The first non-empty match wins.
     const tokenInfo = await debugToken(access_token);
-    console.log("[meta-pixel oauth] debug_token response:", JSON.stringify(tokenInfo));
+    console.log(
+      "[meta-pixel oauth] debug_token response:",
+      JSON.stringify(tokenInfo)
+    );
 
-    // Some FBL4B template variations issue a valid BISU but leave target_ids
-    // empty inside granular_scopes — we have to resolve the Business via a
-    // separate Graph call when that happens. Try the granular_scopes path
-    // first (avoids an extra round trip), fall back to the Graph query.
-    let businessId = extractBusinessId(tokenInfo);
-    if (!businessId) {
+    // Primary path — directly discover the Pixel(s) the BISU was granted
+    // access to. Works for any FBL4B template variation and doesn't depend
+    // on the BISU being bound to a Business Manager.
+    let pixels = await discoverPixelsFromBISU(access_token, tokenInfo);
+    console.log(
+      `[meta-pixel oauth] discoverPixelsFromBISU → ${pixels.length} verified Pixel(s)`
+    );
+
+    // Fallback — for the rare BISU where granular_scopes carry no usable
+    // target_ids (some legacy template variants), try the business-id route.
+    let businessId: string | null = null;
+    if (!pixels.length) {
       console.log(
-        "[meta-pixel oauth] no business in granular_scopes — falling back to /me?fields=business"
+        "[meta-pixel oauth] no pixels via direct discovery, falling back to business-id path"
       );
-      businessId = await resolveClientBusinessId(access_token, tokenInfo.user_id);
+      businessId = await resolveClientBusinessId(
+        access_token,
+        tokenInfo.user_id
+      );
+      if (businessId) {
+        pixels = await listDatasets(access_token, businessId);
+        console.log(
+          `[meta-pixel oauth] fallback listDatasets(business=${businessId}) → ${pixels.length} Pixel(s)`
+        );
+      }
     }
-    // If business discovery fails entirely, don't error out — route the
-    // merchant to a manual Pixel ID input instead. Meta's FBL4B "General"
-    // login variation sometimes issues BISUs that aren't bound to a Business
-    // Manager (a config quirk we can't fix server-side); this fallback lets
-    // those merchants connect anyway by pasting their Pixel ID directly.
-    if (!businessId) {
-      console.log(
-        "[meta-pixel oauth] business_id discovery failed across all paths — routing to manual entry"
-      );
-      oauthSession.unset("state");
-      oauthSession.set("bisu_token", access_token);
-      oauthSession.set("business_id", null);
-      oauthSession.set("system_user_id", tokenInfo.user_id ?? null);
-      oauthSession.set("manual_entry_required", true);
-      const setCookie = await metaPixelOAuthSession.commitSession(oauthSession);
-      return htmlResponse(
-        { type: "meta_pixel_oauth_complete" },
-        returnTo,
-        setCookie
-      );
-    }
-    console.log(`[meta-pixel oauth] resolved business_id=${businessId}`);
 
-    // List datasets + ad accounts for the merchant to pick from.
-    const [datasets, adAccounts] = await Promise.all([
-      listDatasets(access_token, businessId),
-      listAdAccounts(access_token, businessId),
-    ]);
-
-    if (!datasets.length) {
-      // Merchant skipped the Pixel asset selection during consent —
-      // recoverable, but they need to redo the flow with a Pixel chosen.
-      const setCookie = await metaPixelOAuthSession.destroySession(oauthSession);
+    if (!pixels.length) {
+      console.error(
+        "[meta-pixel oauth] no Pixel access could be discovered through any path — merchant likely skipped Pixel selection in the consent dialog"
+      );
+      const setCookie = await metaPixelOAuthSession.destroySession(
+        oauthSession
+      );
       return htmlResponse(
         { type: "meta_pixel_oauth_error", reason: "no_pixel_granted" },
         returnTo,
@@ -149,11 +177,56 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       );
     }
 
+    // Single Pixel granted (the overwhelming majority of merchants) → save
+    // immediately and skip the selection screen. Onboarding becomes a single
+    // click: "Connect Meta Pixel" → consent → done.
+    const onlyPixel = pixels.length === 1 ? pixels[0] : null;
+    if (onlyPixel && shop) {
+      try {
+        await autoCompleteConnection({
+          shop,
+          bisu: access_token,
+          businessId,
+          dataset: { id: onlyPixel.id, name: onlyPixel.name ?? null },
+        });
+      } catch (err) {
+        console.error(
+          "[meta-pixel oauth] auto-complete failed, falling back to selection screen:",
+          err
+        );
+        // Stash for the manual save_dataset flow as a graceful fallback.
+        oauthSession.unset("state");
+        oauthSession.set("bisu_token", access_token);
+        oauthSession.set("business_id", businessId);
+        oauthSession.set("datasets", pixels);
+        const setCookie = await metaPixelOAuthSession.commitSession(
+          oauthSession
+        );
+        return htmlResponse(
+          { type: "meta_pixel_oauth_complete" },
+          returnTo,
+          setCookie
+        );
+      }
+
+      // Auto-complete succeeded — wipe the OAuth session and signal the
+      // parent. The parent's revalidator will pick up the new active
+      // connection on next loader call.
+      const setCookie = await metaPixelOAuthSession.destroySession(
+        oauthSession
+      );
+      return htmlResponse(
+        { type: "meta_pixel_oauth_complete", auto: true },
+        returnTo,
+        setCookie
+      );
+    }
+
+    // Multiple Pixels granted → ask the merchant which one to connect.
     oauthSession.unset("state");
     oauthSession.set("bisu_token", access_token);
     oauthSession.set("business_id", businessId);
-    oauthSession.set("datasets", datasets);
-    oauthSession.set("ad_accounts", adAccounts);
+    oauthSession.set("datasets", pixels);
 
     const setCookie = await metaPixelOAuthSession.commitSession(oauthSession);
     return htmlResponse(
@@ -162,10 +235,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       setCookie
     );
   } catch (err) {
-    // Surface the actual Meta error message into the UI rather than just
-    // "token_exchange". Meta returns specific strings like "redirect_uri does
-    // not match" or "Invalid client secret" that the merchant (or their
-    // developer support) can act on directly without pulling Railway logs.
     const detail =
       err instanceof Error
         ? err.message.replace(/^Meta BISU exchange failed:\s*/, "")

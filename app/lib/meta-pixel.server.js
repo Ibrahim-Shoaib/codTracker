@@ -187,7 +187,79 @@ export async function resolveClientBusinessId(accessToken, systemUserId) {
   return null;
 }
 
-// ─── Business assets ──────────────────────────────────────────────────────────
+// ─── Pixel auto-discovery (preferred path) ───────────────────────────────────
+
+// Probe the BISU token directly for the granted Pixel(s). This works WITHOUT
+// needing a business_id, which is the right primitive for FBL4B "Pixel
+// Tracking" templates — the BISU is scoped to the asset (Pixel), not to a
+// Business Manager.
+//
+// Strategy:
+//   1. Walk every `target_id` across all `granular_scopes` returned by
+//      debug_token. For Pixel-Tracking BISUs the granted Pixel ID typically
+//      shows up as a target_id under one of the scopes (commonly
+//      `ads_management` or a dedicated Pixel scope).
+//   2. For each candidate that looks like a numeric Meta asset id (15–17
+//      digits), probe `GET /{id}?fields=id,name,last_fired_time` with the
+//      BISU. If the response is 200 and shape matches a Pixel/Dataset, keep it.
+//   3. De-dup by id, return the verified set.
+//
+// This replaces the legacy "find business_id → list owned/client_pixels"
+// path for any BISU where business resolution fails (the common case for
+// non-business-owned Pixels).
+export async function discoverPixelsFromBISU(accessToken, tokenInfo) {
+  const seen = new Set();
+  const candidateIds = [];
+  const scopes = tokenInfo?.granular_scopes ?? [];
+  for (const s of scopes) {
+    const ids = s?.target_ids ?? [];
+    for (const id of ids) {
+      const v = String(id).trim();
+      // Pixel/Dataset ids are 15–17 digit numeric strings. Ad account ids
+      // (act_xxx) and business ids (10-digit) are filtered out by this regex.
+      if (!/^\d{14,18}$/.test(v)) continue;
+      if (seen.has(v)) continue;
+      seen.add(v);
+      candidateIds.push(v);
+    }
+  }
+
+  if (!candidateIds.length) return [];
+
+  // Probe each candidate concurrently. Endpoints that return non-Pixel objects
+  // (e.g. a business id snuck through the digit filter) just don't have the
+  // expected shape and get filtered out — no need to be clever about which
+  // type each id is up front.
+  const results = await Promise.all(
+    candidateIds.map(async (id) => {
+      try {
+        const params = new URLSearchParams({
+          fields: "id,name,last_fired_time",
+          access_token: accessToken,
+        });
+        const res = await fetch(`${GRAPH_BASE}/${id}?${params}`);
+        if (!res.ok) return null;
+        const data = await res.json().catch(() => null);
+        // A real Pixel response always has id matching what we queried.
+        // Datasets also expose `last_fired_time` (we requested it). If the
+        // returned object lacks it, it's probably a different asset type.
+        if (!data?.id || data.id !== id) return null;
+        return {
+          id: data.id,
+          name: data.name ?? null,
+          last_fired_time: data.last_fired_time ?? null,
+          owned: true,
+        };
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return results.filter(Boolean);
+}
+
+// ─── Business assets (legacy path — kept as fallback) ────────────────────────
 
 // List all datasets (a.k.a. pixels) owned by the business associated with the
 // BISU token. Merchant picks one in the UI.

@@ -2,14 +2,19 @@
   COD Tracker — Browser-Side Meta Pixel
   ======================================
   App embed block. Loads the standard Meta Pixel browser script (fbevents.js)
-  and fires fbq('init', PIXEL_ID) + fbq('track', 'PageView') so:
+  and fires fbq('init', PIXEL_ID, {advanced matching}) + fbq('track', 'PageView')
+  so:
 
     1. Meta Pixel Helper detects the pixel as installed
     2. PageView events flow browser-side with full client-side identity
        (auto-set _fbp / _fbc cookies, browser User-Agent, viewport)
-    3. Server-side CAPI continues firing the same events with matching
-       deterministic event_ids, so Meta deduplicates — the merchant's
-       reported event count and audience size are unaffected
+    3. Advanced Matching maximizes EMQ — when the customer is logged in or
+       on the order-status page, fbq init receives raw email/phone/name/
+       address, and Meta hashes them client-side to merge with the
+       server-side CAPI event Meta receives in parallel.
+    4. Server-side CAPI fires the same events with matching deterministic
+       event_ids, so Meta deduplicates — the merchant's reported event
+       count and audience size are unaffected.
 
   Dual-firing with event_id dedup is the gold standard for ROAS optimization
   per Meta's own docs (https://developers.facebook.com/docs/marketing-api/conversions-api/deduplicate-pixel-and-server-events).
@@ -21,6 +26,50 @@
   Merchants enable this from Online Store → Themes → Customize → App embeds.
 {%- endcomment -%}
 
+<script>
+  // Stage Advanced Matching data from Liquid context BEFORE the pixel script
+  // loads. meta-pixel.js reads this on bootstrap and passes it raw to fbq's
+  // init call — Meta hashes client-side with their canonical normalization
+  // (so we don't accidentally double-hash or drift from the spec).
+  //
+  // Sources we expose, in priority order:
+  //   - `customer` Liquid object — populated when the visitor is logged in
+  //     to the merchant's storefront (Account → Login).
+  //   - `checkout` — populated on checkout pages and order-status pages.
+  //     The keys we read are intentionally narrow (email, phone, name,
+  //     address) so we never leak anything Meta doesn't already have spec
+  //     support for.
+  //
+  // We also expose `Shopify.shop` and the canonical .myshopify.com domain so
+  // meta-pixel.js can compute deterministic event_ids that match the
+  // server-side CAPI fire from webhooks.
+  window.__codprofitAM = {
+    {%- if customer -%}
+      em: {{ customer.email | default: '' | json }},
+      ph: {{ customer.phone | default: '' | json }},
+      fn: {{ customer.first_name | default: '' | json }},
+      ln: {{ customer.last_name | default: '' | json }},
+      external_id: {{ customer.id | default: '' | json }},
+      {%- if customer.default_address -%}
+        ct: {{ customer.default_address.city | default: '' | json }},
+        st: {{ customer.default_address.province_code | default: customer.default_address.province | default: '' | json }},
+        zp: {{ customer.default_address.zip | default: '' | json }},
+        country: {{ customer.default_address.country_code | default: customer.default_address.country | default: '' | json }},
+      {%- endif -%}
+    {%- elsif checkout -%}
+      em: {{ checkout.email | default: '' | json }},
+      ph: {{ checkout.phone | default: '' | json }},
+      {%- if checkout.shipping_address -%}
+        fn: {{ checkout.shipping_address.first_name | default: '' | json }},
+        ln: {{ checkout.shipping_address.last_name | default: '' | json }},
+        ct: {{ checkout.shipping_address.city | default: '' | json }},
+        st: {{ checkout.shipping_address.province_code | default: checkout.shipping_address.province | default: '' | json }},
+        zp: {{ checkout.shipping_address.zip | default: '' | json }},
+        country: {{ checkout.shipping_address.country_code | default: checkout.shipping_address.country | default: '' | json }},
+      {%- endif -%}
+    {%- endif -%}
+  };
+</script>
 <script src="{{ 'meta-pixel.js' | asset_url }}" defer></script>
 
 {% schema %}

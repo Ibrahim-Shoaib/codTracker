@@ -3,6 +3,7 @@ import { json } from "@remix-run/node";
 import {
   useLoaderData,
   useActionData,
+  useFetcher,
   Form,
   useNavigation,
   useRevalidator,
@@ -25,7 +26,9 @@ import {
   EmptyState,
   Divider,
   Link,
+  Icon,
 } from "@shopify/polaris";
+import { CheckCircleIcon, AlertTriangleIcon } from "@shopify/polaris-icons";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
@@ -56,26 +59,15 @@ type RecentEvent = {
 
 // ─── Theme app embed activation deep link ────────────────────────────────────
 //
-// Shopify provides a deep-link URL format that opens the theme editor with a
-// specific app embed pre-toggled to ON — the merchant just clicks Save in
-// the top-right and the embed is enabled. This lets us complete the "install
-// the browser pixel + cart relay" step in 1 click instead of the 6-step
-// "navigate to themes → customize → app embeds → toggle → save" flow.
-//
-// Format reference:
-//   https://admin.shopify.com/store/{handle}/themes/current/editor
-//     ?context=apps
-//     &template=index
-//     &activateAppId={extension_uuid}/{block_handle}
+// Shopify's deep-link format opens the theme editor with our app embed
+// pre-toggled ON; the merchant just needs to click Save in the top-right.
+// Auto-save is NOT supported by Shopify (deliberately — quoting their staff:
+// "merchants should be able to preview how your app works before saving").
+// Every Meta-tracking app on the App Store uses this exact pattern.
 //
 // extension_uuid comes from extensions/cart-identity-relay/shopify.extension.toml
 // (the `uid` field). Hard-coded here because it's stable across deploys —
 // Shopify only re-generates it if the extension is deleted and recreated.
-//
-// We activate `meta-pixel` (the new block) since it's the more likely missing
-// one for existing merchants. The cart-identity-relay block is shown side by
-// side in the editor — merchants visually confirm both are enabled before
-// saving.
 const CART_RELAY_EXT_UUID = "53765f90-3a3e-f68c-8285-3ae78dd9fa2f31183fee";
 
 function buildThemeActivationUrl(shop: string): string {
@@ -100,8 +92,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const pendingToken: string | null = oauthSession.get("bisu_token") ?? null;
   const pendingDatasets: DatasetOption[] | null =
     oauthSession.get("datasets") ?? null;
-  const pendingBusinessId: string | null = oauthSession.get("business_id") ?? null;
-  const manualEntryRequired: boolean = !!oauthSession.get("manual_entry_required");
 
   const supabase = await getSupabaseForStore(shop);
 
@@ -134,11 +124,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     shop,
     connection: conn,
     pending: pendingToken
-      ? {
-          datasets: pendingDatasets ?? [],
-          businessId: pendingBusinessId,
-          manualEntryRequired,
-        }
+      ? { datasets: pendingDatasets ?? [] }
       : null,
     recentEvents: (recentRes.data ?? []) as RecentEvent[],
     latestEMQ,
@@ -172,7 +158,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ intent, authUrl }, { headers: { "Set-Cookie": setCookie } });
   }
 
-  // ── Save selected dataset, install Web Pixel, persist BISU ──────────────────
+  // ── Save selected dataset (multi-Pixel disambiguation only) ────────────────
+  // The single-Pixel case is auto-completed inside the OAuth callback so the
+  // merchant never sees this screen. This handler only fires when the
+  // merchant's Business Manager grants access to multiple Pixels and they
+  // need to pick one.
   if (intent === "save_dataset") {
     const datasetId = String(formData.get("dataset_id") ?? "");
     if (!datasetId) {
@@ -184,29 +174,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const bisu: string | null = oauthSession.get("bisu_token") ?? null;
     const businessId: string | null = oauthSession.get("business_id") ?? null;
     const datasets: DatasetOption[] = oauthSession.get("datasets") ?? [];
-    const manualEntry: boolean = !!oauthSession.get("manual_entry_required");
 
-    // Manual entry flow: business_id couldn't be discovered, so we accept the
-    // Pixel ID directly typed by the merchant. business_id stays null on the
-    // saved connection — CAPI doesn't need it, only the dataset_id matters.
     if (!bisu) {
       return json({ intent, error: "OAuth session expired — please connect again." });
-    }
-    if (!businessId && !manualEntry) {
-      return json({ intent, error: "OAuth session expired — please connect again." });
-    }
-
-    // Validate the manually-entered Pixel ID is a numeric Meta dataset id.
-    if (manualEntry && !/^\d{10,20}$/.test(datasetId)) {
-      return json({
-        intent,
-        error: "Pixel ID should be a 15-16 digit number from Events Manager.",
-      });
     }
 
     const dataset = datasets.find((d) => d.id === datasetId);
 
-    // Install (or update) the Custom Web Pixel via Admin GraphQL.
     let webPixelId: string | null = null;
     try {
       if (!accessToken) throw new Error("Missing Shopify admin access token");
@@ -230,9 +204,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           store_id: shop,
           config_id: process.env.META_PIXEL_CONFIG_ID ?? "",
           bisu_token: encryptSecret(bisu),
-          // For manual entry, business_id is unknown — store empty string
-          // (the column is NOT NULL). CAPI relay only needs dataset_id +
-          // BISU; business_id is purely informational.
           business_id: businessId ?? "",
           business_name: null,
           dataset_id: datasetId,
@@ -262,17 +233,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   // ── Send test events ────────────────────────────────────────────────────────
-  // Fire one of every event the integration emits in production, with full
-  // (dummy) identity hashed in. The test_event_code keeps these out of the
-  // merchant's real audience — they only show in Events Manager → Test Events.
-  // This lets the merchant verify the entire pipeline (PageView → Purchase) in
-  // a single click instead of having to walk through a real checkout.
   if (intent === "test_event") {
-    // The Test Event Code is per-merchant and rotates — Meta shows it in
-    // Events Manager → Test Events tab (looks like "TEST30616"). Without a
-    // valid code, the events go to Meta but the merchant can't see them
-    // anywhere. We refuse to fire the test if the code is missing — this
-    // prevents the "I clicked Send but nothing showed up" support issue.
     const testCode = String(formData.get("test_code") || "").trim();
     if (!testCode || !/^TEST[A-Z0-9]+$/i.test(testCode)) {
       return json({
@@ -436,12 +397,11 @@ export default function AdTracking() {
     }
   }, [actionData]);
 
-  // After save_dataset completes successfully, auto-open the theme editor in
-  // a new tab with our app embed pre-toggled. The merchant just needs to
-  // click Save — turning a 6-step manual flow into 1 click. Done as a
-  // useEffect (not inline in the action) so the new tab is initiated by an
-  // actual user gesture chain (the original Connect click) and isn't blocked
-  // by popup blockers.
+  // After save_dataset completes successfully (multi-Pixel case), or after
+  // OAuth auto-completes for the single-Pixel case, auto-open the theme
+  // editor in a new tab with our app embed pre-toggled. The merchant just
+  // needs to click Save — the polling fetcher below auto-detects when they
+  // do and flips the status without them coming back to our app.
   const themeActivationUrl =
     actionData && "themeActivationUrl" in actionData
       ? (actionData.themeActivationUrl as string | undefined)
@@ -451,15 +411,23 @@ export default function AdTracking() {
     window.open(themeActivationUrl, "_blank", "noopener,noreferrer");
   }, [themeActivationUrl]);
 
-  // Listen for the popup's postMessage on completion.
+  // Listen for the popup's postMessage on completion. The auto-completed
+  // single-Pixel case sends { type: "...complete", auto: true } — when we
+  // see that, also pop the theme editor automatically (the action handler
+  // wasn't invoked, so themeActivationUrl above won't fire).
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === "meta_pixel_oauth_complete") {
+        if (event.data?.auto) {
+          window.open(
+            buildThemeActivationUrlClient(shop),
+            "_blank",
+            "noopener,noreferrer"
+          );
+        }
         revalidator.revalidate();
       } else if (event.data?.type === "meta_pixel_oauth_error") {
-        // Prefer the Meta-supplied detail message when present — it's far
-        // more diagnostic than our top-level `reason` code.
         const reason = event.data?.detail
           ? `${event.data.reason}: ${event.data.detail}`
           : event.data?.reason ?? "unknown";
@@ -468,10 +436,44 @@ export default function AdTracking() {
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [revalidator]);
+  }, [revalidator, shop]);
 
-  // ── Connected: status + recent events + EMQ ─────────────────────────────────
+  // ── Embed activation polling ───────────────────────────────────────────────
+  // Once connected, we poll the merchant's active theme every 5s to see if
+  // they've enabled the app embed yet. As soon as we detect activation, we
+  // stop polling and flip the status indicator. This is exactly the pattern
+  // wetracked.io / Triple Whale / Klaviyo use for their "Connected" pill.
+  const embedFetcher = useFetcher<{
+    metaPixel: boolean;
+    cartRelay: boolean;
+    reason?: string;
+  }>();
+  useEffect(() => {
+    if (connection?.status !== "active") return;
+    // Initial fetch immediately, then poll while either embed is missing.
+    embedFetcher.load("/app/api/embed-status");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connection?.status]);
+
+  useEffect(() => {
+    if (connection?.status !== "active") return;
+    if (embedFetcher.state !== "idle") return;
+    const data = embedFetcher.data;
+    if (!data) return;
+    if (data.metaPixel && data.cartRelay) return; // both active — done polling
+    const t = setTimeout(() => {
+      embedFetcher.load("/app/api/embed-status");
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [embedFetcher, connection?.status]);
+
+  // ── Connected: status surface + recent events + EMQ ────────────────────────
   if (connection?.status === "active") {
+    const embed = embedFetcher.data;
+    const metaPixelActive = embed?.metaPixel === true;
+    const cartRelayActive = embed?.cartRelay === true;
+    const everyEmbedActive = metaPixelActive && cartRelayActive;
+
     return (
       <Page>
         <TitleBar title="Ad Tracking" />
@@ -488,59 +490,60 @@ export default function AdTracking() {
                       Sending purchase events server-side to Meta with full
                       identity. {connection.last_event_sent_at
                         ? `Last event sent ${formatRelative(connection.last_event_sent_at)}.`
-                        : "No events sent yet."}
+                        : "No events sent yet — your next order will fire."}
                     </Text>
                   </BlockStack>
                   <Badge tone="success">Connected</Badge>
                 </InlineStack>
 
-                {(() => {
-                  // If they connected but no events have fired yet, one or
-                  // both Theme App Embed blocks probably aren't enabled.
-                  // Without them: (1) browser-side fbq() doesn't init so
-                  // Meta Pixel Helper shows nothing, (2) cart attributes
-                  // don't carry fbp/fbc so server-side EMQ stays low.
-                  // Surface this with a one-click activation button.
-                  const connectedAgo =
-                    Date.now() - new Date(connection.connected_at).getTime();
-                  const noEventsYet =
-                    !connection.last_event_sent_at && connectedAgo > 60 * 60 * 1000;
-                  const hasPurchase = recentEvents.some(
-                    (e) => e.event_name === "Purchase"
-                  );
-                  if (noEventsYet || (connectedAgo > 24 * 60 * 60 * 1000 && !hasPurchase)) {
-                    return (
-                      <Banner tone="warning" title="Enable the Theme blocks to start tracking">
-                        <BlockStack gap="200">
-                          <Text as="p" variant="bodyMd">
-                            We installed the storefront pixel, but the two
-                            theme app embeds aren't both active yet:
-                          </Text>
-                          <Text as="p" variant="bodyMd">
-                            • <strong>COD Tracker Meta Pixel</strong> — fires
-                            browser-side fbq() so Meta Pixel Helper detects
-                            your pixel.
-                          </Text>
-                          <Text as="p" variant="bodyMd">
-                            • <strong>COD Tracker Cart Relay</strong> —
-                            carries fbp/fbc identity onto every order for
-                            high-EMQ server-side matching.
-                          </Text>
-                          <InlineStack gap="200">
-                            <Button
-                              url={buildThemeActivationUrl(shop)}
-                              target="_blank"
-                              variant="primary"
-                            >
-                              Open theme editor (1-click activate)
-                            </Button>
-                          </InlineStack>
-                        </BlockStack>
-                      </Banner>
-                    );
-                  }
-                  return null;
-                })()}
+                <Divider />
+
+                {/* Three-line status surface — replaces the old "warning if no
+                    events yet" banner. Always visible, always informative. */}
+                <BlockStack gap="200">
+                  <StatusRow
+                    label="Meta CAPI"
+                    sublabel="Server-side events flow on every order, refund, and checkout."
+                    active
+                  />
+                  <StatusRow
+                    label="Browser pixel"
+                    sublabel={
+                      metaPixelActive
+                        ? "Detected on storefront. Pixel Helper will see events here."
+                        : embed?.reason
+                        ? "Open theme editor and click Save (top-right) — takes 5 seconds. We'll detect it automatically."
+                        : "Detecting…"
+                    }
+                    active={metaPixelActive}
+                    actionLabel={
+                      metaPixelActive ? undefined : "Open theme editor"
+                    }
+                    actionUrl={
+                      metaPixelActive ? undefined : buildThemeActivationUrl(shop)
+                    }
+                  />
+                  <StatusRow
+                    label="Identity relay"
+                    sublabel={
+                      cartRelayActive
+                        ? "fbp/fbc/fbclid are forwarded onto every order — match quality maximized."
+                        : "Boosts EMQ from ~7 to ~9. One-click activate from the same theme editor."
+                    }
+                    active={cartRelayActive}
+                  />
+                </BlockStack>
+
+                {!everyEmbedActive && (
+                  <Banner tone="info">
+                    <Text as="p" variant="bodyMd">
+                      Server-side tracking already works — your next order will
+                      fire a Purchase event to Meta. Enabling the storefront
+                      embeds is optional but pushes Event Match Quality from
+                      ~7 to ~9 (Meta's gold standard).
+                    </Text>
+                  </Banner>
+                )}
 
                 <Divider />
 
@@ -549,15 +552,6 @@ export default function AdTracking() {
                   <Text as="p" variant="bodyMd">
                     {connection.dataset_name ?? "(unnamed)"} · ID {connection.dataset_id}
                   </Text>
-                  <InlineStack gap="200">
-                    <Button
-                      url={buildThemeActivationUrl(shop)}
-                      target="_blank"
-                      variant="plain"
-                    >
-                      Open theme editor (activate Meta Pixel + Cart Relay)
-                    </Button>
-                  </InlineStack>
                 </BlockStack>
 
                 <BlockStack gap="200">
@@ -737,78 +731,7 @@ export default function AdTracking() {
     );
   }
 
-  // ── Manual Pixel ID entry — auto-discovery failed, ask user to type it ─────
-  if (pending && (pending as { manualEntryRequired?: boolean }).manualEntryRequired) {
-    return (
-      <Page>
-        <TitleBar title="Ad Tracking" />
-        <Layout>
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="400">
-                <BlockStack gap="100">
-                  <Text as="h2" variant="headingLg">Enter your Pixel ID</Text>
-                  <Text as="p" variant="bodyMd" tone="subdued">
-                    Meta authorized your account but didn't return your Business
-                    Manager's Pixel list directly. No problem — just paste your
-                    Pixel ID below and we'll connect.
-                  </Text>
-                </BlockStack>
-
-                <Banner tone="info">
-                  <BlockStack gap="100">
-                    <Text as="p" variant="bodyMd">
-                      <strong>How to find your Pixel ID:</strong>
-                    </Text>
-                    <Text as="p" variant="bodyMd">
-                      1. Open <a href="https://business.facebook.com/events_manager2" target="_blank" rel="noopener noreferrer">Meta Events Manager</a>
-                    </Text>
-                    <Text as="p" variant="bodyMd">
-                      2. Click your Pixel/Dataset in the left sidebar
-                    </Text>
-                    <Text as="p" variant="bodyMd">
-                      3. Copy the 15–16 digit number shown under the Pixel name (e.g. <code>1234567890123456</code>)
-                    </Text>
-                  </BlockStack>
-                </Banner>
-
-                <Form method="post">
-                  <input type="hidden" name="intent" value="save_dataset" />
-                  <BlockStack gap="300">
-                    <input
-                      type="text"
-                      name="dataset_id"
-                      placeholder="1234567890123456"
-                      pattern="[0-9]{10,20}"
-                      required
-                      style={{
-                        padding: "10px 12px",
-                        border: "1px solid #ccc",
-                        borderRadius: "8px",
-                        fontSize: "16px",
-                        fontFamily: "monospace",
-                      }}
-                    />
-                    <InlineStack>
-                      <Button submit variant="primary" loading={submitting}>
-                        Save & install pixel on storefront
-                      </Button>
-                    </InlineStack>
-                  </BlockStack>
-                </Form>
-
-                {actionData && "error" in actionData && actionData.error && (
-                  <Banner tone="critical">{actionData.error}</Banner>
-                )}
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-        </Layout>
-      </Page>
-    );
-  }
-
-  // ── Pending dataset selection ───────────────────────────────────────────────
+  // ── Pending dataset selection (multi-Pixel case only) ───────────────────────
   if (pending?.datasets?.length) {
     const options = pending.datasets.map((d) => ({
       label: `${d.name ?? "(unnamed)"}${d.owned ? "" : " (shared)"} — ${d.id}`,
@@ -874,7 +797,8 @@ export default function AdTracking() {
                   iOS 14+, ad blockers, and ITP cause Meta to lose track of
                   ~40% of conversions. Connect your Meta Pixel here and we'll
                   send Purchase events directly from your server with full
-                  identity — recovering signal you're losing today.
+                  hashed identity — recovering signal you're losing today.
+                  Setup takes about 30 seconds.
                 </Text>
                 {oauthFailed && (
                   <Banner tone="critical">
@@ -912,6 +836,55 @@ export default function AdTracking() {
       </Layout>
     </Page>
   );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function StatusRow(props: {
+  label: string;
+  sublabel: string;
+  active: boolean;
+  actionLabel?: string;
+  actionUrl?: string;
+}) {
+  return (
+    <InlineStack align="space-between" blockAlign="center" gap="300">
+      <InlineStack gap="200" blockAlign="center">
+        <span style={{ width: 20, height: 20 }}>
+          <Icon
+            source={props.active ? CheckCircleIcon : AlertTriangleIcon}
+            tone={props.active ? "success" : "caution"}
+          />
+        </span>
+        <BlockStack gap="050">
+          <Text as="p" variant="bodyMd" fontWeight="semibold">
+            {props.label}
+          </Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            {props.sublabel}
+          </Text>
+        </BlockStack>
+      </InlineStack>
+      {props.actionUrl && props.actionLabel && (
+        <Button url={props.actionUrl} target="_blank" variant="primary">
+          {props.actionLabel}
+        </Button>
+      )}
+    </InlineStack>
+  );
+}
+
+// Same activation-URL builder as the server side, but reachable from
+// useEffect handlers running in the browser (where `process.env` isn't
+// available and we don't want to round-trip through the loader).
+function buildThemeActivationUrlClient(shop: string): string {
+  const shopHandle = shop.replace(/\.myshopify\.com$/, "");
+  const params = new URLSearchParams({
+    context: "apps",
+    template: "index",
+    activateAppId: `${CART_RELAY_EXT_UUID}/meta-pixel`,
+  });
+  return `https://admin.shopify.com/store/${shopHandle}/themes/current/editor?${params}`;
 }
 
 function formatRelative(isoString: string): string {

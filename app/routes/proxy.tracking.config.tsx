@@ -48,6 +48,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       ok: true,
       pixel_id: data?.dataset_id ?? null,
       connected: !!data?.dataset_id,
+      // Echo back the canonical .myshopify.com domain so the theme block can
+      // build deterministic event_ids that match the server-side CAPI fire,
+      // even on stores where window.Shopify.shop isn't reachable from the
+      // app-embed context (rare but happens on heavily customized themes).
+      shop,
     },
     {
       headers: {

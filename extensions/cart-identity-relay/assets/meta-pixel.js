@@ -2,17 +2,19 @@
 //
 // Runs on every storefront page (theme app embed). Fetches the merchant's
 // connected Pixel ID from our App Proxy, then loads the standard Meta Pixel
-// browser script and fires PageView. Designed to coexist with our server-side
-// CAPI relay — both paths use deterministic event_ids so Meta deduplicates.
+// browser script and fires PageView with Advanced Matching. Designed to
+// coexist with our server-side CAPI relay — both paths use deterministic
+// event_ids so Meta deduplicates.
 //
 // Why this exists:
 //   - Meta Pixel Helper only detects pixels initialized via fbq() on the
 //     parent page. Custom Web Pixels (sandboxed) can't call fbq(), so without
 //     this, Pixel Helper shows "no pixels found" even though server CAPI is
 //     firing perfectly. That's a trust/verification UX gap for merchants.
-//   - Hybrid (browser + server) firing pushes EMQ from ~8.5 to ~9.3 because
-//     Meta merges browser-side fbp cookie + native UA/IP with server-side
-//     hashed PII into a single rich identity profile.
+//   - Hybrid (browser + server) firing pushes EMQ from ~7 to ~9 because Meta
+//     merges browser-side fbp cookie + native UA/IP + Advanced Matching
+//     hashes (em, ph, fn, ln, ct, st, zp, country, external_id) with the
+//     server-side hashed PII into a single rich identity profile.
 //
 // Cost: zero. Meta serves fbevents.js from their CDN, doesn't charge per
 // event, and dedupes via event_id so audience/conversion counts are
@@ -60,8 +62,6 @@
     if (existing) return existing;
     var rand = Math.floor(Math.random() * 1e12).toString(36);
     var psid = Date.now() + "." + rand;
-    // Short TTL — the cookie is meant to coordinate event_ids within a
-    // browsing session, not persist long-term.
     setCookie(COOKIE_PSID, psid, 30 * 60);
     return psid;
   }
@@ -97,8 +97,28 @@
     );
   }
 
+  // Build the Advanced Matching payload from values the Liquid block staged
+  // onto window.__codprofitAM. Drops empty/null entries so we don't send
+  // {em: ""} (which Meta treats as "matching attempted, no value" and
+  // penalizes EMQ for). Returns undefined if nothing identifies the visitor
+  // — fbq init then fires without an AM block, which is fine.
+  function buildAdvancedMatching() {
+    var am = window.__codprofitAM || {};
+    var out = {};
+    var keys = ["em", "ph", "fn", "ln", "ct", "st", "zp", "country", "external_id"];
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      var v = am[k];
+      if (v == null) continue;
+      v = String(v).trim();
+      if (!v) continue;
+      out[k] = v;
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
+
   // ── 3. Bootstrap. Fetch the connected Pixel ID from our App Proxy, then
-  //    init fbq and fire PageView.
+  //    init fbq with Advanced Matching and fire PageView.
   function bootstrap() {
     fetch("/apps/tracking/config", {
       credentials: "same-origin",
@@ -115,18 +135,33 @@
         }
         loadFbq();
         var pixelId = String(cfg.pixel_id);
-        window.fbq("init", pixelId);
+
+        // Pass Advanced Matching INTO init so it applies to every track call
+        // that follows (PageView + any future ViewContent / AddToCart). Meta
+        // hashes client-side with their canonical normalization; sending raw
+        // values is the documented spec.
+        var am = buildAdvancedMatching();
+        if (am) {
+          window.fbq("init", pixelId, am);
+        } else {
+          window.fbq("init", pixelId);
+        }
 
         // PageView event_id MUST match the server-side Web Pixel beacon's
         // page_viewed id so Meta dedupes. Web Pixel uses
         //   fallbackId("page_viewed") = `pageview:<shop>:<psid>`
-        // (lowercased event-name colon shop colon page-session-id) where
-        // `shop` is the canonical .myshopify.com domain (NOT the merchant's
-        // custom domain). window.Shopify.shop always exposes that. If it's
-        // missing for any reason, init the pixel without firing PageView
-        // rather than send a mismatched id that would double-count.
-        var shop = window.Shopify && window.Shopify.shop;
-        if (!shop) return;
+        // (lowercased event-name colon shop colon page-session-id). The
+        // canonical .myshopify.com domain is preferred — the Custom Web
+        // Pixel uses init.context.window.location.origin which Shopify maps
+        // to the .myshopify.com host inside its sandbox. window.Shopify.shop
+        // exposes the same value to us here. If it's missing for any reason,
+        // we still fire PageView with a synthesized id (worst case: the
+        // pageview is double-counted on Meta's side, which is far less bad
+        // than not firing at all).
+        var shop =
+          (window.Shopify && window.Shopify.shop) ||
+          (cfg && cfg.shop) ||
+          window.location.hostname;
         var psid = getOrCreatePageSession();
         var eventId = "pageview:" + shop + ":" + psid;
 

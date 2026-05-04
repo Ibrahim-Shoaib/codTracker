@@ -36,7 +36,13 @@ api_version = "2025-10"
 #   - read_customer_events → REQUIRED by webPixelCreate; lets the Web Pixel
 #                            receive checkout/purchase events from Shopify's
 #                            customer events stream inside the LavaMoat sandbox.
-scopes = "read_orders,read_products,read_inventory,read_customers,read_checkouts,write_pixels,read_pixels,read_customer_events"
+#   - read_themes          → poll the active theme's settings_data.json so the
+#                            UI can auto-detect when the merchant has saved
+#                            our app embeds. Read-only; no `write_themes` is
+#                            requested because Shopify gates programmatic
+#                            theme writes behind an exemption tracking apps
+#                            don't qualify for (see docs on theme app extensions).
+scopes = "read_orders,read_products,read_inventory,read_customers,read_checkouts,write_pixels,read_pixels,read_customer_events,read_themes"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
