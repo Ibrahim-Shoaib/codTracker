@@ -12,6 +12,7 @@ const KEYS = {
   fbclid: ["_fbclid", "fbclid"],
   clientUa: ["_client_ua", "client_ua"],
   eventId: ["_cod_event_id", "event_id"],
+  visitorId: ["_cod_visitor_id"],
 };
 
 function pickAttr(attrs, candidates) {
@@ -83,6 +84,7 @@ export function extractIdentityFromOrder(order) {
     fbc,
     fbclid,
     eventId: pickAttr(attrs, KEYS.eventId),
+    visitorId: pickAttr(attrs, KEYS.visitorId),
     clientIp: order?.client_details?.browser_ip ?? order?.browser_ip ?? null,
     clientUa:
       pickAttr(attrs, KEYS.clientUa) ??

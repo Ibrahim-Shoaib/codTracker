@@ -44,20 +44,61 @@
       catch (_) { return null; }
     })();
     const ua = navigator.userAgent;
+    // Long-lived visitor id, set on /apps/tracking/config response by
+    // the server. The cookie is HttpOnly so we can't read it from JS;
+    // we read it off window.__codprofitVisitorId, which the meta-pixel
+    // theme block stages globally during its bootstrap. Both blocks
+    // run on every page so by the time identity-relay's first
+    // pushIfChanged fires, the visitor id is usually present. If not,
+    // the cart-attribute write happens without it and the server
+    // joins on the cookie at order time instead.
+    const visitorId = window.__codprofitVisitorId || null;
 
     const out = {};
-    if (fbp)    out["_fbp"]       = fbp;
-    if (fbc)    out["_fbc"]       = fbc;
-    if (fbclid) out["_fbclid"]    = fbclid;
-    if (ua)     out["_client_ua"] = ua;
+    if (fbp)       out["_fbp"]              = fbp;
+    if (fbc)       out["_fbc"]              = fbc;
+    if (fbclid)    out["_fbclid"]           = fbclid;
+    if (ua)        out["_client_ua"]        = ua;
+    if (visitorId) out["_cod_visitor_id"]   = visitorId;
     return out;
+  }
+
+  // ── Resolve the visitor id from /apps/tracking/config if the
+  //    meta-pixel block hasn't already staged it. Race-safe: on first
+  //    page load identity-relay can DOMContentLoaded-fire before
+  //    meta-pixel.js's async config fetch resolves, and we don't want
+  //    the cart write to miss the visitor id. The fetch is cached by
+  //    the browser (Shopify CDN gives it 60s public cache headers
+  //    NO — we set no-store on this endpoint, but the second caller
+  //    still sees the cookie/server returning the same visitor_id
+  //    because the cookie is now set). Either way, idempotent and at
+  //    most one extra round trip per page load.
+  async function ensureVisitorId() {
+    if (window.__codprofitVisitorId) return window.__codprofitVisitorId;
+    try {
+      const res = await fetch("/apps/tracking/config", {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      });
+      if (res.ok) {
+        const cfg = await res.json();
+        if (cfg && cfg.visitor_id) {
+          window.__codprofitVisitorId = cfg.visitor_id;
+          return cfg.visitor_id;
+        }
+      }
+    } catch (_) {
+      /* swallow */
+    }
+    return null;
   }
 
   // ── Push attributes to the cart only when they've changed since last write.
   //    Saves a network call on every page load and avoids stomping on other
   //    apps that also read note_attributes.
   let lastSig = null;
-  function pushIfChanged() {
+  async function pushIfChanged() {
+    await ensureVisitorId();
     const ident = readIdentity();
     const keys = Object.keys(ident);
     if (keys.length === 0) return;

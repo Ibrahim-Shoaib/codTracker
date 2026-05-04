@@ -7,6 +7,12 @@ import {
   shopifyEventToMeta,
 } from "../lib/meta-capi.server.js";
 import { buildUserData } from "../lib/meta-hash.server.js";
+import {
+  resolveVisitorId,
+  visitorCookieHeader,
+  upsertVisitor,
+  recordVisitorEvent,
+} from "../lib/visitors.server.js";
 
 // App Proxy beacon. Receives events from the Custom Web Pixel running on the
 // merchant's storefront. Shopify signs the request and includes ?shop=… so
@@ -56,28 +62,87 @@ async function handle(request: Request) {
     return new Response("invalid body", { status: 400 });
   }
 
+  // Resolve the visitor id from cookie OR from the explicit field on
+  // the beacon payload (theme block sends it from /apps/tracking/config's
+  // response). We always Set-Cookie back on the response so the cookie
+  // gets refreshed and Safari ITP doesn't run the Max-Age down.
+  const cookieHeader = request.headers.get("Cookie");
+  const explicitVisitorId =
+    typeof body.visitor_id === "string" && /^[a-f0-9-]{32,40}$/i.test(body.visitor_id)
+      ? body.visitor_id
+      : null;
+  const { visitorId } = explicitVisitorId
+    ? { visitorId: explicitVisitorId }
+    : resolveVisitorId(cookieHeader);
+
   // Map Shopify customer-event name → Meta standard event. Unknown / skipped
   // events return null — we just 204 those without doing any work.
   const metaEventName = shopifyEventToMeta(body.event);
   if (!metaEventName) {
-    return new Response(null, { status: 204 });
+    return new Response(null, {
+      status: 204,
+      headers: { "Set-Cookie": visitorCookieHeader(visitorId) },
+    });
   }
 
   if (!body.event_id || typeof body.event_id !== "string") {
-    return new Response("missing event_id", { status: 400 });
+    return new Response("missing event_id", {
+      status: 400,
+      headers: { "Set-Cookie": visitorCookieHeader(visitorId) },
+    });
   }
+
+  const clientIp = extractClientIp(request) ?? undefined;
+  const clientUa =
+    body.user_agent ?? request.headers.get("user-agent") ?? undefined;
 
   const userData = buildUserData({
     fbp: body.fbp,
     fbc: body.fbc,
-    clientUa: body.user_agent ?? request.headers.get("user-agent") ?? undefined,
+    clientUa,
     // The browser doesn't know its own public IP — Shopify forwards it via
     // X-Forwarded-For on App Proxy requests.
-    clientIp: extractClientIp(request) ?? undefined,
+    clientIp,
     email: body.email,
     phone: body.phone,
     externalId: body.external_id,
   });
+
+  // UPSERT the visitor row with whatever signals are on this event.
+  // Best-effort — never blocks the CAPI fire path.
+  await upsertVisitor({
+    storeId: shop,
+    visitorId,
+    input: {
+      email: body.email,
+      phone: body.phone,
+      externalId: body.external_id,
+      fbp: body.fbp,
+      fbc: body.fbc,
+      fbclid: body.fbclid,
+      ip: clientIp,
+      ua: clientUa,
+      utmSource: body.utm_source,
+      utmCampaign: body.utm_campaign,
+      utmContent: body.utm_content,
+    },
+  }).catch(() => {});
+
+  // Per-event breadcrumb for the 30-day audit trail. Best-effort.
+  recordVisitorEvent({
+    storeId: shop,
+    visitorId,
+    eventName: metaEventName,
+    eventId: body.event_id,
+    url: body.url,
+    ip: clientIp,
+    ua: clientUa,
+    fbp: body.fbp,
+    fbc: body.fbc,
+    utmSource: body.utm_source,
+    utmCampaign: body.utm_campaign,
+    utmContent: body.utm_content,
+  }).catch(() => {});
 
   const customData: Record<string, unknown> = {};
   if (body.value != null) customData.value = Number(body.value);
@@ -105,7 +170,10 @@ async function handle(request: Request) {
 
   return json(
     { ok: result.ok, reason: "reason" in result ? result.reason : undefined },
-    { status: 200 }
+    {
+      status: 200,
+      headers: { "Set-Cookie": visitorCookieHeader(visitorId) },
+    }
   );
 }
 
@@ -142,10 +210,15 @@ type BeaconPayload = {
   url?: string;
   fbp?: string;
   fbc?: string;
+  fbclid?: string;
   user_agent?: string;
   email?: string;
   phone?: string;
   external_id?: string;
+  visitor_id?: string;      // long-lived cod_visitor_id (echoed by theme block from /apps/tracking/config)
+  utm_source?: string;
+  utm_campaign?: string;
+  utm_content?: string;
   value?: number | string;
   currency?: string;
   content_ids?: string[];

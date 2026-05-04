@@ -9,6 +9,7 @@ import {
   extractIdentityFromOrder,
   extractCustomerIdentity,
 } from "../lib/cart-attributes.server.js";
+import { getVisitor, pickBestFbc } from "../lib/visitors.server.js";
 
 // Deterministic event_id for webhook-driven events. Critical for idempotency:
 // Shopify retries any non-2xx webhook with the SAME resource id, so we MUST
@@ -70,12 +71,46 @@ async function handleOrderPaid(shop: string, order: ShopifyOrder) {
   const identityHints = extractIdentityFromOrder(order);
   const customer = extractCustomerIdentity(order);
 
+  // Cross-session enrichment — pull the visitor row written by earlier
+  // /apps/tracking/track beacons. Gives us the original ad-click fbc
+  // even when the current session's cart attribute is missing it
+  // (Buy It Now, FB in-app browser, returning-after-7-days etc.) and
+  // any identity fields seen in pre-checkout sessions.
+  const visitor = identityHints.visitorId
+    ? await getVisitor({ storeId: shop, visitorId: identityHints.visitorId })
+    : null;
+  if (identityHints.visitorId) {
+    console.log(
+      `[meta-pixel webhook ORDERS_${order.id}] visitor lookup: ${
+        visitor ? "found" : "miss"
+      } visitor_id=${identityHints.visitorId}`
+    );
+  }
+
+  // Pick best fbc: cart-attribute first (most-recent click), then
+  // visitor.latest_fbc, then visitor.fbc_history. The landing_site
+  // fallback inside extractIdentityFromOrder already populates
+  // identityHints.fbc when the URL had ?fbclid=, so this only kicks in
+  // for the "returning visitor whose original click cookie expired"
+  // case — exactly the multi-session pattern we're solving.
+  const { fbc: bestFbc, source: fbcSource } = pickBestFbc({
+    cartAttrFbc: identityHints.fbc,
+    visitor,
+  });
+  if (bestFbc && fbcSource !== "cart_attribute") {
+    console.log(
+      `[meta-pixel webhook ORDERS_${order.id}] fbc enriched from ${fbcSource}`
+    );
+  }
+
   const userData = buildUserData({
     ...customer,
-    fbp: identityHints.fbp ?? undefined,
-    fbc: identityHints.fbc ?? undefined,
-    clientIp: identityHints.clientIp ?? undefined,
-    clientUa: identityHints.clientUa ?? undefined,
+    fbp: identityHints.fbp ?? visitor?.latest_fbp ?? undefined,
+    fbc: bestFbc ?? undefined,
+    clientIp:
+      identityHints.clientIp ?? visitor?.latest_ip ?? undefined,
+    clientUa:
+      identityHints.clientUa ?? visitor?.latest_ua ?? undefined,
   });
 
   // Use the event_id stamped onto cart attributes by our Custom Web Pixel
@@ -164,12 +199,25 @@ async function handleCheckout(
   const identityHints = extractIdentityFromOrder(checkout);
   const customer = extractCustomerIdentity(checkout);
 
+  // Same cross-session enrichment as handleOrderPaid. CHECKOUTS_CREATE
+  // fires before the customer enters identity, so the visitor row is
+  // often the only source of fbc/fbp for early-funnel events.
+  const visitor = identityHints.visitorId
+    ? await getVisitor({ storeId: shop, visitorId: identityHints.visitorId })
+    : null;
+  const { fbc: bestFbc } = pickBestFbc({
+    cartAttrFbc: identityHints.fbc,
+    visitor,
+  });
+
   const userData = buildUserData({
     ...customer,
-    fbp: identityHints.fbp ?? undefined,
-    fbc: identityHints.fbc ?? undefined,
-    clientIp: identityHints.clientIp ?? undefined,
-    clientUa: identityHints.clientUa ?? undefined,
+    fbp: identityHints.fbp ?? visitor?.latest_fbp ?? undefined,
+    fbc: bestFbc ?? undefined,
+    clientIp:
+      identityHints.clientIp ?? visitor?.latest_ip ?? undefined,
+    clientUa:
+      identityHints.clientUa ?? visitor?.latest_ua ?? undefined,
   });
 
   // CHECKOUTS_CREATE = InitiateCheckout. CHECKOUTS_UPDATE fires many times

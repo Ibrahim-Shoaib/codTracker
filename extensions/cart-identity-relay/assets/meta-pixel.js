@@ -147,6 +147,13 @@
   function buildBeaconPayload(shopifyEventName, eventId, customData) {
     var fbp = getCookie("_fbp");
     var fbc = getCookie("_fbc");
+    var fbclid = (function () {
+      try {
+        return new URLSearchParams(location.search).get("fbclid");
+      } catch (_) {
+        return null;
+      }
+    })();
     var payload = {
       event: shopifyEventName,
       event_id: eventId,
@@ -156,6 +163,23 @@
     };
     if (fbp) payload.fbp = fbp;
     if (fbc) payload.fbc = fbc;
+    if (fbclid) payload.fbclid = fbclid;
+    // Long-lived visitor id, set on /apps/tracking/config and echoed
+    // back here so the server can stitch this event into the same
+    // visitor row across sessions.
+    if (window.__codprofitVisitorId) {
+      payload.visitor_id = window.__codprofitVisitorId;
+    }
+    // UTM source/campaign/content for visitor row enrichment.
+    try {
+      var p = new URLSearchParams(location.search);
+      var utmSource = p.get("utm_source");
+      var utmCampaign = p.get("utm_campaign");
+      var utmContent = p.get("utm_content");
+      if (utmSource) payload.utm_source = utmSource;
+      if (utmCampaign) payload.utm_campaign = utmCampaign;
+      if (utmContent) payload.utm_content = utmContent;
+    } catch (_) {}
     // Lift Advanced Matching identity out of the staging block where
     // available — server CAPI hashes server-side per Meta's spec.
     var am = window.__codprofitAM || {};
@@ -496,8 +520,8 @@
     );
   }
 
-  // ── 4. Bootstrap. Fetch connected Pixel ID, init fbq, fire context-
-  //    appropriate events.
+  // ── 4. Bootstrap. Fetch connected Pixel ID + visitor id, init fbq,
+  //    fire context-appropriate events.
   function bootstrap() {
     fetch("/apps/tracking/config", {
       credentials: "same-origin",
@@ -507,6 +531,15 @@
         return r.ok ? r.json() : null;
       })
       .then(function (cfg) {
+        // Stash visitor_id globally so identity-relay AND every beacon
+        // can echo it back to the server. /apps/tracking/config also
+        // sets the cod_visitor_id cookie HTTP-side, but the cookie is
+        // HttpOnly so we can't read it from JS — we use this body
+        // value instead.
+        if (cfg && cfg.visitor_id) {
+          window.__codprofitVisitorId = cfg.visitor_id;
+        }
+
         if (!cfg || !cfg.connected || !cfg.pixel_id) return;
 
         loadFbq();
