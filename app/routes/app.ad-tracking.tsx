@@ -65,10 +65,14 @@ type RecentEvent = {
 // "merchants should be able to preview how your app works before saving").
 // Every Meta-tracking app on the App Store uses this exact pattern.
 //
-// extension_uuid comes from extensions/cart-identity-relay/shopify.extension.toml
-// (the `uid` field). Hard-coded here because it's stable across deploys —
-// Shopify only re-generates it if the extension is deleted and recreated.
-const CART_RELAY_EXT_UUID = "53765f90-3a3e-f68c-8285-3ae78dd9fa2f31183fee";
+// Format (per Shopify's official docs):
+//   activateAppId=<api_key>/<block_handle>
+// We use the App's API key (stable, identical across deployments) instead
+// of the extension UUID. An earlier hardcoded UUID happened to mismatch
+// what Shopify actually deployed for this app's extension version, which
+// caused "App embed does not exist" on first click — the API-key form
+// avoids that whole class of bug because the API key never changes.
+const SHOPIFY_API_KEY = "4e49263445787763216232655d181ef2";
 
 function buildThemeActivationUrl(shop: string): string {
   // shop is "the-trendy-homes-pk.myshopify.com" → handle is the-trendy-homes-pk
@@ -76,7 +80,7 @@ function buildThemeActivationUrl(shop: string): string {
   const params = new URLSearchParams({
     context: "apps",
     template: "index",
-    activateAppId: `${CART_RELAY_EXT_UUID}/meta-pixel`,
+    activateAppId: `${SHOPIFY_API_KEY}/meta-pixel`,
   });
   return `https://admin.shopify.com/store/${shopHandle}/themes/current/editor?${params}`;
 }
@@ -985,7 +989,7 @@ function buildThemeActivationUrlClient(shop: string): string {
   const params = new URLSearchParams({
     context: "apps",
     template: "index",
-    activateAppId: `${CART_RELAY_EXT_UUID}/meta-pixel`,
+    activateAppId: `${SHOPIFY_API_KEY}/meta-pixel`,
   });
   return `https://admin.shopify.com/store/${shopHandle}/themes/current/editor?${params}`;
 }

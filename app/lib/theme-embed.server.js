@@ -22,13 +22,20 @@ const API_VERSION = "2025-10";
 
 // The block path Shopify writes into settings_data.json when our embed is
 // active. Format:
-//   shopify://apps/<app-handle>/blocks/<block-name>/<extension-uuid>
-// `<app-handle>` is the Partner-Dashboard slug (NOT the API key), and the
-// extension UUID is the `uid` field in shopify.extension.toml.
+//   shopify://apps/<app-handle>/blocks/<block-handle>/<extension-uuid>
+// `<app-handle>` is the Partner-Dashboard slug (NOT the API key) and
+// `<block-handle>` is the block FILE basename (NOT the extension name).
+//
+// For our extension `cart-identity-relay`, the two block files are:
+//   - blocks/meta-pixel.liquid       → block handle "meta-pixel"
+//   - blocks/identity-relay.liquid   → block handle "identity-relay"
+// (The extension name "cart-identity-relay" never appears in the block
+// path; mismatching block handle vs extension name was a real bug that
+// silently kept embed activation from being detected.)
 const META_PIXEL_BLOCK_TYPE_RE =
   /^shopify:\/\/apps\/[^/]+\/blocks\/meta-pixel\/[a-f0-9-]+$/i;
 const CART_RELAY_BLOCK_TYPE_RE =
-  /^shopify:\/\/apps\/[^/]+\/blocks\/cart-identity-relay\/[a-f0-9-]+$/i;
+  /^shopify:\/\/apps\/[^/]+\/blocks\/identity-relay\/[a-f0-9-]+$/i;
 
 function adminUrl(shop) {
   return `https://${shop}/admin/api/${API_VERSION}/graphql.json`;
