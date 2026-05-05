@@ -223,6 +223,95 @@ export async function getVisitor({ storeId, visitorId }) {
   return data ?? null;
 }
 
+// Look up the most-recent visitor row whose latest_fbc contains this
+// fbclid. Used as a fallback when the order webhook lacks a
+// _cod_visitor_id cart attribute — typical for Meta in-app browser
+// (Instagram / Facebook iOS IAB) checkouts where the storefront's
+// /cart/update.js writes don't persist into the cart that produces the
+// order. The fbclid travels through landing_site even when cart
+// attributes are stripped, so we use it as a join key into the
+// visitor row that DID get populated by storefront beacons.
+//
+// Implementation notes:
+//   - fbc format is `fb.1.<click_ts>.<fbclid>`. We do a SUBSTRING match
+//     because empirically Shopify's order.landing_site URL can truncate
+//     the fbclid query parameter (verified live: visitor row had a
+//     178-char fbc, order's landing_site had a 91-char fbclid, the
+//     shorter is a prefix-substring of the longer). So `%<fbclid>%` is
+//     correct, not `%<fbclid>`.
+//   - Postgres `ilike` is case-insensitive at the SQL level; we then
+//     verify a case-sensitive `String.includes` in JS to guard against
+//     any over-match (fbclids contain `_` which is a LIKE single-char
+//     wildcard, plus mixed case where ILIKE could in theory collide).
+//     False positives are astronomically unlikely at 80+ chars of
+//     random data, but the JS check is cheap.
+//   - Order by last_seen_at DESC so we pick the freshest visitor row
+//     when multiple visitors ever shared the same fbclid (e.g. same
+//     person clicking same ad on phone then desktop).
+//   - We hard-cap the LIKE pattern length to 300 chars to defend
+//     against pathological inputs; real fbclids are <200 chars.
+export async function findVisitorByFbclid({ storeId, fbclid }) {
+  if (!storeId || !fbclid) return null;
+  if (typeof fbclid !== "string" || fbclid.length < 10 || fbclid.length > 300) {
+    return null;
+  }
+  const supabase = adminClient();
+  const { data } = await supabase
+    .from("visitors")
+    .select("*")
+    .eq("store_id", storeId)
+    .ilike("latest_fbc", `%${fbclid}%`)
+    .order("last_seen_at", { ascending: false })
+    .limit(1);
+  const row = data?.[0];
+  if (row && typeof row.latest_fbc === "string" && row.latest_fbc.includes(fbclid)) {
+    return row;
+  }
+  return null;
+}
+
+// Last-resort visitor lookup: same IP + same User-Agent + last_seen
+// within `windowMinutes` of `referenceTime`. Catches the case where
+// Facebook iOS IAB rotates the fbclid value between page loads (so
+// fbclid match fails) but the buyer's IP and UA stay constant.
+//
+// We constrain by both IP AND UA to keep false-positive risk
+// acceptable: shared mobile-carrier NAT puts many users on the same
+// IP, but the UA narrows it down to a specific device + browser
+// version. The time window further limits matches to the buyer's
+// active session.
+//
+// Defaults to a 60-minute window — long enough for a typical
+// browse-to-checkout session, short enough that a visitor from
+// hours earlier on the same NAT IP doesn't get attributed to this
+// purchase.
+export async function findRecentVisitorByIpUa({
+  storeId,
+  ip,
+  ua,
+  referenceTime,
+  windowMinutes = 60,
+}) {
+  if (!storeId || !ip || !ua) return null;
+  if (typeof ip !== "string" || typeof ua !== "string") return null;
+  const ref =
+    referenceTime instanceof Date ? referenceTime : new Date(referenceTime ?? Date.now());
+  const lo = new Date(ref.getTime() - windowMinutes * 60_000).toISOString();
+  const hi = new Date(ref.getTime() + windowMinutes * 60_000).toISOString();
+  const supabase = adminClient();
+  const { data } = await supabase
+    .from("visitors")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("latest_ip", ip)
+    .eq("latest_ua", ua)
+    .gte("last_seen_at", lo)
+    .lte("last_seen_at", hi)
+    .order("last_seen_at", { ascending: false })
+    .limit(1);
+  return data?.[0] ?? null;
+}
+
 // Insert a per-event breadcrumb. 30-day retention via the trim cron.
 // Best-effort — never blocks the CAPI fire path.
 export async function recordVisitorEvent({

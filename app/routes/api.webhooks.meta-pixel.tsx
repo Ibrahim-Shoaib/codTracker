@@ -9,7 +9,12 @@ import {
   extractIdentityFromOrder,
   extractCustomerIdentity,
 } from "../lib/cart-attributes.server.js";
-import { getVisitor, pickBestFbc } from "../lib/visitors.server.js";
+import {
+  getVisitor,
+  findVisitorByFbclid,
+  findRecentVisitorByIpUa,
+  pickBestFbc,
+} from "../lib/visitors.server.js";
 
 // Deterministic event_id for webhook-driven events. Critical for idempotency:
 // Shopify retries any non-2xx webhook with the SAME resource id, so we MUST
@@ -76,16 +81,52 @@ async function handleOrderPaid(shop: string, order: ShopifyOrder) {
   // even when the current session's cart attribute is missing it
   // (Buy It Now, FB in-app browser, returning-after-7-days etc.) and
   // any identity fields seen in pre-checkout sessions.
-  const visitor = identityHints.visitorId
-    ? await getVisitor({ storeId: shop, visitorId: identityHints.visitorId })
-    : null;
-  if (identityHints.visitorId) {
-    console.log(
-      `[meta-pixel webhook ORDERS_${order.id}] visitor lookup: ${
-        visitor ? "found" : "miss"
-      } visitor_id=${identityHints.visitorId}`
-    );
+  //
+  // Three-tier lookup chain (each tier kicks in only when the prior misses):
+  //   1. _cod_visitor_id cart attribute — works on regular-cart flows
+  //      where identity-relay.js's /cart/update.js wrote through.
+  //   2. fbclid extracted from order.landing_site — handles Meta IAB
+  //      cases where cart attrs are stripped but the fbclid travels in
+  //      the URL. Works when Facebook keeps the fbclid stable across
+  //      page loads (typical Instagram IAB).
+  //   3. IP + User-Agent + recency — handles Facebook iOS IAB where
+  //      the fbclid rotates per page transition (so tier 2 misses).
+  //      The buyer's IP and UA stay constant within the session even
+  //      when cookies and fbclids are wiped between requests.
+  let visitor = null;
+  let recoveredVisitorId = identityHints.visitorId;
+  let lookupSource = null;
+  if (recoveredVisitorId) {
+    visitor = await getVisitor({ storeId: shop, visitorId: recoveredVisitorId });
+    lookupSource = "cart_attribute";
+  } else if (identityHints.fbclid) {
+    visitor = await findVisitorByFbclid({
+      storeId: shop,
+      fbclid: identityHints.fbclid,
+    });
+    if (visitor) {
+      recoveredVisitorId = visitor.visitor_id;
+      lookupSource = "fbclid";
+    }
   }
+  if (!visitor && identityHints.clientIp && identityHints.clientUa) {
+    visitor = await findRecentVisitorByIpUa({
+      storeId: shop,
+      ip: identityHints.clientIp,
+      ua: identityHints.clientUa,
+      referenceTime: order.processed_at ?? order.created_at,
+      windowMinutes: 60,
+    });
+    if (visitor) {
+      recoveredVisitorId = visitor.visitor_id;
+      lookupSource = "ip_ua";
+    }
+  }
+  console.log(
+    `[meta-pixel webhook ORDERS_${order.id}] visitor lookup: ${
+      visitor ? `found via ${lookupSource}, visitor_id=${recoveredVisitorId}` : "miss"
+    }`
+  );
 
   // Pick best fbc: cart-attribute first (most-recent click), then
   // visitor.latest_fbc, then visitor.fbc_history. The landing_site
@@ -103,16 +144,16 @@ async function handleOrderPaid(shop: string, order: ShopifyOrder) {
     );
   }
 
-  // Combine visitor_id (cross-session browser identity from cart attributes)
-  // with the order's customer.id (Shopify account identity). Meta accepts an
-  // array of external_ids per event and matches against any of them — this
-  // preserves the visitor's pre-purchase browse history (where every event
-  // fired with external_id=visitor_id) AND ties it to the merchant's
-  // customer-graph identity at conversion time. Without both, an
-  // anonymous-then-logged-in visitor's pre-checkout browses look like a
-  // different person from the buyer.
+  // Combine visitor_id (cross-session browser identity, from cart attribute
+  // OR recovered via fbclid lookup) with the order's customer.id (Shopify
+  // account identity). Meta accepts an array of external_ids per event and
+  // matches against any of them — this preserves the visitor's pre-purchase
+  // browse history (where every event fired with external_id=visitor_id)
+  // AND ties it to the merchant's customer-graph identity at conversion
+  // time. Without both, an anonymous-then-logged-in visitor's pre-checkout
+  // browses look like a different person from the buyer.
   const externalIds = [];
-  if (identityHints.visitorId) externalIds.push(identityHints.visitorId);
+  if (recoveredVisitorId) externalIds.push(recoveredVisitorId);
   if (customer.externalId) externalIds.push(customer.externalId);
 
   const userData = buildUserData({
@@ -212,12 +253,30 @@ async function handleCheckout(
   const identityHints = extractIdentityFromOrder(checkout);
   const customer = extractCustomerIdentity(checkout);
 
-  // Same cross-session enrichment as handleOrderPaid. CHECKOUTS_CREATE
-  // fires before the customer enters identity, so the visitor row is
-  // often the only source of fbc/fbp for early-funnel events.
-  const visitor = identityHints.visitorId
-    ? await getVisitor({ storeId: shop, visitorId: identityHints.visitorId })
-    : null;
+  // Same three-tier visitor lookup as handleOrderPaid: cart-attribute,
+  // then fbclid, then IP+UA+recency. See handleOrderPaid comment block
+  // for the full rationale.
+  let visitor = null;
+  let recoveredVisitorId = identityHints.visitorId;
+  if (recoveredVisitorId) {
+    visitor = await getVisitor({ storeId: shop, visitorId: recoveredVisitorId });
+  } else if (identityHints.fbclid) {
+    visitor = await findVisitorByFbclid({
+      storeId: shop,
+      fbclid: identityHints.fbclid,
+    });
+    if (visitor) recoveredVisitorId = visitor.visitor_id;
+  }
+  if (!visitor && identityHints.clientIp && identityHints.clientUa) {
+    visitor = await findRecentVisitorByIpUa({
+      storeId: shop,
+      ip: identityHints.clientIp,
+      ua: identityHints.clientUa,
+      referenceTime: checkout.updated_at ?? new Date(),
+      windowMinutes: 60,
+    });
+    if (visitor) recoveredVisitorId = visitor.visitor_id;
+  }
   const { fbc: bestFbc } = pickBestFbc({
     cartAttrFbc: identityHints.fbc,
     visitor,
@@ -228,7 +287,7 @@ async function handleCheckout(
   // For checkout events the customer.id is usually null so this collapses to
   // a single visitor_id, but the cross-session linkage still works.
   const externalIds = [];
-  if (identityHints.visitorId) externalIds.push(identityHints.visitorId);
+  if (recoveredVisitorId) externalIds.push(recoveredVisitorId);
   if (customer.externalId) externalIds.push(customer.externalId);
 
   const userData = buildUserData({
