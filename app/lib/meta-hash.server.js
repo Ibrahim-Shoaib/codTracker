@@ -198,8 +198,29 @@ export function buildUserData(input) {
   const country = hashCountry(input.country);
   if (country) ud.country = [country];
 
-  const externalId = hashExternalId(input.externalId);
-  if (externalId) ud.external_id = [externalId];
+  // external_id accepts either a single value (string/number) OR an array of
+  // values. Meta CAPI's spec allows multiple external_ids per event so we can
+  // pass our minted visitor_id (cross-session browser identity, present on
+  // every event from a returning browser) AND the merchant's Shopify
+  // customer.id (account identity, only present after the customer has an
+  // account) on the same Purchase event — Meta then tries to match against
+  // either one. Hashed entries are deduped because hashing the same value
+  // twice produces the same SHA, so passing the same id in both slots is a
+  // no-op for matching but bloats the payload.
+  const eidInput = input.externalId;
+  if (eidInput != null) {
+    const list = Array.isArray(eidInput) ? eidInput : [eidInput];
+    const hashed = [];
+    const seen = new Set();
+    for (const v of list) {
+      const h = hashExternalId(v);
+      if (h && !seen.has(h)) {
+        seen.add(h);
+        hashed.push(h);
+      }
+    }
+    if (hashed.length) ud.external_id = hashed;
+  }
 
   // Raw (not hashed) per Meta spec
   if (input.fbc) ud.fbc = String(input.fbc);

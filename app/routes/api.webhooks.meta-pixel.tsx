@@ -103,8 +103,21 @@ async function handleOrderPaid(shop: string, order: ShopifyOrder) {
     );
   }
 
+  // Combine visitor_id (cross-session browser identity from cart attributes)
+  // with the order's customer.id (Shopify account identity). Meta accepts an
+  // array of external_ids per event and matches against any of them — this
+  // preserves the visitor's pre-purchase browse history (where every event
+  // fired with external_id=visitor_id) AND ties it to the merchant's
+  // customer-graph identity at conversion time. Without both, an
+  // anonymous-then-logged-in visitor's pre-checkout browses look like a
+  // different person from the buyer.
+  const externalIds = [];
+  if (identityHints.visitorId) externalIds.push(identityHints.visitorId);
+  if (customer.externalId) externalIds.push(customer.externalId);
+
   const userData = buildUserData({
     ...customer,
+    externalId: externalIds.length ? externalIds : undefined,
     fbp: identityHints.fbp ?? visitor?.latest_fbp ?? undefined,
     fbc: bestFbc ?? undefined,
     clientIp:
@@ -210,8 +223,17 @@ async function handleCheckout(
     visitor,
   });
 
+  // Match handleOrderPaid's external_id strategy — pass visitor_id (always)
+  // and customer.id (when present, e.g. logged-in checkout) as an array.
+  // For checkout events the customer.id is usually null so this collapses to
+  // a single visitor_id, but the cross-session linkage still works.
+  const externalIds = [];
+  if (identityHints.visitorId) externalIds.push(identityHints.visitorId);
+  if (customer.externalId) externalIds.push(customer.externalId);
+
   const userData = buildUserData({
     ...customer,
+    externalId: externalIds.length ? externalIds : undefined,
     fbp: identityHints.fbp ?? visitor?.latest_fbp ?? undefined,
     fbc: bestFbc ?? undefined,
     clientIp:

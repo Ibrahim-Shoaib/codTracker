@@ -145,6 +145,30 @@ test("buildUserData hashes external_id", () => {
   assert.deepEqual(ud.external_id, [sha("customer-123")]);
 });
 
+test("buildUserData accepts an array of external_ids and hashes each", () => {
+  const ud = buildUserData({
+    externalId: ["visitor-uuid-abc", "Customer-123"],
+  });
+  assert.deepEqual(ud.external_id, [sha("visitor-uuid-abc"), sha("customer-123")]);
+});
+
+test("buildUserData dedupes external_id entries that hash to the same value", () => {
+  const ud = buildUserData({
+    externalId: ["abc", "ABC", "abc"], // all normalize to "abc"
+  });
+  assert.deepEqual(ud.external_id, [sha("abc")]);
+});
+
+test("buildUserData omits external_id when array contains only empty/null entries", () => {
+  const ud = buildUserData({ externalId: ["", null, undefined] });
+  assert.equal(ud.external_id, undefined);
+});
+
+test("buildUserData omits external_id when undefined (no entry on user_data)", () => {
+  const ud = buildUserData({ email: "a@b.com" });
+  assert.equal(ud.external_id, undefined);
+});
+
 test("buildUserData with full identity produces all 13 fields", () => {
   const ud = buildUserData({
     email: "jane@example.com",

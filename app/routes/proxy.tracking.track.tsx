@@ -96,6 +96,27 @@ async function handle(request: Request) {
   const clientUa =
     body.user_agent ?? request.headers.get("user-agent") ?? undefined;
 
+  // Build external_id list. Two slots, deduped:
+  //   1. body.external_id  — what the browser fbq fired with (this is
+  //      customer.id when the visitor is logged in, otherwise the same
+  //      visitor_id we minted; theme block stages it into __codprofitAM).
+  //   2. visitorId         — our minted cross-session UUID, always present.
+  //
+  // For anonymous visitors both slots collapse to the same value (deduped
+  // inside buildUserData). For logged-in customers we get TWO match keys:
+  // customer.id (account identity) AND visitor_id (browser identity), and
+  // Meta tries to match against either one. This is the single biggest EMQ
+  // lever for COD/anonymous-browser stores per Meta's CAPI docs — every
+  // server event now has at least one stable external_id, where most events
+  // previously had none.
+  const externalIds = [];
+  if (typeof body.external_id === "string" && body.external_id) {
+    externalIds.push(body.external_id);
+  }
+  if (visitorId && !externalIds.includes(visitorId)) {
+    externalIds.push(visitorId);
+  }
+
   const userData = buildUserData({
     fbp: body.fbp,
     fbc: body.fbc,
@@ -105,7 +126,7 @@ async function handle(request: Request) {
     clientIp,
     email: body.email,
     phone: body.phone,
-    externalId: body.external_id,
+    externalId: externalIds.length ? externalIds : undefined,
   });
 
   // UPSERT the visitor row with whatever signals are on this event.

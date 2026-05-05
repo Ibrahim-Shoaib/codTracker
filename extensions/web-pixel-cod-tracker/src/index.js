@@ -142,6 +142,22 @@ register(({ analytics, browser, init, settings }) => {
     }
   }
 
+  // Read the cod_visitor_id cookie (minted by /apps/tracking/config and
+  // persisted by the theme block on the storefront origin). Sandboxed
+  // beacons forward this so the server can stamp the SAME visitor_id as
+  // external_id on every CAPI event regardless of which code path fired.
+  // App Proxy strips request cookies so the server can't read it directly
+  // off the request — passing it explicitly in the beacon body is the
+  // documented workaround.
+  async function getVisitorId() {
+    try {
+      const v = await browser.cookie.get("cod_visitor_id");
+      return v && /^[a-f0-9-]{32,40}$/i.test(v) ? v : null;
+    } catch {
+      return null;
+    }
+  }
+
   // track() now resolves eventId before sending. eventId may be a string
   // (deterministic, when a resource id is in scope) OR a Promise<string>
   // (fallback, when we have to read the shared page-session cookie). The
@@ -150,7 +166,8 @@ register(({ analytics, browser, init, settings }) => {
     const resolvedId =
       typeof eventId === "string" ? eventId : await eventId;
     const { fbp, fbc } = await ensureFbCookies();
-    send({
+    const visitorId = await getVisitorId();
+    const payload = {
       event: eventName,
       event_id: resolvedId,
       event_time: Date.now(),
@@ -159,7 +176,9 @@ register(({ analytics, browser, init, settings }) => {
       fbc,
       user_agent: init.context.navigator?.userAgent,
       ...customData,
-    });
+    };
+    if (visitorId) payload.visitor_id = visitorId;
+    send(payload);
   }
 
   // ─── Subscribe to standard customer events ─────────────────────────────────

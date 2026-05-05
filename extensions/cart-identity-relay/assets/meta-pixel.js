@@ -185,7 +185,20 @@
     var am = window.__codprofitAM || {};
     if (am.em) payload.email = am.em;
     if (am.ph) payload.phone = am.ph;
-    if (am.external_id) payload.external_id = am.external_id;
+    // external_id parity: send whatever the matching fbq("init", AM) call
+    // received (so the browser fbq fire and this server-side beacon arrive
+    // at Meta with the same external_id and Meta merges the deduped pair
+    // with one combined user_data block). Order: customer.id from Liquid
+    // staging → visitor_id from /apps/tracking/config response. Anonymous
+    // browsers always end up with visitor_id; logged-in customers send
+    // customer.id. The server-side code at proxy.tracking.track.tsx
+    // additionally appends visitor_id when it's not the same value (so
+    // logged-in customers get [customer_id, visitor_id] on the server fire).
+    if (am.external_id) {
+      payload.external_id = am.external_id;
+    } else if (window.__codprofitVisitorId) {
+      payload.external_id = window.__codprofitVisitorId;
+    }
     // Custom-data passthrough (currency, value, content_ids, etc.).
     if (customData) {
       var keys = Object.keys(customData);
@@ -603,8 +616,21 @@
 
         // Init with Advanced Matching staged by the Liquid block. AM
         // applies to every subsequent track call.
-        var am = buildAdvancedMatching();
-        if (am) window.fbq("init", pixelId, am);
+        //
+        // For anonymous visitors (the common case on COD stores — no
+        // logged-in customer object available to Liquid), Liquid stages
+        // an empty AM. Without an external_id, every fbq fire goes to
+        // Meta with no PII match key, dragging EMQ to ~1-2 on
+        // PageView/ViewContent/AddToCart. We mint a stable cross-session
+        // visitor_id at /apps/tracking/config and merge it as
+        // external_id here when no customer.id was staged. The same
+        // visitor_id is sent on the server-side CAPI beacon so Meta sees
+        // matching external_ids on the deduped pair.
+        var am = buildAdvancedMatching() || {};
+        if (!am.external_id && window.__codprofitVisitorId) {
+          am.external_id = window.__codprofitVisitorId;
+        }
+        if (Object.keys(am).length) window.fbq("init", pixelId, am);
         else window.fbq("init", pixelId);
 
         // Resolve canonical .myshopify.com host for event_id derivation.
