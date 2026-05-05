@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { createClient } from "@supabase/supabase-js";
-import { fetchDailySpend, isTokenExpired } from "../lib/meta.server.js";
+import { fetchDailySpendInStoreCurrency, isTokenExpired } from "../lib/meta.server.js";
 
 // Manual trigger: POST /api/meta-backfill
 // Headers: x-cron-secret, optionally x-start-date (YYYY-MM-DD), x-end-date (YYYY-MM-DD)
@@ -25,7 +25,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const { data: stores } = await adminClient
     .from("stores")
-    .select("store_id, meta_access_token, meta_ad_account_id, meta_token_expires_at")
+    .select("store_id, meta_access_token, meta_ad_account_id, meta_token_expires_at, currency, meta_ad_account_currency")
     .not("meta_access_token", "is", null);
 
   if (!stores?.length) {
@@ -40,12 +40,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       continue;
     }
     try {
-      const daily = await fetchDailySpend(
-        store.meta_access_token,
-        store.meta_ad_account_id,
-        startDate,
-        endDate
-      );
+      const daily = await fetchDailySpendInStoreCurrency({
+        accessToken: store.meta_access_token,
+        adAccountId: store.meta_ad_account_id,
+        sinceDate: startDate,
+        untilDate: endDate,
+        accountCurrency: store.meta_ad_account_currency,
+        storeCurrency: store.currency,
+      });
 
       if (daily.length > 0) {
         const rows = daily.map(d => ({

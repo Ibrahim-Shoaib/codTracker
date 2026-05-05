@@ -35,28 +35,41 @@ const COLOR_PROFIT  = "#108043";
 const COLOR_COST    = "#C05717";
 
 // ── formatters ──────────────────────────────────────────────────────────────
-const fmtPKR = (n) => `PKR ${Math.round(Number(n ?? 0)).toLocaleString()}`;
-const fmtPKRSigned = (n) => {
+import { formatMoney, formatNegative, currencyCode } from "../lib/format.js";
+
+const fmtPKR = (n, currency) => formatMoney(n, currency);
+const fmtPKRSigned = (n, currency) => {
   const v = Math.round(Number(n ?? 0));
-  if (v < 0) return `-PKR ${Math.abs(v).toLocaleString()}`;
-  return `PKR ${v.toLocaleString()}`;
+  if (v < 0) return formatNegative(Math.abs(v), currency);
+  return formatMoney(v, currency);
 };
 // Cost-style formatter — always renders with a leading minus, matching
 // the "-PKR …" convention used by KPI card line items like Ad Spend.
 // Treats the input as the magnitude of an outflow.
-const fmtPKRCost = (n) => {
+const fmtPKRCost = (n, currency) => {
   const v = Math.round(Number(n ?? 0));
-  if (v === 0) return "PKR 0";
-  return `-PKR ${Math.abs(v).toLocaleString()}`;
+  if (v === 0) return formatMoney(0, currency);
+  return formatNegative(Math.abs(v), currency);
 };
 
-// Compact PKR for axis labels: 12,500 → 12.5K · 1.2L · 1.2Cr (Pakistani convention)
-const compactPKR = (n) => {
+// Compact value-only formatter for axis labels: 12,500 → 12.5K · 1.2L · 1.2Cr.
+// "Lakh" / "Crore" notation is the Pakistani / South Asian convention; for
+// non-PKR currencies we just use K/M scaling. Returns digits only — the
+// chart axis already shows the currency code in the panel header so we
+// don't duplicate it on every tick.
+const compactPKR = (n, currency) => {
   const v = Number(n ?? 0);
   const a = Math.abs(v);
   const sign = v < 0 ? "-" : "";
-  if (a >= 1e7) return `${sign}${(a / 1e7).toFixed(a >= 1e8 ? 0 : 1)}Cr`;
-  if (a >= 1e5) return `${sign}${(a / 1e5).toFixed(a >= 1e6 ? 0 : 1)}L`;
+  const code = currencyCode(currency);
+  if (code === "PKR" || code === "INR") {
+    if (a >= 1e7) return `${sign}${(a / 1e7).toFixed(a >= 1e8 ? 0 : 1)}Cr`;
+    if (a >= 1e5) return `${sign}${(a / 1e5).toFixed(a >= 1e6 ? 0 : 1)}L`;
+    if (a >= 1e3) return `${sign}${(a / 1e3).toFixed(0)}K`;
+    return `${sign}${Math.round(a)}`;
+  }
+  if (a >= 1e9) return `${sign}${(a / 1e9).toFixed(1)}B`;
+  if (a >= 1e6) return `${sign}${(a / 1e6).toFixed(1)}M`;
   if (a >= 1e3) return `${sign}${(a / 1e3).toFixed(0)}K`;
   return `${sign}${Math.round(a)}`;
 };
@@ -121,7 +134,7 @@ function makeAxisFormatter(granularity, count) {
 // Props from loader:
 //   initialPayload  { granularity, current:{from,to,points}, prior:{from,to,points} }
 //   backfillInProgress  boolean — hide entirely until first sync lands
-export default function TrendPanel({ initialPayload, backfillInProgress }) {
+export default function TrendPanel({ initialPayload, backfillInProgress, currency = "PKR" }) {
   const [days, setDays] = useState(30);
   const [payload, setPayload] = useState(initialPayload);
 
@@ -321,7 +334,7 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
           <KpiBadge
             label="Revenue"
             color={COLOR_REVENUE}
-            value={fmtPKR(totals.revenueCurr)}
+            value={fmtPKR(totals.revenueCurr, currency)}
             delta={dRevenue}
             // For revenue, up is good
             goodIfPositive
@@ -329,14 +342,14 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
           <KpiBadge
             label="Profit"
             color={COLOR_PROFIT}
-            value={fmtPKRSigned(totals.profitCurr)}
+            value={fmtPKRSigned(totals.profitCurr, currency)}
             delta={dProfit}
             goodIfPositive
           />
           <KpiBadge
             label="Cost"
             color={COLOR_COST}
-            value={fmtPKRCost(totals.costCurr)}
+            value={fmtPKRCost(totals.costCurr, currency)}
             delta={dCost}
             // For cost, up is bad
             goodIfPositive={false}
@@ -353,7 +366,7 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
                     data={chartData}
                     showLegend={false}
                     xAxisOptions={{ labelFormatter: axisFormatter }}
-                    yAxisOptions={{ labelFormatter: compactPKR }}
+                    yAxisOptions={{ labelFormatter: (n) => compactPKR(n, currency) }}
                     // Emphasize the zero baseline — separates "money in"
                     // (Revenue, Profit above) from "money out" (inverted
                     // Cost below). Without this every gridline looks the
@@ -368,6 +381,7 @@ export default function TrendPanel({ initialPayload, backfillInProgress }) {
                           args={args}
                           currentPoints={current.points}
                           granularity={granularity}
+                          currency={currency}
                         />
                       ),
                     }}
@@ -423,7 +437,7 @@ function KpiBadge({ label, color, value, delta, goodIfPositive }) {
 }
 
 // ── tooltip — shows all three metrics for the hovered date ─────────────────
-function TrendTooltip({ args, currentPoints, granularity }) {
+function TrendTooltip({ args, currentPoints, granularity, currency = "PKR" }) {
   const i = args?.activeIndex;
   if (i == null || i < 0) return null;
   const row = currentPoints?.[i];
@@ -449,9 +463,9 @@ function TrendTooltip({ args, currentPoints, granularity }) {
       <div style={{ fontWeight: 600, marginBottom: 8 }}>
         {fmtBucketLong(String(row.bucket_start).slice(0, 10), granularity)}
       </div>
-      <TooltipRow color={COLOR_REVENUE} label="Revenue" value={fmtPKR(sales)} />
-      <TooltipRow color={COLOR_PROFIT}  label="Profit"  value={fmtPKRSigned(profit)} valueColor={profit >= 0 ? COLOR_PROFIT : "#BF0711"} />
-      <TooltipRow color={COLOR_COST}    label="Cost"    value={fmtPKRCost(cost)} />
+      <TooltipRow color={COLOR_REVENUE} label="Revenue" value={fmtPKR(sales, currency)} />
+      <TooltipRow color={COLOR_PROFIT}  label="Profit"  value={fmtPKRSigned(profit, currency)} valueColor={profit >= 0 ? COLOR_PROFIT : "#BF0711"} />
+      <TooltipRow color={COLOR_COST}    label="Cost"    value={fmtPKRCost(cost, currency)} />
       {margin != null && (
         <div style={{ borderTop: "1px solid #E1E3E5", marginTop: 6, paddingTop: 6, color: "#6D7175", fontSize: 12 }}>
           Margin: <span style={{ color: profit >= 0 ? COLOR_PROFIT : "#BF0711", fontWeight: 500 }}>{margin}%</span>

@@ -32,17 +32,30 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     getSupabaseForStore(shop),
   ]);
 
-  const { data: existingCosts } = await supabase
-    .from("product_costs")
-    .select("shopify_variant_id, unit_cost")
-    .eq("store_id", shop);
+  const [{ data: existingCosts }, { data: storeRow }] = await Promise.all([
+    supabase
+      .from("product_costs")
+      .select("shopify_variant_id, unit_cost")
+      .eq("store_id", shop),
+    supabase
+      .from("stores")
+      .select("currency")
+      .eq("store_id", shop)
+      .single(),
+  ]);
 
   const costsMap: Record<string, number> = {};
   for (const row of existingCosts ?? []) {
     costsMap[row.shopify_variant_id] = row.unit_cost;
   }
 
-  return json({ products: productsResult.data, productsError: productsResult.error, costsMap, metaConnected });
+  return json({
+    products: productsResult.data,
+    productsError: productsResult.error,
+    costsMap,
+    metaConnected,
+    currency: storeRow?.currency ?? "PKR",
+  });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -128,7 +141,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Step3COGS() {
-  const { products, costsMap, metaConnected, productsError } = useLoaderData<typeof loader>();
+  const { products, costsMap, metaConnected, productsError, currency } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const saving = navigation.state === "submitting";
@@ -164,7 +177,7 @@ export default function Step3COGS() {
 
         <Form method="post">
           <BlockStack gap="400">
-            <COGSTable products={products} costsMap={costsMap} />
+            <COGSTable products={products} costsMap={costsMap} currency={currency} />
             <InlineStack>
               <Button submit variant="primary" loading={saving}>
                 Save & Continue

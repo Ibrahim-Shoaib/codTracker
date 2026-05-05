@@ -15,19 +15,15 @@ import {
 } from "@shopify/polaris";
 import { CalendarIcon } from "@shopify/polaris-icons";
 import PipelinePills from "./PipelinePills.jsx";
+import { formatMoney, formatNegative } from "../lib/format.js";
 
 // ── Number formatters ─────────────────────────────────────────────────────────
-const fmtPKR = (n) => {
-  if (n == null) return "N/A";
-  return `PKR ${Math.round(Number(n)).toLocaleString()}`;
-};
-
-const fmtCost = (n) => {
-  if (n == null) return "N/A";
-  const v = Math.round(Number(n));
-  if (v === 0) return "PKR 0";
-  return `-PKR ${v.toLocaleString()}`;
-};
+// Currency-aware wrappers around app/lib/format.js. The `currency` arg
+// comes from the loader (stores.currency) and threads down via props.
+// Defaulting to "PKR" preserves behavior for legacy callers while a
+// non-PKR merchant on a USD store sees "$1,234" instead of "PKR 1,234".
+const fmtPKR = (n, currency) => formatMoney(n, currency, { nullDisplay: "N/A" });
+const fmtCost = (n, currency) => formatNegative(n, currency, { nullDisplay: "N/A" });
 
 const fmtNum = (n) =>
   n == null ? "N/A" : Math.round(Number(n)).toLocaleString();
@@ -97,13 +93,14 @@ function computePresets() {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-function MoneyText({ value, variant = "headingMd" }) {
+function MoneyText({ value, variant = "headingMd", currency }) {
   if (value == null) return <Text variant={variant}>N/A</Text>;
   const v   = Math.round(Number(value));
   const neg = v < 0;
+  const formatted = neg ? formatNegative(Math.abs(v), currency) : formatMoney(v, currency);
   return (
     <Text variant={variant} tone={neg ? "critical" : undefined}>
-      {neg ? `-PKR ${Math.abs(v).toLocaleString()}` : `PKR ${v.toLocaleString()}`}
+      {formatted}
     </Text>
   );
 }
@@ -184,6 +181,7 @@ export default function KPICard({
   dateRange: defaultDateRange,
   unfulfilledPromise,
   onMore,
+  currency = "PKR",
 }) {
   const fetcher = useFetcher();
 
@@ -384,12 +382,13 @@ export default function KPICard({
               <Text variant="bodySm" tone="subdued">Sales</Text>
               <Delta delta={salesDelta} />
             </InlineStack>
-            <Text variant="headingLg" fontWeight="bold">{fmtPKR(stats?.sales)}</Text>
+            <Text variant="headingLg" fontWeight="bold">{fmtPKR(stats?.sales, currency)}</Text>
             <PipelinePills
               inTransitValue={stats?.in_transit_value}
               unfulfilledPromise={usingDefaultRange ? unfulfilledPromise : null}
               unfulfilledValue={usingDefaultRange ? null : unfulfilledForRange}
               period={period}
+              currency={currency}
             />
           </BlockStack>
 
@@ -413,7 +412,7 @@ export default function KPICard({
           <InlineStack align="space-between" blockAlign="start">
             <BlockStack gap="100">
               <Text variant="bodySm" tone="subdued">Ad Spend</Text>
-              <Text variant="bodyMd" fontWeight="semibold">{fmtCost(stats?.ad_spend)}</Text>
+              <Text variant="bodyMd" fontWeight="semibold">{fmtCost(stats?.ad_spend, currency)}</Text>
             </BlockStack>
             <BlockStack gap="100">
               <Text variant="bodySm" tone="subdued">ROAS</Text>
@@ -430,7 +429,7 @@ export default function KPICard({
                 <Text variant="bodySm" tone="subdued">Net Profit</Text>
                 <Delta delta={netProfitDelta} />
               </InlineStack>
-              <MoneyText value={stats?.net_profit} variant="headingSm" />
+              <MoneyText value={stats?.net_profit} variant="headingSm" currency={currency} />
             </BlockStack>
             <BlockStack gap="100">
               <Text variant="bodySm" tone="subdued">Margin</Text>

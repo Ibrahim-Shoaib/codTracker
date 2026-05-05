@@ -61,12 +61,30 @@ export async function getAdAccounts(accessToken) {
     throw new Error(`Meta getAdAccounts failed: ${err.error?.message ?? res.status}`);
   }
   const data = await res.json();
-  return data.data || []; // [{ id: 'act_123', name: '...' }, ...]
+  return data.data || []; // [{ id: 'act_123', name: '...', currency: 'PKR'|'USD'|... }]
+}
+
+// Returns just the currency for a single ad account. Used after the
+// merchant picks an ad account in onboarding (or reconnects in
+// settings) so we can stash it on stores.meta_ad_account_currency
+// and convert spend at fetch time when it differs from store currency.
+export async function getAdAccountCurrency(accessToken, adAccountId) {
+  const params = new URLSearchParams({
+    fields:       'currency',
+    access_token: accessToken,
+  });
+  const res = await fetch(`${GRAPH_BASE}/${adAccountId}?${params}`);
+  if (!res.ok) return null;
+  const data = await res.json().catch(() => null);
+  return data?.currency ?? null;
 }
 
 // ─── Spend data ───────────────────────────────────────────────────────────────
 
-// Returns total spend (number, PKR) for the given date range.
+// Returns total spend (number) for the given date range, in the AD
+// ACCOUNT's currency. Use fetchSpendInStoreCurrency below when you
+// want it pre-converted into the store's currency.
+//
 // sinceDate / untilDate: 'YYYY-MM-DD' strings in PKT
 export async function fetchSpend(accessToken, adAccountId, sinceDate, untilDate) {
   const timeRange = JSON.stringify({ since: sinceDate, until: untilDate });
@@ -85,7 +103,37 @@ export async function fetchSpend(accessToken, adAccountId, sinceDate, untilDate)
   return Number(data.data?.[0]?.spend ?? 0);
 }
 
-// Returns per-day spend array for a date range.
+// Like fetchSpend, but converts the result from `accountCurrency` to
+// `storeCurrency` via app/lib/fx.server.js when they differ. Identity
+// passthrough (zero FX work) when they match. On FX failure, returns
+// the raw account-currency amount and logs a warning — better to show
+// a roughly-correct number than to crash the cron.
+export async function fetchSpendInStoreCurrency({
+  accessToken,
+  adAccountId,
+  sinceDate,
+  untilDate,
+  accountCurrency,
+  storeCurrency,
+}) {
+  const accountAmount = await fetchSpend(accessToken, adAccountId, sinceDate, untilDate);
+  if (!accountCurrency || !storeCurrency || accountCurrency === storeCurrency) {
+    return accountAmount;
+  }
+  const { convertAmount } = await import("./fx.server.js");
+  const c = await convertAmount(accountAmount, accountCurrency, storeCurrency);
+  if (c.amount == null) {
+    console.warn(
+      `[meta] FX conversion ${accountCurrency}→${storeCurrency} failed; using raw amount`
+    );
+    return accountAmount;
+  }
+  return c.amount;
+}
+
+// Returns per-day spend array for a date range, in the AD ACCOUNT's
+// currency. Use fetchDailySpendInStoreCurrency for ROAS-correct values.
+//
 // Follows paging.next so chunks larger than Meta's default page size return fully.
 // Returns [{ date: 'YYYY-MM-DD', spend: number }, ...]
 export async function fetchDailySpend(accessToken, adAccountId, sinceDate, untilDate) {
@@ -114,6 +162,33 @@ export async function fetchDailySpend(accessToken, adAccountId, sinceDate, until
     url = data.paging?.next ?? null;
   }
   return out;
+}
+
+// Per-day spend, converted to store currency when account currency
+// differs. Single FX rate fetched once and applied across all days
+// in the range — FX moves <1% day-to-day so per-day drift is well
+// under the noise floor of merchant-level ad spend.
+export async function fetchDailySpendInStoreCurrency({
+  accessToken,
+  adAccountId,
+  sinceDate,
+  untilDate,
+  accountCurrency,
+  storeCurrency,
+}) {
+  const daily = await fetchDailySpend(accessToken, adAccountId, sinceDate, untilDate);
+  if (!accountCurrency || !storeCurrency || accountCurrency === storeCurrency) {
+    return daily;
+  }
+  const { getFxRate } = await import("./fx.server.js");
+  const r = await getFxRate(accountCurrency, storeCurrency);
+  if (!r?.rate) {
+    console.warn(
+      `[meta] FX rate ${accountCurrency}→${storeCurrency} unavailable; daily spend left in account currency`
+    );
+    return daily;
+  }
+  return daily.map((d) => ({ date: d.date, spend: d.spend * r.rate }));
 }
 
 // ─── Token expiry helpers ─────────────────────────────────────────────────────

@@ -7,12 +7,10 @@ import {
   Button,
   Divider,
 } from "@shopify/polaris";
+import { formatMoney, formatNegative } from "../lib/format.js";
 
-const fmtPKR = (n) =>
-  n == null ? "N/A" : `PKR ${Math.round(Number(n)).toLocaleString()}`;
-
-const fmtCost = (n) =>
-  n == null ? "N/A" : `-PKR ${Math.round(Number(n)).toLocaleString()}`;
+const fmtPKR = (n, currency) => formatMoney(n, currency, { nullDisplay: "N/A" });
+const fmtCost = (n, currency) => formatNegative(n, currency, { nullDisplay: "N/A" });
 
 const fmtNum = (n) => (n == null ? "N/A" : String(Math.round(Number(n))));
 
@@ -54,6 +52,7 @@ export default function DetailPanel({
   expensesList,
   open,
   onClose,
+  currency = "PKR",
 }) {
   const [showExpBreakdown, setShowExpBreakdown] = useState(false);
 
@@ -97,28 +96,29 @@ export default function DetailPanel({
       >
         <Modal.Section>
           <BlockStack gap="200">
-            <Row label="Sales" value={fmtPKR(stats.sales)} />
+            <Row label="Sales" value={fmtPKR(stats.sales, currency)} />
             <Row label="Orders" value={fmtNum(stats.orders)} />
             <Row label="Units Sold" value={fmtNum(stats.units)} />
             <Row label="Returns" value={fmtNum(stats.returns)} />
             <Row label="In Transit" value={fmtNum(stats.in_transit)} />
-            <Row label="Advertising cost" value={fmtCost(stats.ad_spend)} />
+            <Row label="Advertising cost" value={fmtCost(stats.ad_spend, currency)} />
             <Row
               label="Shipping costs"
               value={fmtCost(
                 stats.delivery_cost != null && stats.reversal_cost != null && stats.tax != null
                   ? stats.delivery_cost - stats.reversal_cost - stats.tax
-                  : stats.delivery_cost
+                  : stats.delivery_cost,
+                currency
               )}
             />
-            <Row label="Reversal costs" value={fmtCost(stats.reversal_cost)} />
-            <Row label="Tax" value={fmtCost(stats.tax)} />
-            <Row label="Cost of goods" value={fmtCost(stats.cogs)} />
+            <Row label="Reversal costs" value={fmtCost(stats.reversal_cost, currency)} />
+            <Row label="Tax" value={fmtCost(stats.tax, currency)} />
+            <Row label="Cost of goods" value={fmtCost(stats.cogs, currency)} />
 
             {/* Expenses row — expandable when there are named items */}
             <Row
               label="Expenses"
-              value={fmtCost(stats.expenses)}
+              value={fmtCost(stats.expenses, currency)}
               onClick={expBreakdown.length > 0 ? () => setShowExpBreakdown((v) => !v) : undefined}
             />
             {showExpBreakdown && expBreakdown.length > 0 && (
@@ -129,7 +129,7 @@ export default function DetailPanel({
                       &nbsp;&nbsp;&nbsp;{item.name}
                     </Text>
                     <Text as="span" variant="bodySm" tone="subdued">
-                      {fmtCost(item.value)}
+                      {fmtCost(item.value, currency)}
                     </Text>
                   </InlineStack>
                 ))}
@@ -138,15 +138,15 @@ export default function DetailPanel({
 
             <Divider />
 
-            <Row label="Gross profit" value={fmtPKR(stats.gross_profit)} />
-            <Row label="Net profit" value={fmtPKR(stats.net_profit)} />
+            <Row label="Gross profit" value={fmtPKR(stats.gross_profit, currency)} />
+            <Row label="Net profit" value={fmtPKR(stats.net_profit, currency)} />
 
             <Divider />
 
-            <Row label="Average order value" value={fmtPKR(stats.aov)} />
+            <Row label="Average order value" value={fmtPKR(stats.aov, currency)} />
             <Row label="Blended ROAS" value={fmtRatio(stats.roas)} />
             <Row label="Blended POAS" value={fmtRatio(stats.poas)} />
-            <Row label="CAC" value={fmtPKR(stats.cac)} />
+            <Row label="CAC" value={fmtPKR(stats.cac, currency)} />
             <Row label="% Returns" value={fmtPct(stats.refund_pct)} />
             <Row label="Margin" value={fmtPct(stats.margin_pct)} />
             <Row label="ROI" value={fmtPct(stats.roi_pct)} />

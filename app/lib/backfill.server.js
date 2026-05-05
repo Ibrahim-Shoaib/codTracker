@@ -1,5 +1,5 @@
 import { fetchOrders, mapOrder } from './postex.server.js';
-import { fetchDailySpend } from './meta.server.js';
+import { fetchDailySpendInStoreCurrency } from './meta.server.js';
 import { getSupabaseForStore } from './supabase.server.js';
 import { enrichOrdersWithShopify, loadOfflineSession } from './enrich.server.js';
 import { cancelStaleBooked } from './stale-orders.server.js';
@@ -118,6 +118,16 @@ export async function runHistoricalBackfill({ store_id, postex_token }) {
 export async function runMetaHistoricalBackfill({ store_id, access_token, ad_account_id }) {
   const supabase = await getSupabaseForStore(store_id);
 
+  // Look up the FX context once. Used by fetchDailySpendInStoreCurrency
+  // to convert when account currency differs from store currency.
+  const { data: storeRow } = await supabase
+    .from('stores')
+    .select('currency, meta_ad_account_currency')
+    .eq('store_id', store_id)
+    .single();
+  const storeCurrency = storeRow?.currency ?? 'PKR';
+  const accountCurrency = storeRow?.meta_ad_account_currency ?? null;
+
   let end = todayPKT();
   let start = subtractDays(end, CHUNK_DAYS - 1);
   let consecutiveEmpty = 0;
@@ -129,7 +139,14 @@ export async function runMetaHistoricalBackfill({ store_id, access_token, ad_acc
     let daily = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        daily = await fetchDailySpend(access_token, ad_account_id, start, end);
+        daily = await fetchDailySpendInStoreCurrency({
+          accessToken: access_token,
+          adAccountId: ad_account_id,
+          sinceDate: start,
+          untilDate: end,
+          accountCurrency,
+          storeCurrency,
+        });
         break;
       } catch (err) {
         console.error(`Meta backfill chunk ${start}–${end} attempt ${attempt + 1} failed for ${store_id}:`, err);

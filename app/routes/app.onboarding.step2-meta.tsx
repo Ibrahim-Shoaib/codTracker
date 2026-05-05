@@ -90,17 +90,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const cookieHeaderForName = request.headers.get("Cookie");
     const oauthSessionForName = await metaOAuthSession.getSession(cookieHeaderForName);
-    const accounts: Array<{ id: string; name: string }> =
+    const accounts: Array<{ id: string; name: string; currency?: string }> =
       oauthSessionForName.get("meta_ad_accounts") ?? [];
-    const adAccountName = accounts.find((a) => a.id === adAccountId)?.name ?? null;
+    const picked = accounts.find((a) => a.id === adAccountId);
+    const adAccountName = picked?.name ?? null;
+    const adAccountCurrency = picked?.currency ?? null;
 
     const supabase = await getSupabaseForStore(shop);
+    // We accept ad accounts in any currency. When the ad account
+    // currency differs from the store currency, the meta-spend cron
+    // converts spend to store currency at ingest time using a daily-
+    // cached FX rate, so by the time numbers reach the dashboard
+    // they're already in the store's currency (Stripe-style frozen
+    // historical rates — display never depends on live FX).
+
     await supabase
       .from("stores")
       .update({
         meta_access_token: accessToken,
         meta_ad_account_id: adAccountId,
         meta_ad_account_name: adAccountName,
+        meta_ad_account_currency: adAccountCurrency,
         meta_token_expires_at: expiresAt,
         meta_sync_error: null,
         onboarding_step: 3,

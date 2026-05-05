@@ -16,8 +16,9 @@ import {
   Spinner,
 } from "@shopify/polaris";
 import { CalendarIcon } from "@shopify/polaris-icons";
+import { formatMoney } from "../lib/format.js";
 
-const fmtPKR = (n) => `PKR ${Math.round(Number(n)).toLocaleString()}`;
+const fmtPKR = (n, currency) => formatMoney(n, currency);
 const fmtNum = (n) => Number(n).toLocaleString();
 const fmtPct = (n) => `${Number(n).toFixed(1)}%`;
 
@@ -63,7 +64,7 @@ function severity(returnPct) {
 // ── A single city row ────────────────────────────────────────────────────────
 // Layout matches Shopify's analytics reports: dimension on the left, sparkline
 // bar in the middle taking remaining width, primary number right-aligned.
-function CityRow({ city, returnLoss, returned, total, returnPct, maxLoss }) {
+function CityRow({ city, returnLoss, returned, total, returnPct, maxLoss, currency }) {
   const widthPct = maxLoss > 0 ? Math.max(2, (returnLoss / maxLoss) * 100) : 0;
   const sev = severity(returnPct);
 
@@ -79,7 +80,7 @@ function CityRow({ city, returnLoss, returned, total, returnPct, maxLoss }) {
 
           {/* Loss amount — the single most important number */}
           <Text as="span" variant="bodyMd" fontWeight="semibold">
-            {fmtPKR(returnLoss)}
+            {fmtPKR(returnLoss, currency)}
           </Text>
         </InlineStack>
 
@@ -124,6 +125,7 @@ export default function CityLossPanel({
   initialFrom,
   initialTo,
   initialLabel = "Maximum",
+  currency = "PKR",
 }) {
   const fetcher = useFetcher();
 
@@ -254,6 +256,7 @@ export default function CityLossPanel({
                 total={c.total_orders}
                 returnPct={c.return_pct}
                 maxLoss={maxLoss}
+                currency={currency}
               />
             </div>
           ))}

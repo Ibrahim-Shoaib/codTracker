@@ -28,7 +28,7 @@ import {
  * @param {Record<string, number>} props.costsMap
  * @param {(count: number) => void} [props.onDirtyCountChange]
  */
-export default function COGSTable({ products, costsMap, onDirtyCountChange }) {
+export default function COGSTable({ products, costsMap, onDirtyCountChange, currency = "PKR" }) {
   // Per-variant cost state. Priority: saved DB cost → Shopify cost field → empty.
   const [costs, setCosts] = useState(() => {
     const map = {};
@@ -213,7 +213,7 @@ export default function COGSTable({ products, costsMap, onDirtyCountChange }) {
                         type="number"
                         min="0"
                         step="0.01"
-                        prefix="PKR"
+                        prefix={currency}
                         value={bulkVal}
                         placeholder={mixed ? "Mixed" : "0.00"}
                         onChange={(val) => applyToAll(product, val)}
@@ -278,7 +278,7 @@ export default function COGSTable({ products, costsMap, onDirtyCountChange }) {
                                 {v.shopify_cost != null && (
                                   <div style={{ flexShrink: 0 }}>
                                     <Badge tone="info" size="small">
-                                      Shopify: PKR {v.shopify_cost}
+                                      Shopify: {currency} {v.shopify_cost}
                                     </Badge>
                                   </div>
                                 )}
@@ -292,7 +292,7 @@ export default function COGSTable({ products, costsMap, onDirtyCountChange }) {
                                   type="number"
                                   min="0"
                                   step="0.01"
-                                  prefix="PKR"
+                                  prefix={currency}
                                   value={costs[v.shopify_variant_id] ?? ""}
                                   onChange={(val) => updateOne(v.shopify_variant_id, val)}
                                   autoComplete="off"

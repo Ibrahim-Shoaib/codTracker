@@ -30,13 +30,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const supabase = await getSupabaseForStore(session.shop);
 
-  const { data: expenses } = await supabase
-    .from("store_expenses")
-    .select("id, name, amount, type")
-    .eq("store_id", session.shop)
-    .order("created_at");
+  const [{ data: expenses }, { data: storeRow }] = await Promise.all([
+    supabase
+      .from("store_expenses")
+      .select("id, name, amount, type")
+      .eq("store_id", session.shop)
+      .order("created_at"),
+    supabase
+      .from("stores")
+      .select("currency")
+      .eq("store_id", session.shop)
+      .single(),
+  ]);
 
-  return json({ expenses: (expenses ?? []) as Expense[] });
+  return json({
+    expenses: (expenses ?? []) as Expense[],
+    currency: storeRow?.currency ?? "PKR",
+  });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -113,7 +123,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Step4Expenses() {
-  const { expenses } = useLoaderData<typeof loader>();
+  const { expenses, currency } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const saving = navigation.state === "submitting";
@@ -161,7 +171,7 @@ export default function Step4Expenses() {
                     {exp.type === "monthly" ? "Monthly" : "Per Order"}
                   </Badge>
                   <Text as="span" variant="bodyMd" tone="subdued">
-                    PKR {Number(exp.amount).toLocaleString()}
+                    {currency} {Number(exp.amount).toLocaleString()}
                   </Text>
                 </InlineStack>
                 <Form method="post">
@@ -203,7 +213,7 @@ export default function Step4Expenses() {
               autoComplete="off"
             />
             <TextField
-              label="Amount (PKR)"
+              label={`Amount (${currency})`}
               name="amount"
               value={amount}
               onChange={setAmount}

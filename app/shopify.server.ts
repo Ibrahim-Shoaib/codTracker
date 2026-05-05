@@ -9,6 +9,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   registerUninstallWebhook,
   registerMetaPixelWebhooks,
+  getShopCurrencySettings,
 } from "./lib/shopify.server.js";
 
 if (!process.env.SUPABASE_DATABASE_URL) {
@@ -64,6 +65,24 @@ const shopify = shopifyApp({
         { store_id: shop, onboarding_complete: false, onboarding_step: 1 },
         { onConflict: "store_id", ignoreDuplicates: true }
       );
+
+      // Pull the shop's currency + money_format from Shopify shop.json
+      // and stash them on the stores row. Lets the dashboard render
+      // money in the merchant's actual currency instead of hardcoded
+      // PKR. Best-effort: a non-2xx response from Shopify just means
+      // we keep the existing values (or the migration default of PKR
+      // for legacy rows).
+      try {
+        const cur = await getShopCurrencySettings(session);
+        if (cur?.currency || cur?.money_format) {
+          const updates: Record<string, string> = {};
+          if (cur.currency) updates.currency = cur.currency;
+          if (cur.money_format) updates.money_format = cur.money_format;
+          await supabase.from("stores").update(updates).eq("store_id", shop);
+        }
+      } catch (err) {
+        console.error(`getShopCurrencySettings failed for ${shop}:`, err);
+      }
 
       // Register shop-specific uninstall webhook (TOML covers app-level; this is belt-and-suspenders)
       await registerUninstallWebhook(session).catch((err) =>

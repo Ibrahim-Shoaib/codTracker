@@ -256,6 +256,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   // ── Send test events ────────────────────────────────────────────────────────
   if (intent === "test_event") {
+    // Pull the merchant's store currency so the test event renders in
+    // their currency, not a hardcoded PKR. (Hits Events Manager → Test
+    // Events with the right currency code so the merchant's eyeballs
+    // see the same value/format that real Purchase events will carry.)
+    const supabase = await getSupabaseForStore(shop);
+    const { data: storeRow } = await supabase
+      .from("stores")
+      .select("currency")
+      .eq("store_id", shop)
+      .single();
+    const storeCurrency = storeRow?.currency ?? "PKR";
+
     const testCode = String(formData.get("test_code") || "").trim();
     if (!testCode || !/^TEST[A-Z0-9]+$/i.test(testCode)) {
       return json({
@@ -289,7 +301,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       content_ids: [productId],
       content_type: "product",
       value: 1000,
-      currency: "PKR",
+      currency: storeCurrency,
     };
     const checkoutCustom = { ...productCustom, num_items: 1 };
 

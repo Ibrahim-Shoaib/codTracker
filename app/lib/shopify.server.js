@@ -21,6 +21,32 @@ function parseNextUrl(linkHeader) {
   return match ? match[1] : null;
 }
 
+// ─── Shop settings ─────────────────────────────────────────────────────────────
+
+// Fetches the shop's currency + money_format from Shopify's shop.json.
+// Used by afterAuth to populate stores.currency on first install (and
+// to re-sync if the merchant ever changes their store currency).
+//
+// Returns { currency: 'PKR'|'USD'|..., money_format: 'Rs.{{amount}}'|... }
+// or null if the API errored — caller should default to PKR rather
+// than block install.
+export async function getShopCurrencySettings(session) {
+  const { shop, accessToken } = session;
+  try {
+    const res = await fetch(adminUrl(shop, 'shop.json'), {
+      headers: adminHeaders(accessToken),
+    });
+    if (!res.ok) return null;
+    const { shop: data } = await res.json();
+    return {
+      currency: data?.currency ?? null,
+      money_format: data?.money_format ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ─── Products ─────────────────────────────────────────────────────────────────
 
 // Converts a full-size Shopify CDN image URL to the _small (100×100) variant.

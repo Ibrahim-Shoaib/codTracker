@@ -55,7 +55,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     supabase
       .from("stores")
       .select(
-        "postex_token, meta_access_token, meta_ad_account_id, meta_ad_account_name, meta_token_expires_at, meta_sync_error"
+        "postex_token, meta_access_token, meta_ad_account_id, meta_ad_account_name, meta_token_expires_at, meta_sync_error, currency, money_format, meta_ad_account_currency"
       )
       .eq("store_id", shop)
       .single(),
@@ -153,9 +153,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // can show "Trendy Homes Ads" in settings instead of "act_1224674772151444".
     const cookieHeaderForName = request.headers.get("Cookie");
     const oauthSessionForName = await metaOAuthSession.getSession(cookieHeaderForName);
-    const accounts: Array<{ id: string; name: string }> =
+    const accounts: Array<{ id: string; name: string; currency?: string }> =
       oauthSessionForName.get("meta_ad_accounts") ?? [];
-    const adAccountName = accounts.find((a) => a.id === adAccountId)?.name ?? null;
+    const picked = accounts.find((a) => a.id === adAccountId);
+    const adAccountName = picked?.name ?? null;
+    const adAccountCurrency = picked?.currency ?? null;
+
+    // Currency mismatch is not blocked — meta-spend cron converts to
+    // store currency at ingest time. See app/lib/fx.server.js.
 
     await supabase
       .from("stores")
@@ -163,6 +168,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         meta_access_token:    accessToken,
         meta_ad_account_id:   adAccountId,
         meta_ad_account_name: adAccountName,
+        meta_ad_account_currency: adAccountCurrency,
         meta_token_expires_at: expiresAt,
         meta_sync_error:      null,
       })
@@ -490,7 +496,7 @@ export default function SettingsPage() {
                           {exp.type === "monthly" ? "Monthly" : "Per Order"}
                         </Badge>
                         <Text as="span" variant="bodyMd" tone="subdued">
-                          PKR {Number(exp.amount).toLocaleString()}
+                          {store.currency ?? "PKR"} {Number(exp.amount).toLocaleString()}
                         </Text>
                       </InlineStack>
                       <Form method="post">
@@ -530,7 +536,7 @@ export default function SettingsPage() {
                     autoComplete="off"
                   />
                   <TextField
-                    label="Amount (PKR)"
+                    label={`Amount (${store.currency ?? "PKR"})`}
                     name="amount"
                     value={newExpAmount}
                     onChange={setNewExpAmount}

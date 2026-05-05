@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { createClient } from "@supabase/supabase-js";
-import { fetchSpend, isTokenExpired } from "../lib/meta.server.js";
+import { fetchSpendInStoreCurrency, isTokenExpired } from "../lib/meta.server.js";
 import { getTodayPKT, formatPKTDate } from "../lib/dates.server.js";
 
 // Railway cron: 0 */2 * * * (UTC) = every 2 hours
@@ -17,7 +17,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const { data: stores } = await adminClient
     .from("stores")
-    .select("store_id, meta_access_token, meta_ad_account_id, meta_token_expires_at")
+    .select("store_id, meta_access_token, meta_ad_account_id, meta_token_expires_at, currency, meta_ad_account_currency")
     .not("meta_access_token", "is", null)
     // Demo stores complete real Meta OAuth (so the connected-account UX is
     // intact) but their ad_spend is fabricated — never query Meta for them.
@@ -46,12 +46,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       continue;
     }
     try {
-      const amount = await fetchSpend(
-        store.meta_access_token,
-        store.meta_ad_account_id,
-        todayStr,
-        todayStr
-      );
+      // Convert from ad-account currency to store currency at ingest
+      // time. Identity passthrough when they match (typical PKR-on-PKR
+      // case); FX-converted via fx.server.js when they differ.
+      const amount = await fetchSpendInStoreCurrency({
+        accessToken: store.meta_access_token,
+        adAccountId: store.meta_ad_account_id,
+        sinceDate: todayStr,
+        untilDate: todayStr,
+        accountCurrency: store.meta_ad_account_currency,
+        storeCurrency: store.currency,
+      });
       await adminClient.from("ad_spend").upsert(
         {
           store_id:   store.store_id,

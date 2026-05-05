@@ -62,7 +62,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     supabase
       .from("stores")
       .select(
-        "postex_token, onboarding_complete, onboarding_step, sellable_returns_pct, meta_access_token, meta_token_expires_at, meta_sync_error, last_postex_sync_at, is_demo"
+        "postex_token, onboarding_complete, onboarding_step, sellable_returns_pct, meta_access_token, meta_token_expires_at, meta_sync_error, last_postex_sync_at, is_demo, currency, money_format, meta_ad_account_currency"
       )
       .eq("store_id", shop)
       .single(),
@@ -344,6 +344,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     metaSyncError:      store.meta_sync_error ?? null,
     backfillInProgress: !store.last_postex_sync_at,
     unmatchedCOGSCount: unmatchedCount ?? 0,
+    currency:           store.currency ?? "PKR",
+    metaAdAccountCurrency: store.meta_ad_account_currency ?? null,
     periods: {
       today:     { stats: s.today,     priorStats: prior.today,     dateRange: { from: todayFrom, to: todayTo } },
       yesterday: { stats: s.yesterday, priorStats: prior.yesterday, dateRange: { from: yestFrom,  to: yestTo  } },
@@ -377,7 +379,8 @@ export default function Dashboard() {
           metaConnected, isMetaExpired, isMetaExpiringSoon, metaExpiresAt,
           metaSyncError,
           backfillInProgress, cityBreakdown, breakEven, trend,
-          unfulfilledPipeline } = data;
+          unfulfilledPipeline,
+          currency } = data;
 
   // Auto-revalidate while data is being populated (real-store PostEx
   // backfill or demo-store fabrication). Polls every 4 seconds so cards
@@ -425,6 +428,7 @@ export default function Dashboard() {
                   priorStats={periods[key].priorStats}
                   dateRange={periods[key].dateRange}
                   unfulfilledPromise={unfulfilledPipeline}
+                  currency={currency}
                   onMore={(stats, dateRange, title) =>
                     setDetail({ stats, dateRange, title })
                   }
@@ -432,11 +436,12 @@ export default function Dashboard() {
               ))}
             </InlineGrid>
 
-            {breakEven && <BreakEvenSection {...breakEven} />}
+            {breakEven && <BreakEvenSection {...breakEven} currency={currency} />}
 
             <TrendPanel
               initialPayload={trend}
               backfillInProgress={backfillInProgress}
+              currency={currency}
             />
 
             <CityLossPanel
@@ -444,6 +449,7 @@ export default function Dashboard() {
               initialFrom={cityBreakdown.from}
               initialTo={cityBreakdown.to}
               initialLabel="Maximum"
+              currency={currency}
             />
           </>
       </BlockStack>
@@ -456,6 +462,7 @@ export default function Dashboard() {
           expensesList={expensesList}
           open={!!detail}
           onClose={() => setDetail(null)}
+          currency={currency}
         />
       )}
     </Page>

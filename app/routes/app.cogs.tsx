@@ -27,17 +27,28 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     getSupabaseForStore(shop),
   ]);
 
-  const { data: existingCosts } = await supabase
-    .from("product_costs")
-    .select("shopify_variant_id, unit_cost")
-    .eq("store_id", shop);
+  const [{ data: existingCosts }, { data: storeRow }] = await Promise.all([
+    supabase
+      .from("product_costs")
+      .select("shopify_variant_id, unit_cost")
+      .eq("store_id", shop),
+    supabase
+      .from("stores")
+      .select("currency")
+      .eq("store_id", shop)
+      .single(),
+  ]);
 
   const costsMap: Record<string, number> = {};
   for (const row of existingCosts ?? []) {
     costsMap[row.shopify_variant_id] = row.unit_cost;
   }
 
-  return json({ products: productsResult.data, costsMap });
+  return json({
+    products: productsResult.data,
+    costsMap,
+    currency: storeRow?.currency ?? "PKR",
+  });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -131,7 +142,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function COGSPage() {
-  const { products, costsMap } = useLoaderData<typeof loader>();
+  const { products, costsMap, currency } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const saving = navigation.state === "submitting";
@@ -225,6 +236,7 @@ export default function COGSPage() {
                   products={products}
                   costsMap={costsMap}
                   onDirtyCountChange={setDirtyCount}
+                  currency={currency}
                 />
               </Form>
             </Card>

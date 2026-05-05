@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { createClient } from "@supabase/supabase-js";
-import { fetchSpend, isTokenExpired } from "../lib/meta.server.js";
+import { fetchSpendInStoreCurrency, isTokenExpired } from "../lib/meta.server.js";
 import { getYesterdayPKT, formatPKTDate } from "../lib/dates.server.js";
 
 // Railway cron: 0 21 * * * (UTC) = 2 AM PKT
@@ -18,7 +18,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const { data: stores } = await adminClient
     .from("stores")
-    .select("store_id, meta_access_token, meta_ad_account_id, meta_token_expires_at")
+    .select("store_id, meta_access_token, meta_ad_account_id, meta_token_expires_at, currency, meta_ad_account_currency")
     .not("meta_access_token", "is", null)
     // Demo stores: Meta is connected for the UX but ad_spend is fabricated.
     .neq("is_demo", true);
@@ -44,12 +44,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       continue;
     }
     try {
-      const amount = await fetchSpend(
-        store.meta_access_token,
-        store.meta_ad_account_id,
-        yesterdayStr,
-        yesterdayStr
-      );
+      const amount = await fetchSpendInStoreCurrency({
+        accessToken: store.meta_access_token,
+        adAccountId: store.meta_ad_account_id,
+        sinceDate: yesterdayStr,
+        untilDate: yesterdayStr,
+        accountCurrency: store.meta_ad_account_currency,
+        storeCurrency: store.currency,
+      });
       await adminClient.from("ad_spend").upsert(
         {
           store_id:   store.store_id,

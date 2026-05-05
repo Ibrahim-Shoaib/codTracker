@@ -9,13 +9,13 @@ import {
   Tooltip,
 } from "@shopify/polaris";
 import { CaretUpIcon, CaretDownIcon } from "@shopify/polaris-icons";
+import { formatMoney } from "../lib/format.js";
 
 // ── Number formatters ────────────────────────────────────────────────────────
 const fmtRatio = (n) =>
   n == null ? "N/A" : `${Number(n).toFixed(2)}×`;
 
-const fmtPKR = (n) =>
-  n == null ? "N/A" : `PKR ${Math.round(Number(n)).toLocaleString()}`;
+const fmtPKR = (n, currency) => formatMoney(n, currency, { nullDisplay: "N/A" });
 
 const fmtPct = (n) =>
   n == null ? "N/A" : `${Number(n).toFixed(1)}%`;
@@ -111,6 +111,7 @@ export default function BreakEvenSection({
   deliverySuccessPct,
   costPerReturn,
   windowDays,
+  currency = "PKR",
 }) {
   const days = windowDays ?? 30;
   const windowLabel = `last ${days} days`;
@@ -135,12 +136,12 @@ export default function BreakEvenSection({
       <StatCard
         label="Break-even Cost per Purchase"
         tooltip="The maximum Cost per Purchase your Meta Ads Manager can show for the business to break even — same window, same units (ad spend ÷ purchases). Compare it to the Cost per Purchase column in Ads Manager: under this number = profitable, over = losing money."
-        primary={fmtPKR(breakEvenCac)}
+        primary={fmtPKR(breakEvenCac, currency)}
         footer={
           <ComparisonFooter
             actual={actualCac}
             target={breakEvenCac}
-            formatted={fmtPKR(actualCac)}
+            formatted={fmtPKR(actualCac, currency)}
             betterWhenLower={true}
             windowLabel={windowLabel}
           />
@@ -156,8 +157,8 @@ export default function BreakEvenSection({
 
       <StatCard
         label="Cost per Return"
-        tooltip="Average PKR loss on each returned order — forward shipping, reverse shipping, and the unsellable portion of inventory."
-        primary={fmtPKR(costPerReturn)}
+        tooltip={`Average ${currency} loss on each returned order — forward shipping, reverse shipping, and the unsellable portion of inventory.`}
+        primary={fmtPKR(costPerReturn, currency)}
         footer={<PlainFooter text={`Last ${days} days`} />}
       />
     </InlineGrid>

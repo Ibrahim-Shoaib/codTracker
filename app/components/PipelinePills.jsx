@@ -2,34 +2,30 @@ import { Suspense } from "react";
 import { Await } from "@remix-run/react";
 import { Badge, InlineStack } from "@shopify/polaris";
 import PillSkeleton from "./PillSkeleton.jsx";
+import { formatMoney } from "../lib/format.js";
 
 // Two pills under the headline Sales number on each KPI card:
 //   • Unfulfilled (yellow) — orders placed in this period that haven't
-//     been shipped yet. Sourced two ways:
-//       - Default range  → the deferred Shopify promise from the dashboard
-//                          loader, bucketed by period.
-//       - Custom range   → a direct {count,value} from /app/api/stats,
-//                          which fetches Shopify (real) or the demo pool
-//                          (demo) for that exact range.
-//   • In Transit (blue)    — pipeline PKR for non-terminal courier orders
-//     (Booked, Unbooked, Out for Delivery, Under Verification, Attempted).
-//     Comes from the synchronous SQL stats — no skeleton needed.
+//     been shipped yet.
+//   • In Transit (blue)    — pipeline value for non-terminal courier
+//     orders (Booked, Out for Delivery, etc.). Rendered in store
+//     currency.
 //
 // Props:
-//   inTransitValue       number | null                     — from RPC
+//   inTransitValue       number | null
 //   unfulfilledPromise   Promise<{<period>:{count,value}}> | null
-//   unfulfilledValue     {count, value} | null              (direct path)
+//   unfulfilledValue     {count, value} | null
 //   period               'today' | 'yesterday' | 'mtd' | 'lastMonth'
-//
-// Pass null for both unfulfilled props to suppress the pill entirely.
+//   currency             ISO 4217 code from stores.currency
 
-const fmtPKR = (n) => `PKR ${Math.round(Number(n)).toLocaleString()}`;
+const fmtPKR = (n, currency) => formatMoney(n, currency);
 
 export default function PipelinePills({
   inTransitValue,
   unfulfilledPromise,
   unfulfilledValue,
   period,
+  currency = "PKR",
 }) {
   const inTransitNum = Number(inTransitValue ?? 0);
 
@@ -42,7 +38,7 @@ export default function PipelinePills({
               const value = pipeline?.[period]?.value ?? 0;
               return (
                 <Badge tone="attention">
-                  {`${fmtPKR(value)} · Unfulfilled`}
+                  {`${fmtPKR(value, currency)} · Unfulfilled`}
                 </Badge>
               );
             }}
@@ -51,11 +47,11 @@ export default function PipelinePills({
       )}
       {!unfulfilledPromise && unfulfilledValue && (
         <Badge tone="attention">
-          {`${fmtPKR(unfulfilledValue.value ?? 0)} · Unfulfilled`}
+          {`${fmtPKR(unfulfilledValue.value ?? 0, currency)} · Unfulfilled`}
         </Badge>
       )}
       <Badge tone="info">
-        {`${fmtPKR(inTransitNum)} · In Transit`}
+        {`${fmtPKR(inTransitNum, currency)} · In Transit`}
       </Badge>
     </InlineStack>
   );
