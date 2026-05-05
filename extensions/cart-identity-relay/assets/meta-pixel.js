@@ -649,14 +649,28 @@
           );
         }
 
-        // ── InitiateCheckout: fire BEFORE navigation to checkout.
-        // Modern Shopify (post Checkout Extensibility, Aug 2024) renders
-        // /checkouts/c/<token> in a separate runtime that doesn't load
-        // theme app embeds — so we can't fire from the checkout page
-        // itself. Hooking the click on the checkout button while still on
-        // the storefront/cart page is the only browser-side path to get
-        // InitiateCheckout into Pixel Helper.
-        installCheckoutClickHooks(shop, psid);
+        // ── InitiateCheckout: SERVER-SIDE ONLY.
+        //
+        // We used to fire IC from a click-hook here (browser-side, with a
+        // psid-keyed event_id) so Pixel Helper would show it. Removed
+        // because the click-hook event_id (`checkout_started:shop:<psid>`)
+        // could not be reproduced by the server-side CHECKOUTS_CREATE
+        // webhook — the webhook only knows the checkout TOKEN, not the
+        // browser's psid cookie. Result: Meta saw two distinct IC events
+        // per checkout (browser psid + server token), inflating funnel
+        // counts ~2x.
+        //
+        // The server webhook still fires IC reliably with full identity
+        // (fbp/fbc from cart-relay attrs, IP+UA from order.client_details,
+        // hashed email/phone once entered). Pixel Helper no longer shows
+        // IC, but Meta receives exactly one well-identified IC per real
+        // checkout — same trade-off as Purchase, which is also server-only
+        // because thank-you pages don't load theme app embeds.
+        //
+        // (installCheckoutClickHooks is left defined below in case we
+        // bring back the browser fire after solving the event_id-sharing
+        // problem. Wiring it up will reintroduce the duplicate, so don't
+        // re-enable without that fix.)
 
         // ── Purchase: SERVER-SIDE ONLY.
         // Post-purchase / thank-you pages also run in the new checkout

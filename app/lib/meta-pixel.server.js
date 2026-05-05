@@ -476,15 +476,54 @@ export async function revokeBISU(accessToken) {
 
 // ─── EMQ (Event Match Quality) ────────────────────────────────────────────────
 
-// Fetch per-event EMQ for the past N days for a dataset. Returns null if the
-// dataset is too new (no events yet) — Meta returns 400 in that case.
+// Compute per-event EMQ-style scores (0-10) for a dataset.
+//
+// Meta does NOT expose the actual Events-Manager EMQ score via Graph API —
+// the 0-10 number shown in Events Manager is computed server-side and isn't
+// queryable. The closest approximation Meta lets us pull is the `had_pii`
+// stats aggregation, which returns hourly buckets of {has_pii, not_has_pii}
+// counts per event. We turn that into a 0-10 score = (has_pii / total) * 10.
+//
+// (An older revision tried `aggregation=event_match_quality_per_event_name`
+// — Meta rejects that with HTTP 400, "aggregation must be one of …". We
+// keep this comment so we don't reintroduce it the next time someone reads
+// the docs and assumes the aggregation exists.)
+//
+// Returns the same shape the cron consumer expects: an array of
+// `{ event_name, value }` objects, one per event_name. Returns null if the
+// dataset has no events yet (fresh connect, no fires).
 export async function fetchEMQ(accessToken, datasetId) {
   const params = new URLSearchParams({
     access_token: accessToken,
-    aggregation: "event_match_quality_per_event_name",
+    aggregation: "had_pii",
   });
   const res = await fetch(`${GRAPH_BASE}/${datasetId}/stats?${params}`);
   if (!res.ok) return null;
   const data = await res.json().catch(() => null);
-  return data?.data ?? null;
+  const buckets = data?.data;
+  if (!Array.isArray(buckets) || buckets.length === 0) return null;
+
+  // Aggregate {has_pii, not_has_pii} counts across all hourly buckets,
+  // grouped by event name.
+  const counters = new Map(); // event_name → { has: number, total: number }
+  for (const bucket of buckets) {
+    const rows = Array.isArray(bucket?.data) ? bucket.data : [];
+    for (const row of rows) {
+      const name = row?.event;
+      const tag = row?.value; // "has_pii" | "not_has_pii"
+      const count = Number(row?.count ?? 0);
+      if (!name || !count) continue;
+      if (!counters.has(name)) counters.set(name, { has: 0, total: 0 });
+      const c = counters.get(name);
+      c.total += count;
+      if (tag === "has_pii") c.has += count;
+    }
+  }
+
+  if (counters.size === 0) return null;
+
+  return Array.from(counters.entries()).map(([event_name, c]) => ({
+    event_name,
+    value: c.total > 0 ? (c.has / c.total) * 10 : 0,
+  }));
 }

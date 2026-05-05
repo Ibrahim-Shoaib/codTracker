@@ -205,12 +205,19 @@ register(({ analytics, browser, init, settings }) => {
   // checkout_started → InitiateCheckout. Use checkout.token as the resource id
   // so the matching server-side webhook (CHECKOUTS_CREATE) produces the same
   // event_id and Meta dedups.
+  //
+  // If c.token is missing from the customer-event payload (observed
+  // empirically on some Shopify storefront builds — the Checkout object is
+  // present but token is undefined), we SKIP the browser beacon. The
+  // server-side CHECKOUTS_CREATE webhook always fires for the same checkout
+  // with full identity (fbp/fbc from the cart-relay theme block, IP+UA from
+  // order.client_details, and PII once the customer enters it), so dropping
+  // the browser fire loses nothing — and emitting a fallback id here would
+  // double-count IC in Meta because it can't dedup against the server fire.
   analytics.subscribe("checkout_started", (event) => {
     const c = event?.data?.checkout;
-    if (!c) return;
-    const eventId = c.token
-      ? deterministicId("InitiateCheckout", c.token)
-      : fallbackId("checkout_started");
+    if (!c?.token) return;
+    const eventId = deterministicId("InitiateCheckout", c.token);
     track("checkout_started", eventId, {
       value: Number(c.totalPrice?.amount ?? 0),
       currency: c.totalPrice?.currencyCode,
@@ -225,16 +232,17 @@ register(({ analytics, browser, init, settings }) => {
     });
   });
 
-  // payment_info_submitted → AddPaymentInfo. Same checkout.token as InitiateCheckout
-  // but a different event_id (event-name is part of the deterministic key).
+  // payment_info_submitted → AddPaymentInfo. Same checkout.token as
+  // InitiateCheckout but a different event_id (event-name is part of the
+  // deterministic key). Same skip-without-token rule as above — see the
+  // checkout_started comment for the full reasoning.
   analytics.subscribe("payment_info_submitted", (event) => {
     const c = event?.data?.checkout;
-    const eventId = c?.token
-      ? deterministicId("AddPaymentInfo", c.token)
-      : fallbackId("payment_info_submitted");
+    if (!c?.token) return;
+    const eventId = deterministicId("AddPaymentInfo", c.token);
     track("payment_info_submitted", eventId, {
-      value: Number(c?.totalPrice?.amount ?? 0),
-      currency: c?.totalPrice?.currencyCode,
+      value: Number(c.totalPrice?.amount ?? 0),
+      currency: c.totalPrice?.currencyCode,
     });
   });
 
