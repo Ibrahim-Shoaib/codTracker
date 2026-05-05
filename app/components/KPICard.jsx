@@ -182,6 +182,7 @@ export default function KPICard({
   unfulfilledPromise,
   onMore,
   currency = "PKR",
+  caps = { showPipelinePills: true, returnsLabel: "Returns", returnsUnit: "count" },
 }) {
   const fetcher = useFetcher();
 
@@ -383,13 +384,15 @@ export default function KPICard({
               <Delta delta={salesDelta} />
             </InlineStack>
             <Text variant="headingLg" fontWeight="bold">{fmtPKR(stats?.sales, currency)}</Text>
-            <PipelinePills
-              inTransitValue={stats?.in_transit_value}
-              unfulfilledPromise={usingDefaultRange ? unfulfilledPromise : null}
-              unfulfilledValue={usingDefaultRange ? null : unfulfilledForRange}
-              period={period}
-              currency={currency}
-            />
+            {caps.showPipelinePills && (
+              <PipelinePills
+                inTransitValue={stats?.in_transit_value}
+                unfulfilledPromise={usingDefaultRange ? unfulfilledPromise : null}
+                unfulfilledValue={usingDefaultRange ? null : unfulfilledForRange}
+                period={period}
+                currency={currency}
+              />
+            )}
           </BlockStack>
 
           <Divider />
@@ -403,8 +406,12 @@ export default function KPICard({
               </Text>
             </BlockStack>
             <BlockStack gap="100" inlineAlign="start">
-              <Text variant="bodySm" tone="subdued">Returns</Text>
-              <Text variant="bodyMd" fontWeight="semibold">{fmtNum(stats?.returns)}</Text>
+              <Text variant="bodySm" tone="subdued">{caps.returnsLabel}</Text>
+              <Text variant="bodyMd" fontWeight="semibold">
+                {caps.returnsUnit === "money"
+                  ? fmtPKR(stats?.return_loss, currency)
+                  : fmtNum(stats?.returns)}
+              </Text>
             </BlockStack>
           </InlineStack>
 

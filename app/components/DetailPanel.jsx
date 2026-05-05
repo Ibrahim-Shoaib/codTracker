@@ -53,6 +53,7 @@ export default function DetailPanel({
   open,
   onClose,
   currency = "PKR",
+  caps = { returnsLabel: "Returns", returnsUnit: "count" },
 }) {
   const [showExpBreakdown, setShowExpBreakdown] = useState(false);
 
@@ -99,7 +100,14 @@ export default function DetailPanel({
             <Row label="Sales" value={fmtPKR(stats.sales, currency)} />
             <Row label="Orders" value={fmtNum(stats.orders)} />
             <Row label="Units Sold" value={fmtNum(stats.units)} />
-            <Row label="Returns" value={fmtNum(stats.returns)} />
+            <Row
+              label={caps.returnsLabel}
+              value={
+                caps.returnsUnit === "money"
+                  ? fmtPKR(stats.return_loss, currency)
+                  : fmtNum(stats.returns)
+              }
+            />
             <Row label="In Transit" value={fmtNum(stats.in_transit)} />
             <Row label="Advertising cost" value={fmtCost(stats.ad_spend, currency)} />
             <Row

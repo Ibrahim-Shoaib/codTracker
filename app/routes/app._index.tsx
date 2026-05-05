@@ -26,6 +26,7 @@ import { isTokenExpired, isTokenExpiringSoon } from "../lib/meta.server.js";
 import { fetchUnfulfilledPipeline } from "../lib/shopify-pipeline.server.js";
 import { fetchDemoPipeline } from "../lib/demo-pipeline.server.js";
 import { effectiveStoreId } from "../lib/demo-pool.server.js";
+import { getStatsAdapter } from "../lib/stats-adapter.server.js";
 import KPICard from "../components/KPICard.jsx";
 import WarningBanner from "../components/WarningBanner.jsx";
 import DetailPanel from "../components/DetailPanel.jsx";
@@ -62,7 +63,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     supabase
       .from("stores")
       .select(
-        "postex_token, onboarding_complete, onboarding_step, sellable_returns_pct, meta_access_token, meta_token_expires_at, meta_sync_error, last_postex_sync_at, is_demo, currency, money_format, meta_ad_account_currency"
+        "store_id, postex_token, onboarding_complete, onboarding_step, sellable_returns_pct, meta_access_token, meta_token_expires_at, meta_sync_error, last_postex_sync_at, is_demo, currency, money_format, meta_ad_account_currency, ingest_mode"
       )
       .eq("store_id", shop)
       .single(),
@@ -102,6 +103,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const yesterday = getYesterdayPKT();
   const mtd       = getMTDPKT();
   const lastMonth = getLastMonthPKT();
+
+  // ── ShopifyDirect ingest mode ────────────────────────────────────────
+  // Merchants who skipped the courier integration (no PostEx). Dashboard
+  // hits Shopify Admin API directly via stats-adapter, no orders table
+  // population, no city / trend / pipeline panels. KPI cards still
+  // render — same shape from the adapter as from the RPC.
+  if (store.ingest_mode === "shopify_direct") {
+    return buildShopifyDirectResponse({
+      session, store, expenses, monthlyExp, perOrderExp,
+      today, yesterday, mtd, lastMonth,
+    });
+  }
 
   // Prior periods (Option A: equal-length immediately preceding for the daily
   // and monthly cards, days-elapsed mirror for MTD). Today's prior = Yesterday,
@@ -346,6 +359,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     unmatchedCOGSCount: unmatchedCount ?? 0,
     currency:           store.currency ?? "PKR",
     metaAdAccountCurrency: store.meta_ad_account_currency ?? null,
+    caps: {
+      mode: "postex",
+      showPipelinePills: true,
+      showCityLoss: true,
+      returnsLabel: "Returns",
+      returnsUnit: "count",
+    },
     periods: {
       today:     { stats: s.today,     priorStats: prior.today,     dateRange: { from: todayFrom, to: todayTo } },
       yesterday: { stats: s.yesterday, priorStats: prior.yesterday, dateRange: { from: yestFrom,  to: yestTo  } },
@@ -362,6 +382,163 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     unfulfilledPipeline,
   });
 };
+
+// ─── ShopifyDirect path ──────────────────────────────────────────────────
+//
+// Builds the same `defer({...})` shape as the PostEx loader path above,
+// but populated from a live Shopify Admin API fetch via the adapter
+// instead of from get_dashboard_stats RPC against the orders table.
+//
+// Panels that don't apply to direct mode (city loss, trend chart,
+// unfulfilled pipeline) return empty/null structures so the
+// component-side `caps` flags can hide them without crashing on
+// `null.cities`. Break-even still computes — uses refund-derived
+// success-rate instead of delivery-success.
+
+async function buildShopifyDirectResponse({
+  session, store, expenses, monthlyExp, perOrderExp,
+  today, yesterday, mtd, lastMonth,
+}: {
+  session: any; store: any; expenses: any[];
+  monthlyExp: number; perOrderExp: number;
+  today: any; yesterday: any; mtd: any; lastMonth: any;
+}) {
+  const todayFrom = formatPKTDate(today.start);
+  const todayTo   = formatPKTDate(today.end);
+  const yestFrom  = formatPKTDate(yesterday.start);
+  const yestTo    = formatPKTDate(yesterday.end);
+  const mtdFrom   = formatPKTDate(mtd.start);
+  const mtdTo     = formatPKTDate(mtd.end);
+  const lmFrom    = formatPKTDate(lastMonth.start);
+  const lmTo      = formatPKTDate(lastMonth.end);
+  const dbyFrom   = formatPKTDate(getDayBeforeYesterdayPKT().start);
+  const dbyTo     = formatPKTDate(getDayBeforeYesterdayPKT().end);
+  const mtdCompFrom = formatPKTDate(getMTDComparisonPKT().start);
+  const mtdCompTo   = formatPKTDate(getMTDComparisonPKT().end);
+  const mblFrom   = formatPKTDate(getMonthBeforeLastPKT().start);
+  const mblTo     = formatPKTDate(getMonthBeforeLastPKT().end);
+
+  // Adapter ranges use [from, toExclusive) semantics so comparisons line
+  // up with date math elsewhere; PKT 'to' comes back as same day already
+  // (start of next), but we name it explicitly here for clarity.
+  const periodsCurrent = {
+    today:     { from: todayFrom, toExclusive: todayTo, to: todayTo },
+    yesterday: { from: yestFrom,  toExclusive: yestTo,  to: yestTo  },
+    mtd:       { from: mtdFrom,   toExclusive: mtdTo,   to: mtdTo   },
+    lastMonth: { from: lmFrom,    toExclusive: lmTo,    to: lmTo    },
+  };
+  const periodsPrior = {
+    today:     { from: yestFrom,    toExclusive: yestTo,    to: yestTo    },
+    yesterday: { from: dbyFrom,     toExclusive: dbyTo,     to: dbyTo     },
+    mtd:       { from: mtdCompFrom, toExclusive: mtdCompTo, to: mtdCompTo },
+    lastMonth: { from: mblFrom,     toExclusive: mblTo,     to: mblTo     },
+  };
+
+  const adapter = await getStatsAdapter(store, session);
+
+  // Single broad-range fetch under the hood — both calls share the
+  // 60s cache, so the second is a memory hit.
+  const [s, prior] = await Promise.all([
+    adapter.getDashboardStats({ periods: periodsCurrent, monthlyExp, perOrderExp }),
+    adapter.getDashboardStats({ periods: periodsPrior,   monthlyExp, perOrderExp }),
+  ]);
+
+  // Break-even windows (30/60/90 days). For shopify_direct these use
+  // refunds-as-loss instead of returns-as-loss, but the formula is
+  // unchanged because the adapter populates `returns` and
+  // `return_loss` with refund-derived values.
+  function rollingFromUTC(days: number) {
+    const startMs = today.start.getTime() - (days - 1) * 24 * 60 * 60 * 1000;
+    return formatPKTDate(new Date(startMs));
+  }
+  const window30From = rollingFromUTC(30);
+  const window60From = rollingFromUTC(60);
+  const window90From = rollingFromUTC(90);
+  const windowTo = todayTo;
+
+  const breakEvenStats = await adapter.getDashboardStats({
+    periods: {
+      w30: { from: window30From, toExclusive: windowTo, to: windowTo },
+      w60: { from: window60From, toExclusive: windowTo, to: windowTo },
+      w90: { from: window90From, toExclusive: windowTo, to: windowTo },
+    },
+    monthlyExp,
+    perOrderExp,
+  });
+
+  function deriveBreakEven(stats: any, windowFrom: string, days: number) {
+    if (!stats) return null;
+    const sales       = Number(stats.sales        ?? 0);
+    const grossProfit = Number(stats.gross_profit ?? 0);
+    const periodExp   = Number(stats.expenses     ?? 0);
+    const ordersTotal = Number(stats.orders       ?? 0);
+    const adSpend     = Number(stats.ad_spend     ?? 0);
+    const refundPct   = stats.refund_pct == null ? null : Number(stats.refund_pct) * 100;
+    const returnLoss  = Number(stats.return_loss  ?? 0);
+    const returns     = Number(stats.returns      ?? 0);
+
+    const contribAfterFixed = grossProfit - periodExp;
+    const successPct =
+      refundPct == null ? null : Math.max(0, 100 - refundPct);
+    const bookedValue = sales;  // no delivery-success adjustment in direct mode
+    return {
+      breakEvenRoas:
+        contribAfterFixed > 0 ? sales / contribAfterFixed : null,
+      breakEvenCac:
+        contribAfterFixed > 0 && ordersTotal > 0
+          ? contribAfterFixed / ordersTotal
+          : null,
+      actualRoas: adSpend > 0 ? bookedValue / adSpend : null,
+      actualCac: adSpend > 0 && ordersTotal > 0 ? adSpend / ordersTotal : null,
+      deliverySuccessPct: successPct,
+      costPerReturn: returns > 0 ? returnLoss / returns : null,
+      windowDays: days,
+      from: windowFrom,
+      to: windowTo,
+      contribAfterFixed,
+    };
+  }
+  const beCandidates = [
+    deriveBreakEven(breakEvenStats.w30, window30From, 30),
+    deriveBreakEven(breakEvenStats.w60, window60From, 60),
+    deriveBreakEven(breakEvenStats.w90, window90From, 90),
+  ].filter(Boolean) as Array<NonNullable<ReturnType<typeof deriveBreakEven>>>;
+  const w30 = beCandidates.find((c) => c.windowDays === 30);
+  const longerOK = beCandidates.find(
+    (c) => c.windowDays > 30 && c.contribAfterFixed > 0
+  );
+  const beSelected =
+    w30 != null && w30.contribAfterFixed > 0
+      ? w30
+      : longerOK ?? w30 ?? beCandidates[0] ?? null;
+  const breakEven = beSelected
+    ? { ...beSelected, isFallback: beSelected.windowDays !== 30 }
+    : null;
+
+  return defer({
+    expensesList: expenses,
+    metaConnected:      !!store.meta_access_token,
+    isMetaExpired:      isTokenExpired(store.meta_token_expires_at),
+    isMetaExpiringSoon: isTokenExpiringSoon(store.meta_token_expires_at),
+    metaExpiresAt:      store.meta_token_expires_at,
+    metaSyncError:      store.meta_sync_error ?? null,
+    backfillInProgress: false, // no historical backfill in shopify_direct
+    unmatchedCOGSCount: 0,
+    currency:           store.currency ?? "PKR",
+    metaAdAccountCurrency: store.meta_ad_account_currency ?? null,
+    caps: adapter.capabilities(),
+    periods: {
+      today:     { stats: s.today,     priorStats: prior.today,     dateRange: { from: todayFrom, to: todayTo } },
+      yesterday: { stats: s.yesterday, priorStats: prior.yesterday, dateRange: { from: yestFrom,  to: yestTo  } },
+      mtd:       { stats: s.mtd,       priorStats: prior.mtd,       dateRange: { from: mtdFrom,   to: mtdTo   } },
+      lastMonth: { stats: s.lastMonth, priorStats: prior.lastMonth, dateRange: { from: lmFrom,    to: lmTo    } },
+    },
+    breakEven,
+    cityBreakdown: { cities: [], from: window30From, to: windowTo },
+    trend: null,                 // TrendPanel hides chart when null
+    unfulfilledPipeline: Promise.resolve(null),
+  });
+}
 
 const PERIOD_KEYS = ["today", "yesterday", "mtd", "lastMonth"] as const;
 
@@ -380,7 +557,8 @@ export default function Dashboard() {
           metaSyncError,
           backfillInProgress, cityBreakdown, breakEven, trend,
           unfulfilledPipeline,
-          currency } = data;
+          currency,
+          caps = { showPipelinePills: true, showCityLoss: true, returnsLabel: "Returns", returnsUnit: "count" } } = data;
 
   // Auto-revalidate while data is being populated (real-store PostEx
   // backfill or demo-store fabrication). Polls every 4 seconds so cards
@@ -429,6 +607,7 @@ export default function Dashboard() {
                   dateRange={periods[key].dateRange}
                   unfulfilledPromise={unfulfilledPipeline}
                   currency={currency}
+                  caps={caps}
                   onMore={(stats, dateRange, title) =>
                     setDetail({ stats, dateRange, title })
                   }
@@ -436,21 +615,25 @@ export default function Dashboard() {
               ))}
             </InlineGrid>
 
-            {breakEven && <BreakEvenSection {...breakEven} currency={currency} />}
+            {breakEven && <BreakEvenSection {...breakEven} currency={currency} caps={caps} />}
 
-            <TrendPanel
-              initialPayload={trend}
-              backfillInProgress={backfillInProgress}
-              currency={currency}
-            />
+            {trend && (
+              <TrendPanel
+                initialPayload={trend}
+                backfillInProgress={backfillInProgress}
+                currency={currency}
+              />
+            )}
 
-            <CityLossPanel
-              initialCities={cityBreakdown.cities}
-              initialFrom={cityBreakdown.from}
-              initialTo={cityBreakdown.to}
-              initialLabel="Maximum"
-              currency={currency}
-            />
+            {caps.showCityLoss && (
+              <CityLossPanel
+                initialCities={cityBreakdown.cities}
+                initialFrom={cityBreakdown.from}
+                initialTo={cityBreakdown.to}
+                initialLabel="Maximum"
+                currency={currency}
+              />
+            )}
           </>
       </BlockStack>
 
@@ -463,6 +646,7 @@ export default function Dashboard() {
           open={!!detail}
           onClose={() => setDetail(null)}
           currency={currency}
+          caps={caps}
         />
       )}
     </Page>

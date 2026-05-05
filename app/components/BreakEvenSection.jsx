@@ -112,7 +112,18 @@ export default function BreakEvenSection({
   costPerReturn,
   windowDays,
   currency = "PKR",
+  caps = { mode: "postex" },
 }) {
+  // Relabel two tiles when there's no courier: "Delivery Success" →
+  // "Non-refund rate" and "Cost per Return" → "Cost per Refund". The
+  // math is identical in both modes — we feed the section refund-derived
+  // numbers from the adapter — so this is purely a label swap.
+  const isDirect = caps?.mode === "shopify_direct";
+  const successLabel = isDirect ? "Non-refund rate" : "Delivery Success";
+  const successTooltip = isDirect
+    ? "Share of orders that were NOT refunded. Inverse of the refund-rate metric you'd see on Shopify Reports."
+    : "Share of bookings that actually got delivered (vs returned). The other side of the return-rate coin.";
+  const costPerReturnLabel = isDirect ? "Cost per Refund" : "Cost per Return";
   const days = windowDays ?? 30;
   const windowLabel = `last ${days} days`;
 
@@ -149,15 +160,19 @@ export default function BreakEvenSection({
       />
 
       <StatCard
-        label="Delivery Success"
-        tooltip="Share of bookings that actually got delivered (vs returned). The other side of the return-rate coin."
+        label={successLabel}
+        tooltip={successTooltip}
         primary={fmtPct(deliverySuccessPct)}
         footer={<PlainFooter text={`Last ${days} days`} />}
       />
 
       <StatCard
-        label="Cost per Return"
-        tooltip={`Average ${currency} loss on each returned order — forward shipping, reverse shipping, and the unsellable portion of inventory.`}
+        label={costPerReturnLabel}
+        tooltip={
+          isDirect
+            ? `Average ${currency} refunded per refund event in the window.`
+            : `Average ${currency} loss on each returned order — forward shipping, reverse shipping, and the unsellable portion of inventory.`
+        }
         primary={fmtPKR(costPerReturn, currency)}
         footer={<PlainFooter text={`Last ${days} days`} />}
       />

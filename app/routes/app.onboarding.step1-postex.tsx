@@ -15,6 +15,8 @@ import {
   Button,
   Banner,
   FormLayout,
+  Divider,
+  InlineStack,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
@@ -42,6 +44,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
   const formData = await request.formData();
+  const intent = String(formData.get("intent") ?? "");
+
+  // ── Skip-courier branch ───────────────────────────────────────────
+  // For merchants who don't ship via PostEx (international, prepaid).
+  // Flips ingest_mode to 'shopify_direct' so the dashboard reads live
+  // from Shopify Admin API instead of from a PostEx-populated orders
+  // table. No backfill, no token, no historical sync. They advance
+  // directly to step 2 (Meta connect).
+  if (intent === "skip_courier") {
+    const supabase = await getSupabaseForStore(shop);
+    await supabase
+      .from("stores")
+      .update({
+        postex_token: null,
+        ingest_mode: "shopify_direct",
+        last_postex_sync_at: null,
+        onboarding_step: 2,
+      })
+      .eq("store_id", shop);
+    return redirect("/app/onboarding/step2-meta");
+  }
+
   const token = String(formData.get("postex_token") ?? "").trim();
 
   if (!token) {
@@ -133,6 +157,26 @@ export default function Step1PostEx() {
             </Button>
           </FormLayout>
         </Form>
+
+        <Divider />
+
+        <BlockStack gap="200">
+          <Text as="p" variant="bodyMd" tone="subdued">
+            Don't ship via PostEx? You can skip this step and we'll sync
+            your orders directly from Shopify in real time. No courier
+            integration, no in-transit tracking — just live revenue,
+            refunds, and ROAS straight from your store. You can switch
+            modes later in Settings.
+          </Text>
+          <Form method="post">
+            <input type="hidden" name="intent" value="skip_courier" />
+            <InlineStack>
+              <Button submit variant="plain">
+                Skip courier integration
+              </Button>
+            </InlineStack>
+          </Form>
+        </BlockStack>
       </BlockStack>
     </Card>
   );
