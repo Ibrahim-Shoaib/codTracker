@@ -105,9 +105,16 @@ export async function fetchSpend(accessToken, adAccountId, sinceDate, untilDate)
 
 // Like fetchSpend, but converts the result from `accountCurrency` to
 // `storeCurrency` via app/lib/fx.server.js when they differ. Identity
-// passthrough (zero FX work) when they match. On FX failure, returns
-// the raw account-currency amount and logs a warning — better to show
-// a roughly-correct number than to crash the cron.
+// passthrough (zero FX work) when they match.
+//
+// On FX failure (live API down + no cached rate + no inverse-pair rate)
+// THROWS rather than silently returning the raw account-currency
+// amount. The cron's outer try/catch turns the throw into a
+// stores.meta_sync_error banner — better to show "FX unavailable"
+// for one tick than to silently store a USD number into a PKR
+// column and corrupt every ROAS calculation downstream until FX
+// recovers. The 3-tier FX fallback (live → cached → inverse) makes
+// this throw rare in practice.
 export async function fetchSpendInStoreCurrency({
   accessToken,
   adAccountId,
@@ -123,10 +130,9 @@ export async function fetchSpendInStoreCurrency({
   const { convertAmount } = await import("./fx.server.js");
   const c = await convertAmount(accountAmount, accountCurrency, storeCurrency);
   if (c.amount == null) {
-    console.warn(
-      `[meta] FX conversion ${accountCurrency}→${storeCurrency} failed; using raw amount`
+    throw new Error(
+      `FX rate ${accountCurrency}→${storeCurrency} unavailable — refusing to store unconverted spend. Will retry next cron tick.`
     );
-    return accountAmount;
   }
   return c.amount;
 }
@@ -168,6 +174,10 @@ export async function fetchDailySpend(accessToken, adAccountId, sinceDate, until
 // differs. Single FX rate fetched once and applied across all days
 // in the range — FX moves <1% day-to-day so per-day drift is well
 // under the noise floor of merchant-level ad spend.
+//
+// Same fail-loud policy as fetchSpendInStoreCurrency: throws if the
+// FX rate is genuinely unavailable, so the historical-backfill caller
+// can mark sync_error rather than silently mixing currencies.
 export async function fetchDailySpendInStoreCurrency({
   accessToken,
   adAccountId,
@@ -183,10 +193,9 @@ export async function fetchDailySpendInStoreCurrency({
   const { getFxRate } = await import("./fx.server.js");
   const r = await getFxRate(accountCurrency, storeCurrency);
   if (!r?.rate) {
-    console.warn(
-      `[meta] FX rate ${accountCurrency}→${storeCurrency} unavailable; daily spend left in account currency`
+    throw new Error(
+      `FX rate ${accountCurrency}→${storeCurrency} unavailable — refusing to ingest daily spend in wrong currency.`
     );
-    return daily;
   }
   return daily.map((d) => ({ date: d.date, spend: d.spend * r.rate }));
 }
