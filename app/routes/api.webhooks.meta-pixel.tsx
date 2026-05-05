@@ -15,7 +15,6 @@ import {
   findRecentVisitorByIpUa,
   pickBestFbc,
 } from "../lib/visitors.server.js";
-import { recordPurchaseAttribution } from "../lib/attribution.server.js";
 
 // Deterministic event_id for webhook-driven events. Critical for idempotency:
 // Shopify retries any non-2xx webhook with the SAME resource id, so we MUST
@@ -175,12 +174,7 @@ async function handleOrderPaid(shop: string, order: ShopifyOrder) {
   const eventId =
     identityHints.eventId ?? deterministicEventId("purchase", shop, order.id);
 
-  // Prefer total_price (the order's gross amount) over current_total_price.
-  // For COD orders (financial_status=pending), Shopify reports
-  // current_total_price = "0.00" until the customer pays on delivery,
-  // while total_price holds the actual order amount Meta needs for ROAS.
-  // Fall back the other way only when total_price is missing.
-  const value = Number(order.total_price ?? order.current_total_price ?? 0);
+  const value = Number(order.current_total_price ?? order.total_price ?? 0);
   const currency = order.presentment_currency ?? order.currency ?? "USD";
   const contentIds = (order.line_items ?? [])
     .map((li) => li.product_id ? String(li.product_id) : null)
@@ -211,20 +205,6 @@ async function handleOrderPaid(shop: string, order: ShopifyOrder) {
   });
 
   await sendCAPIEventsForShop({ storeId: shop, events: [event] });
-
-  // Record the order ↔ visitor attribution link permanently. Idempotent
-  // on (store_id, order_id), so orders/create + orders/paid retries
-  // collapse to one row. Best-effort: never blocks the webhook ack.
-  await recordPurchaseAttribution({
-    storeId: shop,
-    orderId: order.id,
-    visitorId: recoveredVisitorId ?? null,
-    customerId: customer.externalId ?? null,
-    recoveredVia: lookupSource ?? "none",
-    orderValue: value,
-    currency,
-    orderCreatedAt: order.created_at ?? eventTime,
-  });
 }
 
 // ─── Refund → negative-value Purchase (Custom Event "Refund") ─────────────────

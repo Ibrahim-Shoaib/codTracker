@@ -25,7 +25,6 @@ export default function App() {
           Home
         </Link>
         <Link to="/app/ad-tracking">Ad Tracking</Link>
-        <Link to="/app/attribution">Attribution</Link>
         <Link to="/app/settings">Settings</Link>
       </NavMenu>
       <Outlet />
