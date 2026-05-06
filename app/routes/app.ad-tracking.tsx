@@ -27,7 +27,6 @@ import {
   Divider,
   Link,
   Icon,
-  ProgressBar,
 } from "@shopify/polaris";
 import { CheckCircleIcon, AlertTriangleIcon } from "@shopify/polaris-icons";
 import { TitleBar } from "@shopify/app-bridge-react";
@@ -631,43 +630,53 @@ export default function AdTracking() {
 
           <Layout.Section>
             <Card>
-              <BlockStack gap="300">
-                <InlineStack align="space-between" blockAlign="center">
-                  <Text as="h3" variant="headingMd">
-                    Match strength
-                  </Text>
+              <BlockStack gap="400">
+                <InlineStack align="space-between" blockAlign="start">
+                  <BlockStack gap="100">
+                    <Text as="h3" variant="headingMd">
+                      Match strength
+                    </Text>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Meta's score for how well we identify your customers.
+                    </Text>
+                  </BlockStack>
                   <Badge tone={emqBadgeTone(latestEMQ?.overall_emq)}>
                     {emqBadgeLabel(latestEMQ?.overall_emq)}
                   </Badge>
                 </InlineStack>
+
                 {latestEMQ?.overall_emq != null ? (
-                  <BlockStack gap="200">
-                    <InlineStack align="space-between" blockAlign="center">
-                      <Text as="p" variant="bodySm" tone="subdued">
-                        Meta's score for how well we identify customers
-                      </Text>
-                      <Text as="p" variant="headingLg">
+                  <BlockStack gap="300">
+                    <InlineStack gap="200" blockAlign="baseline">
+                      <span
+                        style={{
+                          fontSize: 36,
+                          fontWeight: 700,
+                          letterSpacing: "-0.02em",
+                          color: emqAccentHex(latestEMQ.overall_emq),
+                          lineHeight: 1,
+                        }}
+                      >
                         {Number(latestEMQ.overall_emq).toFixed(1)}
-                        <Text as="span" variant="bodyMd" tone="subdued">
-                          {" "}/ 10
-                        </Text>
+                      </span>
+                      <Text as="span" variant="bodyMd" tone="subdued">
+                        / 10
                       </Text>
                     </InlineStack>
-                    <ProgressBar
-                      progress={Math.min(
-                        100,
-                        Math.max(0, Number(latestEMQ.overall_emq) * 10)
-                      )}
-                      tone={emqProgressTone(latestEMQ.overall_emq)}
-                    />
+
+                    <MatchStrengthBar score={Number(latestEMQ.overall_emq)} />
+
                     <Text as="p" variant="bodySm" tone="subdued">
                       {emqBadgeHelper(latestEMQ.overall_emq)}
                     </Text>
                   </BlockStack>
                 ) : (
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    {emqBadgeHelper(null)}
-                  </Text>
+                  <BlockStack gap="300">
+                    <MatchStrengthBar score={null} />
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      {emqBadgeHelper(null)}
+                    </Text>
+                  </BlockStack>
                 )}
               </BlockStack>
             </Card>
@@ -1101,16 +1110,127 @@ function emqBadgeTone(
   return "attention";
 }
 
-// Polaris ProgressBar's tone vocabulary doesn't include "info" / "attention",
-// so we map our four EMQ bands onto its three-tone palette instead of reusing
-// emqBadgeTone directly. "primary" reads as a neutral-positive blue.
-function emqProgressTone(
-  score: number | null | undefined,
-): "success" | "primary" | "critical" {
-  if (score == null) return "primary";
-  if (score >= 8) return "success";
-  if (score >= 6) return "primary";
-  return "critical";
+// Solid accent colour matched to each band. Used by the big numeric score so
+// the digits read as a continuation of the bar's colour, not a separate visual
+// element. Hex picked from Tailwind's 600-shade palette so it stays legible
+// against the white Polaris card background regardless of band.
+function emqAccentHex(score: number | null | undefined): string {
+  if (score == null) return "#475569"; // slate-600
+  if (score >= 8) return "#15803d"; // green-700
+  if (score >= 6) return "#1d4ed8"; // blue-700
+  return "#b91c1c"; // red-700
+}
+
+// Custom modern progress bar. Polaris ProgressBar reads as flat next to
+// dashboards merchants spend their day in (Stripe / Vercel / Linear), so we
+// render our own pill-shaped track with a band-aware gradient fill, an inset
+// shadow on the track for depth, and a subtle outer-shadow + top-highlight
+// on the fill that makes the colour feel solid rather than painted-on. The
+// 600ms ease-out transition runs once on mount so the bar feels alive on
+// page load. Tick marks at 6 and 8 show the band boundaries inline.
+function MatchStrengthBar({
+  score,
+}: {
+  score: number | null;
+}) {
+  const pct = score == null ? 0 : Math.min(100, Math.max(0, score * 10));
+  const fillBackground =
+    score == null
+      ? "transparent"
+      : score >= 8
+        ? "linear-gradient(90deg, #15803d 0%, #22c55e 100%)"
+        : score >= 6
+          ? "linear-gradient(90deg, #1d4ed8 0%, #3b82f6 100%)"
+          : "linear-gradient(90deg, #b91c1c 0%, #ef4444 100%)";
+
+  return (
+    <div style={{ width: "100%" }}>
+      <div
+        role="progressbar"
+        aria-valuenow={score ?? undefined}
+        aria-valuemin={0}
+        aria-valuemax={10}
+        style={{
+          position: "relative",
+          width: "100%",
+          height: 14,
+          background: "#eef2f7",
+          borderRadius: 9999,
+          overflow: "hidden",
+          boxShadow: "inset 0 1px 2px rgba(15, 23, 42, 0.08)",
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            background: fillBackground,
+            borderRadius: 9999,
+            transition: "width 600ms cubic-bezier(0.16, 1, 0.3, 1)",
+            boxShadow:
+              score == null
+                ? undefined
+                : "0 1px 3px rgba(15, 23, 42, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
+          }}
+        />
+        {/* Band boundary tick marks at 60% (Good) and 80% (Excellent). Drawn
+            on top of the fill at low opacity so they stay visible whether the
+            fill has reached them or not. */}
+        <div
+          style={{
+            position: "absolute",
+            left: "60%",
+            top: 0,
+            bottom: 0,
+            width: 1,
+            background: "rgba(15, 23, 42, 0.2)",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: "80%",
+            top: 0,
+            bottom: 0,
+            width: 1,
+            background: "rgba(15, 23, 42, 0.2)",
+          }}
+        />
+      </div>
+      {/* Inline scale legend — three labels positioned under the band ticks. */}
+      <div
+        style={{
+          position: "relative",
+          height: 16,
+          marginTop: 6,
+          fontSize: 11,
+          color: "#64748b",
+          letterSpacing: "0.01em",
+        }}
+      >
+        <span style={{ position: "absolute", left: 0 }}>0</span>
+        <span
+          style={{
+            position: "absolute",
+            left: "60%",
+            transform: "translateX(-50%)",
+          }}
+        >
+          6 · Good
+        </span>
+        <span
+          style={{
+            position: "absolute",
+            left: "80%",
+            transform: "translateX(-50%)",
+          }}
+        >
+          8 · Excellent
+        </span>
+        <span style={{ position: "absolute", right: 0 }}>10</span>
+      </div>
+    </div>
+  );
 }
 
 function emqBadgeLabel(score: number | null | undefined): string {
