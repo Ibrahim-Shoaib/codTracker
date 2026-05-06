@@ -666,16 +666,12 @@ export default function AdTracking() {
 
                     <MatchStrengthBar score={Number(latestEMQ.overall_emq)} />
 
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      {emqBadgeHelper(latestEMQ.overall_emq)}
-                    </Text>
+                    <MatchStrengthHelper score={Number(latestEMQ.overall_emq)} />
                   </BlockStack>
                 ) : (
                   <BlockStack gap="300">
                     <MatchStrengthBar score={null} />
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      {emqBadgeHelper(null)}
-                    </Text>
+                    <MatchStrengthHelper score={null} />
                   </BlockStack>
                 )}
               </BlockStack>
@@ -1121,6 +1117,40 @@ function emqAccentHex(score: number | null | undefined): string {
   return "#b91c1c"; // red-700
 }
 
+// Status-pulse dot + one-line helper. The dot picks up the band's accent
+// colour so the helper line reads as part of the bar rather than a separate
+// block of copy — keeps the section calm but still scanned.
+function MatchStrengthHelper({
+  score,
+}: {
+  score: number | null;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: 9999,
+          background: emqAccentHex(score),
+          boxShadow: `0 0 0 3px ${emqAccentHex(score)}1f`,
+          flexShrink: 0,
+        }}
+      />
+      <Text as="p" variant="bodySm" tone="subdued">
+        {emqBadgeHelper(score)}
+      </Text>
+    </div>
+  );
+}
+
 // Custom modern progress bar. Polaris ProgressBar reads as flat next to
 // dashboards merchants spend their day in (Stripe / Vercel / Linear), so we
 // render our own pill-shaped track with a band-aware gradient fill, an inset
@@ -1241,14 +1271,8 @@ function emqBadgeLabel(score: number | null | undefined): string {
 }
 
 function emqBadgeHelper(score: number | null | undefined): string {
-  if (score == null) {
-    return "Match strength updates daily once events are flowing — typically settles within 7 days.";
-  }
-  if (score >= 8) {
-    return "Meta is matching conversions back to customers at the top of the industry — your ad delivery is getting the strongest possible signal.";
-  }
-  if (score >= 6) {
-    return "Match strength is solid. It usually creeps higher over the first 2-3 weeks as we accumulate visitor history.";
-  }
-  return "Match strength is still warming up. This typically settles within 7 days as more orders flow through — no action needed on your side.";
+  if (score == null) return "Calibrating — first reading in a day or two.";
+  if (score >= 8) return "Top of the industry.";
+  if (score >= 6) return "Solid. We keep tuning — climbs over the next 2-3 weeks.";
+  return "Optimizing. Usually settles within a week.";
 }
