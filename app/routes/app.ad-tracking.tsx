@@ -22,7 +22,7 @@ import {
   Banner,
   Badge,
   Select,
-  ProgressBar,
+  Collapsible,
   EmptyState,
   Divider,
   Link,
@@ -46,16 +46,28 @@ import {
 import { buildUserData } from "../lib/meta-hash.server.js";
 
 type DatasetOption = { id: string; name: string; owned?: boolean; last_fired_time?: string };
-type RecentEvent = {
-  id: number;
-  event_id: string;
-  event_name: string;
-  status: "sent" | "failed";
-  trace_id: string | null;
-  http_status: number | null;
-  error_msg: string | null;
-  sent_at: string;
+
+type TodayStats = {
+  /** Distinct Purchase event_ids that landed at Meta with status=sent today (PKT). */
+  trackedCount: number;
+  /** Distinct Purchase event_ids that have only-failed attempts today — i.e. retrying. */
+  retryingCount: number;
 };
+
+// Pakistan-default day boundary. Most merchants on this app are PK COD stores;
+// a non-PK store sees their day boundary off by a few hours, which is acceptable
+// noise for a top-level "today" counter (we'd swap to per-store timezone if a
+// non-PK merchant ever asks).
+const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
+function pktTodayWindowUtc(): { startIso: string; endIso: string } {
+  const nowUtcMs = Date.now();
+  const todayPkt = new Date(nowUtcMs + PKT_OFFSET_MS).toISOString().slice(0, 10);
+  const startUtcMs = new Date(`${todayPkt}T00:00:00Z`).getTime() - PKT_OFFSET_MS;
+  return {
+    startIso: new Date(startUtcMs).toISOString(),
+    endIso: new Date(startUtcMs + 24 * 3600 * 1000).toISOString(),
+  };
+}
 
 // ─── Theme app embed activation deep link ────────────────────────────────────
 //
@@ -101,7 +113,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const supabase = await getSupabaseForStore(shop);
 
-  const [connRes, recentRes, emqRes] = await Promise.all([
+  const { startIso, endIso } = pktTodayWindowUtc();
+
+  const [connRes, todayRes, emqRes] = await Promise.all([
     supabase
       .from("meta_pixel_connections")
       .select(
@@ -109,15 +123,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       )
       .eq("store_id", shop)
       .maybeSingle(),
+    // Today's Purchase rows only — small, indexed query that powers the hero.
+    // We dedupe to distinct event_ids in JS because Postgres DISTINCT through
+    // PostgREST is awkward and the row count is tiny (~10s/day for active stores).
     supabase
       .from("capi_delivery_log")
-      .select("id, event_id, event_name, status, trace_id, http_status, error_msg, sent_at")
+      .select("event_id, status")
       .eq("store_id", shop)
-      .order("sent_at", { ascending: false })
-      .limit(50),
+      .eq("event_name", "Purchase")
+      .gte("sent_at", startIso)
+      .lt("sent_at", endIso),
     supabase
       .from("emq_snapshots")
-      .select("captured_at, overall_emq, per_event")
+      .select("captured_at, overall_emq")
       .eq("store_id", shop)
       .order("captured_at", { ascending: false })
       .limit(1),
@@ -125,6 +143,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const conn = connRes.data;
   const latestEMQ = emqRes.data?.[0] ?? null;
+
+  // Distinct Purchase event_ids today: at-least-one-sent → tracked, only-failed → retrying.
+  const sentIds = new Set<string>();
+  const allIds = new Set<string>();
+  for (const r of todayRes.data ?? []) {
+    allIds.add(r.event_id);
+    if (r.status === "sent") sentIds.add(r.event_id);
+  }
+  const retryingCount = [...allIds].filter((id) => !sentIds.has(id)).length;
+  const todayStats: TodayStats = {
+    trackedCount: sentIds.size,
+    retryingCount,
+  };
 
   return json({
     shop,
@@ -135,7 +166,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           manualEntryRequired,
         }
       : null,
-    recentEvents: (recentRes.data ?? []) as RecentEvent[],
+    todayStats,
     latestEMQ,
   });
 };
@@ -405,7 +436,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AdTracking() {
-  const { shop, connection, pending, recentEvents, latestEMQ } =
+  const { shop, connection, pending, todayStats, latestEMQ } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
@@ -418,6 +449,9 @@ export default function AdTracking() {
   );
   const [testCode, setTestCode] = useState("");
   const testCodeValid = /^TEST[A-Z0-9]+$/i.test(testCode.trim());
+  // Connection settings collapse open/close. Defaults closed when everything
+  // is healthy; we auto-open below when the storefront embed needs activation.
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Open the popup and navigate it to Meta when the action returns the URL.
   useEffect(() => {
@@ -501,12 +535,51 @@ export default function AdTracking() {
     return () => clearTimeout(t);
   }, [embedFetcher, connection?.status]);
 
-  // ── Connected: status surface + recent events + EMQ ────────────────────────
+  // ── Connected: hero + Connection settings collapsible ─────────────────────
   if (connection?.status === "active") {
     const embed = embedFetcher.data;
     const metaPixelActive = embed?.metaPixel === true;
     const cartRelayActive = embed?.cartRelay === true;
     const everyEmbedActive = metaPixelActive && cartRelayActive;
+
+    // Drive the hero's tone + copy from observable signals only — no claims
+    // we can't back. "Tracking" means CAPI deliveries are green; pixel embed
+    // is a separate (optional but recommended) signal we surface inline.
+    const tracked = todayStats.trackedCount;
+    const retrying = todayStats.retryingCount;
+    const lastSent = connection.last_event_sent_at;
+
+    let heroTitle: string;
+    let heroSubtitle: string;
+    let heroBadge: { label: string; tone: "success" | "attention" | "warning" };
+    if (retrying > 0) {
+      heroTitle = `${tracked} order${tracked === 1 ? "" : "s"} tracked, ${retrying} retrying`;
+      heroSubtitle =
+        "Meta returned a transient error on the retrying events. They'll auto-resend over the next 30 minutes — no action needed.";
+      heroBadge = { label: "Recovering", tone: "warning" };
+    } else if (tracked > 0) {
+      heroTitle = `Tracking is healthy`;
+      heroSubtitle = `${tracked} order${tracked === 1 ? "" : "s"} sent to Meta today${
+        lastSent ? ` · last ${formatRelative(lastSent)}` : ""
+      }.`;
+      heroBadge = { label: "Healthy", tone: "success" };
+    } else if (lastSent) {
+      heroTitle = `Tracking is armed`;
+      heroSubtitle = `No orders today yet. Last event sent ${formatRelative(lastSent)}.`;
+      heroBadge = { label: "Connected", tone: "success" };
+    } else {
+      heroTitle = `Tracking is armed`;
+      heroSubtitle = `Your first order will start the data flowing.`;
+      heroBadge = { label: "Connected", tone: "success" };
+    }
+
+    // Auto-open Connection settings when the storefront embed needs the
+    // merchant's attention. We compute this each render rather than on mount
+    // because the polling fetcher might detect activation while the page is
+    // open — at which point we want to leave the panel closed unless the user
+    // explicitly opened it.
+    const needsEmbedAction = embed != null && !everyEmbedActive;
+    const settingsActuallyOpen = settingsOpen || needsEmbedAction;
 
     return (
       <Page>
@@ -514,209 +587,43 @@ export default function AdTracking() {
         <Layout>
           <Layout.Section>
             <Card>
-              <BlockStack gap="400">
-                <InlineStack align="space-between">
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="start" gap="400">
                   <BlockStack gap="100">
                     <Text as="h2" variant="headingLg">
-                      Pixel Tracking is live
+                      {heroTitle}
                     </Text>
                     <Text as="p" variant="bodyMd" tone="subdued">
-                      Sending purchase events server-side to Meta with full
-                      identity. {connection.last_event_sent_at
-                        ? `Last event sent ${formatRelative(connection.last_event_sent_at)}.`
-                        : "No events sent yet — your next order will fire."}
+                      {heroSubtitle}
                     </Text>
                   </BlockStack>
-                  <Badge tone="success">Connected</Badge>
+                  <Badge tone={heroBadge.tone}>{heroBadge.label}</Badge>
                 </InlineStack>
 
-                <Divider />
-
-                {/* Three-line status surface — replaces the old "warning if no
-                    events yet" banner. Always visible, always informative. */}
-                <BlockStack gap="200">
-                  <StatusRow
-                    label="Meta CAPI"
-                    sublabel="Server-side events flow on every order, refund, and checkout."
-                    active
-                  />
-                  <StatusRow
-                    label="Browser pixel"
-                    sublabel={
-                      metaPixelActive
-                        ? "Detected on storefront. Pixel Helper will see events here."
-                        : embed?.reason
-                        ? "Open theme editor and click Save (top-right) — takes 5 seconds. We'll detect it automatically."
-                        : "Detecting…"
-                    }
-                    active={metaPixelActive}
-                    actionLabel={
-                      metaPixelActive ? undefined : "Open theme editor"
-                    }
-                    actionUrl={
-                      metaPixelActive ? undefined : buildThemeActivationUrl(shop)
-                    }
-                  />
-                  <StatusRow
-                    label="Identity relay"
-                    sublabel={
-                      cartRelayActive
-                        ? "fbp/fbc/fbclid are forwarded onto every order — match quality maximized."
-                        : "Boosts EMQ from ~7 to ~9. One-click activate from the same theme editor."
-                    }
-                    active={cartRelayActive}
-                  />
-                </BlockStack>
-
-                {!everyEmbedActive && (
-                  <Banner tone="info">
+                {needsEmbedAction && (
+                  <Banner
+                    tone="info"
+                    action={{
+                      content: "Open theme editor",
+                      url: buildThemeActivationUrl(shop),
+                      external: true,
+                    }}
+                  >
                     <Text as="p" variant="bodyMd">
-                      Server-side tracking already works — your next order will
-                      fire a Purchase event to Meta. Enabling the storefront
-                      embeds is optional but pushes Event Match Quality from
-                      ~7 to ~9 (Meta's gold standard).
+                      Server-side tracking is active — your storefront pixel is
+                      not yet enabled. Click Open theme editor → Save to turn
+                      it on (5 seconds). We'll detect it automatically.
                     </Text>
                   </Banner>
                 )}
 
-                <Divider />
-
-                <BlockStack gap="200">
-                  <Text as="h3" variant="headingSm">Connected pixel</Text>
-                  <Text as="p" variant="bodyMd">
-                    {connection.dataset_name ?? "(unnamed)"} · ID {connection.dataset_id}
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Connected to{" "}
+                  <Text as="span" fontWeight="semibold">
+                    {connection.dataset_name ?? `Pixel ${connection.dataset_id}`}
                   </Text>
-                </BlockStack>
-
-                <BlockStack gap="200">
-                  <Text as="h3" variant="headingSm">
-                    Send test events
-                  </Text>
-                  <Text as="p" variant="bodyMd" tone="subdued">
-                    Paste your current Test Event Code from{" "}
-                    <Link
-                      url={`https://www.facebook.com/events_manager2/list/dataset/${connection.dataset_id}/test_events`}
-                      target="_blank"
-                    >
-                      Events Manager → Test Events
-                    </Link>
-                    . The code rotates and looks like{" "}
-                    <Text as="span" fontWeight="semibold">
-                      TEST30616
-                    </Text>
-                    . Without it, the events fire safely (excluded from
-                    production) but you won't see them in the dashboard.
-                  </Text>
-                  <Form method="post">
-                    <input type="hidden" name="intent" value="test_event" />
-                    <input type="hidden" name="test_code" value={testCode.trim()} />
-                    <InlineStack gap="200" align="start" blockAlign="end">
-                      <div style={{ minWidth: 220 }}>
-                        <TextField
-                          label="Test Event Code"
-                          labelHidden
-                          autoComplete="off"
-                          placeholder="TEST30616"
-                          value={testCode}
-                          onChange={setTestCode}
-                          error={
-                            testCode.length > 0 && !testCodeValid
-                              ? "Must start with TEST followed by digits/letters"
-                              : undefined
-                          }
-                        />
-                      </div>
-                      <Button
-                        submit
-                        disabled={!testCodeValid}
-                        loading={
-                          submitting &&
-                          navigation.formData?.get("intent") === "test_event"
-                        }
-                      >
-                        Send 7 test events
-                      </Button>
-                    </InlineStack>
-                  </Form>
-                </BlockStack>
-
-                <InlineStack gap="200">
-                  <Form method="post">
-                    <input type="hidden" name="intent" value="disconnect" />
-                    <Button
-                      submit
-                      tone="critical"
-                      variant="plain"
-                      loading={submitting && navigation.formData?.get("intent") === "disconnect"}
-                    >
-                      Disconnect
-                    </Button>
-                  </Form>
-                </InlineStack>
-
-                {actionData && "testResult" in actionData && (() => {
-                  const tr = actionData.testResult as
-                    | { ok: true; eventsReceived?: number; traceId?: string }
-                    | { ok: false; reason?: string }
-                    | undefined;
-                  if (!tr) return null;
-                  return (
-                    <Banner tone={tr.ok ? "success" : "warning"}>
-                      {tr.ok
-                        ? `${
-                            "eventsReceived" in tr && tr.eventsReceived
-                              ? tr.eventsReceived
-                              : 7
-                          } test events accepted by Meta — check Events Manager → Test Events${
-                            "traceId" in tr && tr.traceId ? ` · trace ${tr.traceId}` : ""
-                          }.`
-                        : `Test events failed: ${("reason" in tr && tr.reason) || "unknown error"}.`}
-                    </Banner>
-                  );
-                })()}
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="400">
-                <Text as="h3" variant="headingMd">Event Match Quality</Text>
-                {latestEMQ?.overall_emq != null ? (
-                  <BlockStack gap="200">
-                    <InlineStack align="space-between">
-                      <Text as="p" variant="bodyMd">
-                        Overall EMQ
-                      </Text>
-                      <Text as="p" variant="headingLg">
-                        {Number(latestEMQ.overall_emq).toFixed(1)} / 10
-                      </Text>
-                    </InlineStack>
-                    <ProgressBar
-                      progress={Math.min(
-                        100,
-                        Math.max(0, Number(latestEMQ.overall_emq) * 10)
-                      )}
-                      tone={
-                        Number(latestEMQ.overall_emq) >= 7
-                          ? "success"
-                          : Number(latestEMQ.overall_emq) >= 5
-                          ? "primary"
-                          : "critical"
-                      }
-                    />
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      EMQ is Meta's measure of how well we identify customers.
-                      7+ is good; 8+ is excellent. Collect phone at checkout to
-                      improve.
-                    </Text>
-                  </BlockStack>
-                ) : (
-                  <Text as="p" variant="bodyMd" tone="subdued">
-                    EMQ updates daily once events are flowing. Check back
-                    tomorrow.
-                  </Text>
-                )}
+                  {connection.dataset_name ? ` · ID ${connection.dataset_id}` : ""}
+                </Text>
               </BlockStack>
             </Card>
           </Layout.Section>
@@ -724,39 +631,173 @@ export default function AdTracking() {
           <Layout.Section>
             <Card>
               <BlockStack gap="300">
-                <Text as="h3" variant="headingMd">Recent events</Text>
-                {recentEvents.length === 0 ? (
-                  <Text as="p" variant="bodyMd" tone="subdued">
-                    No events yet — fire a test event above or wait for your
-                    next purchase.
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text as="h3" variant="headingMd">
+                    Connection settings
                   </Text>
-                ) : (
-                  <BlockStack gap="200">
-                    {recentEvents.slice(0, 25).map((e) => (
-                      <InlineStack key={e.id} align="space-between">
-                        <InlineStack gap="200">
-                          <Badge
-                            tone={e.status === "sent" ? "success" : "critical"}
-                          >
-                            {e.event_name}
-                          </Badge>
-                          <Text as="span" variant="bodySm" tone="subdued">
-                            {formatRelative(e.sent_at)}
-                          </Text>
-                        </InlineStack>
-                        <Text
-                          as="span"
-                          variant="bodySm"
-                          tone={e.status === "sent" ? "subdued" : "critical"}
-                        >
-                          {e.status === "sent"
-                            ? `trace ${(e.trace_id ?? "").slice(0, 12) || "—"}`
-                            : e.error_msg ?? `HTTP ${e.http_status ?? "?"}`}
+                  <Button
+                    variant="plain"
+                    onClick={() => setSettingsOpen((v) => !v)}
+                    ariaExpanded={settingsActuallyOpen}
+                    ariaControls="connection-settings-content"
+                  >
+                    {settingsActuallyOpen ? "Hide" : "Show"}
+                  </Button>
+                </InlineStack>
+
+                <Collapsible
+                  open={settingsActuallyOpen}
+                  id="connection-settings-content"
+                  transition={{ duration: "150ms", timingFunction: "ease-in-out" }}
+                >
+                  <BlockStack gap="400">
+                    <BlockStack gap="200">
+                      <StatusRow
+                        label="Meta CAPI"
+                        sublabel="Server-side events flow on every order, refund, and checkout."
+                        active
+                      />
+                      <StatusRow
+                        label="Browser pixel"
+                        sublabel={
+                          metaPixelActive
+                            ? "Detected on storefront. Pixel Helper will see events here."
+                            : embed?.reason
+                            ? "Open theme editor and click Save (top-right) — takes 5 seconds. We'll detect it automatically."
+                            : "Detecting…"
+                        }
+                        active={metaPixelActive}
+                        actionLabel={
+                          metaPixelActive ? undefined : "Open theme editor"
+                        }
+                        actionUrl={
+                          metaPixelActive ? undefined : buildThemeActivationUrl(shop)
+                        }
+                      />
+                      <StatusRow
+                        label="Identity relay"
+                        sublabel={
+                          cartRelayActive
+                            ? "fbp/fbc/fbclid are forwarded onto every order — match quality maximized."
+                            : "Activated alongside the browser pixel from the same theme editor."
+                        }
+                        active={cartRelayActive}
+                      />
+                    </BlockStack>
+
+                    <Divider />
+
+                    <BlockStack gap="200">
+                      <InlineStack align="space-between" blockAlign="center">
+                        <Text as="h4" variant="headingSm">
+                          Match strength
                         </Text>
+                        <Badge tone={emqBadgeTone(latestEMQ?.overall_emq)}>
+                          {emqBadgeLabel(latestEMQ?.overall_emq)}
+                        </Badge>
                       </InlineStack>
-                    ))}
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        {emqBadgeHelper(latestEMQ?.overall_emq)}
+                      </Text>
+                    </BlockStack>
+
+                    <Divider />
+
+                    <BlockStack gap="200">
+                      <Text as="h4" variant="headingSm">
+                        Send test events
+                      </Text>
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        Paste your Test Event Code from{" "}
+                        <Link
+                          url={`https://www.facebook.com/events_manager2/list/dataset/${connection.dataset_id}/test_events`}
+                          target="_blank"
+                        >
+                          Events Manager → Test Events
+                        </Link>
+                        . Looks like{" "}
+                        <Text as="span" fontWeight="semibold">
+                          TEST30616
+                        </Text>
+                        .
+                      </Text>
+                      <Form method="post">
+                        <input type="hidden" name="intent" value="test_event" />
+                        <input type="hidden" name="test_code" value={testCode.trim()} />
+                        <InlineStack gap="200" align="start" blockAlign="end">
+                          <div style={{ minWidth: 220 }}>
+                            <TextField
+                              label="Test Event Code"
+                              labelHidden
+                              autoComplete="off"
+                              placeholder="TEST30616"
+                              value={testCode}
+                              onChange={setTestCode}
+                              error={
+                                testCode.length > 0 && !testCodeValid
+                                  ? "Must start with TEST followed by digits/letters"
+                                  : undefined
+                              }
+                            />
+                          </div>
+                          <Button
+                            submit
+                            disabled={!testCodeValid}
+                            loading={
+                              submitting &&
+                              navigation.formData?.get("intent") === "test_event"
+                            }
+                          >
+                            Send 7 test events
+                          </Button>
+                        </InlineStack>
+                      </Form>
+                      {actionData && "testResult" in actionData && (() => {
+                        const tr = actionData.testResult as
+                          | { ok: true; eventsReceived?: number; traceId?: string }
+                          | { ok: false; reason?: string }
+                          | undefined;
+                        if (!tr) return null;
+                        return (
+                          <Banner tone={tr.ok ? "success" : "warning"}>
+                            {tr.ok
+                              ? `${
+                                  "eventsReceived" in tr && tr.eventsReceived
+                                    ? tr.eventsReceived
+                                    : 7
+                                } test events accepted by Meta — check Events Manager → Test Events${
+                                  "traceId" in tr && tr.traceId
+                                    ? ` · trace ${tr.traceId}`
+                                    : ""
+                                }.`
+                              : `Test events failed: ${
+                                  ("reason" in tr && tr.reason) || "unknown error"
+                                }.`}
+                          </Banner>
+                        );
+                      })()}
+                    </BlockStack>
+
+                    <Divider />
+
+                    <InlineStack gap="200">
+                      <Form method="post">
+                        <input type="hidden" name="intent" value="disconnect" />
+                        <Button
+                          submit
+                          tone="critical"
+                          variant="plain"
+                          loading={
+                            submitting &&
+                            navigation.formData?.get("intent") === "disconnect"
+                          }
+                        >
+                          Disconnect
+                        </Button>
+                      </Form>
+                    </InlineStack>
                   </BlockStack>
-                )}
+                </Collapsible>
               </BlockStack>
             </Card>
           </Layout.Section>
@@ -1016,4 +1057,37 @@ function formatRelative(isoString: string): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   return `${d}d ago`;
+}
+
+// EMQ presentation: merchants don't read raw 0-10 scores well, and a low
+// number reads as "this app is broken" when it's actually just identity-
+// signal warm-up. We bucket into qualitative bands and pair each with a
+// reassuring helper line that frames warm-up as expected behaviour.
+function emqBadgeTone(
+  score: number | null | undefined,
+): "success" | "info" | "attention" | "new" {
+  if (score == null) return "new";
+  if (score >= 8) return "success";
+  if (score >= 6) return "info";
+  return "attention";
+}
+
+function emqBadgeLabel(score: number | null | undefined): string {
+  if (score == null) return "Calibrating";
+  if (score >= 8) return "Excellent";
+  if (score >= 6) return "Good";
+  return "Improving";
+}
+
+function emqBadgeHelper(score: number | null | undefined): string {
+  if (score == null) {
+    return "Match strength updates daily once events are flowing — typically settles within 7 days.";
+  }
+  if (score >= 8) {
+    return "Meta is matching conversions back to customers at the top of the industry — your ad delivery is getting the strongest possible signal.";
+  }
+  if (score >= 6) {
+    return "Match strength is solid. It usually creeps higher over the first 2-3 weeks as we accumulate visitor history.";
+  }
+  return "Match strength is still warming up. This typically settles within 7 days as more orders flow through — no action needed on your side.";
 }
