@@ -27,6 +27,7 @@ import {
   Divider,
   Link,
   Icon,
+  ProgressBar,
 } from "@shopify/polaris";
 import { CheckCircleIcon, AlertTriangleIcon } from "@shopify/polaris-icons";
 import { TitleBar } from "@shopify/app-bridge-react";
@@ -633,6 +634,50 @@ export default function AdTracking() {
               <BlockStack gap="300">
                 <InlineStack align="space-between" blockAlign="center">
                   <Text as="h3" variant="headingMd">
+                    Match strength
+                  </Text>
+                  <Badge tone={emqBadgeTone(latestEMQ?.overall_emq)}>
+                    {emqBadgeLabel(latestEMQ?.overall_emq)}
+                  </Badge>
+                </InlineStack>
+                {latestEMQ?.overall_emq != null ? (
+                  <BlockStack gap="200">
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        Meta's score for how well we identify customers
+                      </Text>
+                      <Text as="p" variant="headingLg">
+                        {Number(latestEMQ.overall_emq).toFixed(1)}
+                        <Text as="span" variant="bodyMd" tone="subdued">
+                          {" "}/ 10
+                        </Text>
+                      </Text>
+                    </InlineStack>
+                    <ProgressBar
+                      progress={Math.min(
+                        100,
+                        Math.max(0, Number(latestEMQ.overall_emq) * 10)
+                      )}
+                      tone={emqProgressTone(latestEMQ.overall_emq)}
+                    />
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      {emqBadgeHelper(latestEMQ.overall_emq)}
+                    </Text>
+                  </BlockStack>
+                ) : (
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    {emqBadgeHelper(null)}
+                  </Text>
+                )}
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text as="h3" variant="headingMd">
                     Connection settings
                   </Text>
                   <Button
@@ -683,22 +728,6 @@ export default function AdTracking() {
                         }
                         active={cartRelayActive}
                       />
-                    </BlockStack>
-
-                    <Divider />
-
-                    <BlockStack gap="200">
-                      <InlineStack align="space-between" blockAlign="center">
-                        <Text as="h4" variant="headingSm">
-                          Match strength
-                        </Text>
-                        <Badge tone={emqBadgeTone(latestEMQ?.overall_emq)}>
-                          {emqBadgeLabel(latestEMQ?.overall_emq)}
-                        </Badge>
-                      </InlineStack>
-                      <Text as="p" variant="bodySm" tone="subdued">
-                        {emqBadgeHelper(latestEMQ?.overall_emq)}
-                      </Text>
                     </BlockStack>
 
                     <Divider />
@@ -1070,6 +1099,18 @@ function emqBadgeTone(
   if (score >= 8) return "success";
   if (score >= 6) return "info";
   return "attention";
+}
+
+// Polaris ProgressBar's tone vocabulary doesn't include "info" / "attention",
+// so we map our four EMQ bands onto its three-tone palette instead of reusing
+// emqBadgeTone directly. "primary" reads as a neutral-positive blue.
+function emqProgressTone(
+  score: number | null | undefined,
+): "success" | "primary" | "critical" {
+  if (score == null) return "primary";
+  if (score >= 8) return "success";
+  if (score >= 6) return "primary";
+  return "critical";
 }
 
 function emqBadgeLabel(score: number | null | undefined): string {
