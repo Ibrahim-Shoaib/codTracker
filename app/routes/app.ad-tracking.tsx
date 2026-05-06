@@ -54,6 +54,13 @@ type TodayStats = {
   retryingCount: number;
 };
 
+type Channel = "facebook_ads" | "instagram_ads" | "direct_organic";
+
+type AttributionRow = {
+  channel: Channel;
+  attributed_at: string;
+};
+
 // Pakistan-default day boundary. Most merchants on this app are PK COD stores;
 // a non-PK store sees their day boundary off by a few hours, which is acceptable
 // noise for a top-level "today" counter (we'd swap to per-store timezone if a
@@ -114,8 +121,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const supabase = await getSupabaseForStore(shop);
 
   const { startIso, endIso } = pktTodayWindowUtc();
+  // Pull the full 30 days of attribution rows once. The Today/7d/30d tabs
+  // filter client-side from this single payload — saves a round-trip per
+  // tab click and keeps the loader query count bounded.
+  const thirtyDaysAgoIso = new Date(
+    Date.now() - 30 * 24 * 3600 * 1000
+  ).toISOString();
 
-  const [connRes, todayRes, emqRes] = await Promise.all([
+  const [connRes, todayRes, emqRes, attributionRes] = await Promise.all([
     supabase
       .from("meta_pixel_connections")
       .select(
@@ -139,6 +152,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       .eq("store_id", shop)
       .order("captured_at", { ascending: false })
       .limit(1),
+    // Last 30 days of attribution. Indexed on (store_id, attributed_at DESC),
+    // capped at 30 days by the nightly trim — for a 1000-orders/month store
+    // this is at most a few thousand small rows. Sub-50ms.
+    supabase
+      .from("order_attribution")
+      .select("channel, attributed_at")
+      .eq("store_id", shop)
+      .gte("attributed_at", thirtyDaysAgoIso)
+      .order("attributed_at", { ascending: false }),
   ]);
 
   const conn = connRes.data;
@@ -168,6 +190,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       : null,
     todayStats,
     latestEMQ,
+    attribution: (attributionRes.data ?? []) as AttributionRow[],
   });
 };
 
@@ -436,7 +459,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AdTracking() {
-  const { shop, connection, pending, todayStats, latestEMQ } =
+  const { shop, connection, pending, todayStats, latestEMQ, attribution } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
@@ -452,6 +475,10 @@ export default function AdTracking() {
   // Connection settings collapse open/close. Defaults closed when everything
   // is healthy; we auto-open below when the storefront embed needs activation.
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Channels card window: defaults to today, never causes a refetch — the
+  // loader pulls 30 days once and we group client-side.
+  const [channelWindow, setChannelWindow] =
+    useState<"today" | "7d" | "30d">("today");
 
   // Open the popup and navigate it to Meta when the action returns the URL.
   useEffect(() => {
@@ -657,6 +684,14 @@ export default function AdTracking() {
                 </div>
               </BlockStack>
             </Card>
+          </Layout.Section>
+
+          <Layout.Section>
+            <ChannelsCard
+              attribution={attribution}
+              window={channelWindow}
+              setWindow={setChannelWindow}
+            />
           </Layout.Section>
 
           <Layout.Section>
@@ -1064,6 +1099,316 @@ export default function AdTracking() {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// Channel display metadata. Single source of truth for label, icon path,
+// and accent colour — anything that visually represents a channel reads
+// from this map. Changing the icon or colour for, say, Facebook Ads only
+// needs editing this object once.
+const CHANNEL_META: Record<
+  Channel,
+  { label: string; iconUrl: string; accent: string; iconBg: string }
+> = {
+  facebook_ads: {
+    label: "Facebook Ads",
+    iconUrl: "/logos/fb.svg",
+    accent: "#0866ff",
+    iconBg: "#eff6ff",
+  },
+  instagram_ads: {
+    label: "Instagram Ads",
+    iconUrl: "/logos/insta.svg",
+    accent: "#d6249f",
+    iconBg: "#fdf2f8",
+  },
+  direct_organic: {
+    label: "Direct / Organic",
+    iconUrl: "/logos/organic.svg",
+    accent: "#475569",
+    iconBg: "#f1f5f9",
+  },
+};
+const CHANNEL_ORDER: Channel[] = [
+  "facebook_ads",
+  "instagram_ads",
+  "direct_organic",
+];
+
+const WINDOW_OPTIONS: Array<{ value: "today" | "7d" | "30d"; label: string }> = [
+  { value: "today", label: "Today" },
+  { value: "7d", label: "7 days" },
+  { value: "30d", label: "30 days" },
+];
+
+// Bucket attribution rows into the active window using PKT day boundaries
+// for "today" and rolling 7/30-day windows for the others. Pure function so
+// the tab switch stays cheap (zero queries, just a recompute).
+function bucketAttribution(
+  rows: AttributionRow[],
+  windowKey: "today" | "7d" | "30d"
+): { totals: Record<Channel, number>; total: number } {
+  let lowerBoundMs: number;
+  if (windowKey === "today") {
+    const { startIso } = pktTodayWindowUtc();
+    lowerBoundMs = new Date(startIso).getTime();
+  } else if (windowKey === "7d") {
+    lowerBoundMs = Date.now() - 7 * 24 * 3600 * 1000;
+  } else {
+    lowerBoundMs = Date.now() - 30 * 24 * 3600 * 1000;
+  }
+  const totals: Record<Channel, number> = {
+    facebook_ads: 0,
+    instagram_ads: 0,
+    direct_organic: 0,
+  };
+  let total = 0;
+  for (const r of rows) {
+    if (new Date(r.attributed_at).getTime() < lowerBoundMs) continue;
+    totals[r.channel] += 1;
+    total += 1;
+  }
+  return { totals, total };
+}
+
+function ChannelsCard({
+  attribution,
+  window,
+  setWindow,
+}: {
+  attribution: AttributionRow[];
+  window: "today" | "7d" | "30d";
+  setWindow: (w: "today" | "7d" | "30d") => void;
+}) {
+  const { totals, total } = bucketAttribution(attribution, window);
+
+  // Used to scale per-channel bars relative to the largest bucket so a 60/20/20
+  // split renders as 100% / 33% / 33% width — easier to read at small counts
+  // than scaling by absolute percentage of total.
+  const max = Math.max(1, ...CHANNEL_ORDER.map((c) => totals[c]));
+
+  const windowLabel =
+    window === "today" ? "today" : window === "7d" ? "in the last 7 days" : "in the last 30 days";
+
+  return (
+    <Card>
+      <BlockStack gap="400">
+        <InlineStack align="space-between" blockAlign="center" wrap={false}>
+          <BlockStack gap="100">
+            <Text as="h3" variant="headingMd">
+              Where orders came from
+            </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              First-touch channel for each tracked Purchase.
+            </Text>
+          </BlockStack>
+          <SegmentedTabs
+            value={window}
+            options={WINDOW_OPTIONS}
+            onChange={setWindow}
+          />
+        </InlineStack>
+
+        {total === 0 ? (
+          <div
+            style={{
+              padding: "32px 16px",
+              textAlign: "center",
+              color: "#64748b",
+              background: "#f8fafc",
+              borderRadius: 12,
+              border: "1px dashed #e2e8f0",
+            }}
+          >
+            <Text as="p" variant="bodyMd" tone="subdued">
+              No tracked orders {windowLabel}.
+            </Text>
+          </div>
+        ) : (
+          <BlockStack gap="300">
+            {CHANNEL_ORDER.map((c) => (
+              <ChannelRow
+                key={c}
+                channel={c}
+                count={totals[c]}
+                total={total}
+                max={max}
+              />
+            ))}
+          </BlockStack>
+        )}
+
+        <Text as="p" variant="bodySm" tone="subdued">
+          {total} order{total === 1 ? "" : "s"} {windowLabel}
+        </Text>
+      </BlockStack>
+    </Card>
+  );
+}
+
+function ChannelRow({
+  channel,
+  count,
+  total,
+  max,
+}: {
+  channel: Channel;
+  count: number;
+  total: number;
+  max: number;
+}) {
+  const meta = CHANNEL_META[channel];
+  const pctOfTotal = total === 0 ? 0 : Math.round((count / total) * 100);
+  const barWidthPct = max === 0 ? 0 : (count / max) * 100;
+  const dim = count === 0;
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "40px 1fr auto",
+        alignItems: "center",
+        gap: 14,
+        opacity: dim ? 0.55 : 1,
+      }}
+    >
+      {/* Boxed brand icon. Stripe / Linear treatment — a small rounded tile
+          tinted with the channel's brand colour at low alpha, so the icon
+          itself stays readable on a wide range of backgrounds. */}
+      <div
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 10,
+          background: meta.iconBg,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+        }}
+      >
+        <img
+          src={meta.iconUrl}
+          alt=""
+          width={24}
+          height={24}
+          style={{ display: "block" }}
+        />
+      </div>
+
+      {/* Label + bar stacked. Bar uses the channel accent at full saturation
+          for the filled portion, with the unfilled track in slate-100. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Text as="span" variant="bodyMd" fontWeight="semibold">
+            {meta.label}
+          </Text>
+          <Text as="span" variant="bodySm" tone="subdued">
+            {pctOfTotal}%
+          </Text>
+        </div>
+        <div
+          role="progressbar"
+          aria-valuenow={count}
+          aria-valuemin={0}
+          aria-valuemax={total || 1}
+          style={{
+            position: "relative",
+            width: "100%",
+            height: 6,
+            background: "#f1f5f9",
+            borderRadius: 9999,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: `${barWidthPct}%`,
+              height: "100%",
+              background: meta.accent,
+              borderRadius: 9999,
+              transition: "width 400ms cubic-bezier(0.16, 1, 0.3, 1)",
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Count, right-aligned, monospace tabular figures so the digits line
+          up vertically across rows even at different widths. */}
+      <Text as="span" variant="headingMd">
+        <span
+          style={{
+            fontFeatureSettings: '"tnum" on, "lnum" on',
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {count}
+        </span>
+      </Text>
+    </div>
+  );
+}
+
+// Segmented control for the Today / 7d / 30d window picker. Custom rather
+// than Polaris Tabs because Polaris Tabs is heavy (full-width tabbed page
+// pattern) and reads as a layout primitive — we want a compact pill-group
+// control sitting alongside a heading. Same UX as Stripe's date-range
+// segmented controls.
+function SegmentedTabs<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: Array<{ value: T; label: string }>;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      style={{
+        display: "inline-flex",
+        padding: 3,
+        background: "#f1f5f9",
+        borderRadius: 10,
+        gap: 2,
+      }}
+    >
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(opt.value)}
+            style={{
+              border: 0,
+              padding: "6px 12px",
+              borderRadius: 8,
+              background: active ? "#ffffff" : "transparent",
+              color: active ? "#0f172a" : "#64748b",
+              fontSize: 13,
+              fontWeight: active ? 600 : 500,
+              cursor: "pointer",
+              boxShadow: active
+                ? "0 1px 2px rgba(15, 23, 42, 0.08), 0 0 0 0.5px rgba(15, 23, 42, 0.06)"
+                : "none",
+              transition:
+                "background 120ms ease, color 120ms ease, box-shadow 120ms ease",
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function StatusRow(props: {
   label: string;

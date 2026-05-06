@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 
 // Railway cron: 0 3 * * * (UTC) = nightly 3am
 //
-// Trims three time-bounded tables to keep storage in check:
+// Trims four time-bounded tables to keep storage in check:
 //   - visitor_events: 30-day raw audit trail. Anything older has zero
 //     CAPI value (Meta only accepts events ≤ 7d) and only privacy
 //     exposure to keep around.
@@ -14,6 +14,9 @@ import { createClient } from "@supabase/supabase-js";
 //   - emq_snapshots: 90-day rolling. Migration 015's comment promised
 //     this TTL but never enforced it; migration 017 added the
 //     trim_emq_snapshots() function. We invoke it here.
+//   - order_attribution: 30-day rolling on attributed_at. The dashboard's
+//     channel breakdown card never queries past 30d, so anything older
+//     is dead storage. Migration 020 defined trim_order_attribution().
 //
 // Auth: x-cron-secret header (matches existing api.cron.* pattern).
 // Idempotent: re-running mid-day re-applies cutoffs harmlessly.
@@ -58,11 +61,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 
+  // Use the trim_order_attribution() function defined in migration 020.
+  let orderAttributionDeleted = 0;
+  try {
+    const { data } = await supabase.rpc("trim_order_attribution");
+    orderAttributionDeleted = typeof data === "number" ? data : 0;
+  } catch (err) {
+    // Non-fatal — table is small and missing a trim run is harmless.
+    console.warn(
+      `[cron visitors-trim] trim_order_attribution failed: ${String(err)}`
+    );
+  }
+
   return json({
     cutoff_30d: cutoff30d,
     cutoff_180d: cutoff180d,
     visitor_events_deleted: eventsDeleted ?? 0,
     visitors_deleted: visitorsDeleted ?? 0,
     emq_snapshots_deleted: emqDeleted,
+    order_attribution_deleted: orderAttributionDeleted,
   });
 };

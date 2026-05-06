@@ -15,6 +15,7 @@ import {
   findRecentVisitorByIpUa,
   pickBestFbc,
 } from "../lib/visitors.server.js";
+import { recordOrderAttribution } from "../lib/channel-attribution.server.js";
 
 // Deterministic event_id for webhook-driven events. Critical for idempotency:
 // Shopify retries any non-2xx webhook with the SAME resource id, so we MUST
@@ -205,6 +206,17 @@ async function handleOrderPaid(shop: string, order: ShopifyOrder) {
   });
 
   await sendCAPIEventsForShop({ storeId: shop, events: [event] });
+
+  // Record channel attribution for the Ad Tracking dashboard. Runs after
+  // the CAPI fire so that latency-sensitive Meta delivery isn't gated on
+  // a Postgres write. Idempotent on (store_id, shopify_order_id) so the
+  // orders/create + orders/paid pair converges on a single row.
+  await recordOrderAttribution({
+    storeId: shop,
+    shopifyOrderId: order.id,
+    visitorId: recoveredVisitorId ?? null,
+    attributedAt: order.processed_at ? new Date(order.processed_at) : new Date(),
+  });
 }
 
 // ─── Refund → negative-value Purchase (Custom Event "Refund") ─────────────────
