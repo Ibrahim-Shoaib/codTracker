@@ -173,7 +173,15 @@ export async function getOrderByName(session, orderRefNumber) {
   }));
 }
 
-// Fetches all Shopify orders and returns a Map of order_name → [{ variant_id, quantity }].
+// Fetches all Shopify orders in a window and returns a Map keyed on
+// order_name. Each value carries both the line items (for COGS matching)
+// and the customer-side created_at (for the orders.order_date column).
+// We bundle both fields off the SAME paginated request so adding order_date
+// support to the dashboard introduces zero new Shopify API load.
+//
+// Map shape:
+//   Map<name, { lineItems: [{ variant_id, quantity }], createdAt: string }>
+//
 // Respects Shopify's Retry-After header on 429 — retries up to 5 times per page.
 export async function getOrdersLineItemMap(session, createdAtMin) {
   const { shop, accessToken } = session;
@@ -183,7 +191,7 @@ export async function getOrdersLineItemMap(session, createdAtMin) {
   const dateParam = createdAtMin ? `&created_at_min=${encodeURIComponent(createdAtMin)}` : '';
   let url = adminUrl(
     shop,
-    `orders.json?status=any&limit=250&fields=name,line_items${dateParam}`
+    `orders.json?status=any&limit=250&fields=name,line_items,created_at${dateParam}`
   );
 
   while (url) {
@@ -198,10 +206,13 @@ export async function getOrdersLineItemMap(session, createdAtMin) {
     const { orders } = await res.json();
 
     for (const order of orders ?? []) {
-      map.set(order.name, order.line_items.map(item => ({
-        variant_id: String(item.variant_id),
-        quantity:   item.quantity,
-      })));
+      map.set(order.name, {
+        lineItems: order.line_items.map(item => ({
+          variant_id: String(item.variant_id),
+          quantity:   item.quantity,
+        })),
+        createdAt: order.created_at ?? null,
+      });
     }
 
     url = parseNextUrl(res.headers.get('link'));
