@@ -23,7 +23,6 @@ import {
   Badge,
   Select,
   Collapsible,
-  EmptyState,
   Divider,
   Link,
   Icon,
@@ -1040,61 +1039,744 @@ export default function AdTracking() {
     );
   }
 
-  // ── Disconnected: hero + connect button ─────────────────────────────────────
+  // ── Disconnected: modern connect page ──────────────────────────────────────
+  // Three things this page has to do:
+  //   1. Make the value tangible BEFORE merchants click connect — they see
+  //      what they're missing rather than reading another marketing pitch.
+  //   2. Keep the surface calm. Polaris cards + restrained palette so it
+  //      reads as part of Shopify Admin, not a landing page.
+  //   3. Show the connected dashboard as a teaser with sample numbers — same
+  //      shape as the real cards above, so the merchant recognises it the
+  //      moment they land on it post-connect.
   return (
     <Page>
       <TitleBar title="Ad Tracking" />
       <Layout>
         <Layout.Section>
-          <Card>
-            <EmptyState
-              heading="Recover lost conversions for Meta Ads"
-              action={undefined}
-              image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-            >
-              <BlockStack gap="400">
-                <Text as="p" variant="bodyMd">
-                  iOS 14+, ad blockers, and ITP cause Meta to lose track of
-                  ~40% of conversions. Connect your Meta Pixel here and we'll
-                  send Purchase events directly from your server with full
-                  hashed identity — recovering signal you're losing today.
-                  Setup takes about 30 seconds.
-                </Text>
-                {oauthFailed && (
-                  <Banner tone="critical">
-                    Connection failed: <strong>{oauthFailed.replace(/_/g, " ")}</strong>.{" "}
-                    {oauthFailed === "no_pixel_granted"
-                      ? "Make sure to select a Pixel in the Meta consent screen."
-                      : "Try again or contact support."}
-                  </Banner>
-                )}
-                <InlineStack>
-                  <Form method="post">
-                    <input type="hidden" name="intent" value="connect" />
-                    <Button
-                      submit
-                      variant="primary"
-                      loading={submitting}
-                      onClick={() => {
-                        // Pre-open the popup synchronously so we don't get
-                        // blocked by browser popup blockers.
-                        window.open(
-                          "about:blank",
-                          "meta_pixel_oauth_window",
-                          "width=600,height=700,scrollbars=yes,resizable=yes"
-                        );
-                      }}
-                    >
-                      Connect Meta Pixel
-                    </Button>
-                  </Form>
-                </InlineStack>
-              </BlockStack>
-            </EmptyState>
-          </Card>
+          <ConnectHero
+            submitting={submitting}
+            oauthFailed={oauthFailed}
+          />
+        </Layout.Section>
+
+        <Layout.Section>
+          <BenefitsRow />
+        </Layout.Section>
+
+        <Layout.Section>
+          <DashboardPreview />
         </Layout.Section>
       </Layout>
     </Page>
+  );
+}
+
+// ─── Connect-screen subcomponents ─────────────────────────────────────────────
+
+// Hero card. Meta logo medallion, headline framing the loss the merchant is
+// experiencing right now, single primary CTA, and a trust line that addresses
+// the three friction questions a merchant has at this moment ("how long?",
+// "do I have to touch code?", "can I undo it?"). Gradient + soft brand-blue
+// glow keeps it modern without veering into landing-page territory.
+function ConnectHero({
+  submitting,
+  oauthFailed,
+}: {
+  submitting: boolean;
+  oauthFailed: string | null;
+}) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        borderRadius: 16,
+        overflow: "hidden",
+        background:
+          "linear-gradient(135deg, #f8fafc 0%, #eff6ff 55%, #f0f9ff 100%)",
+        border: "1px solid #e2e8f0",
+        padding: "44px 32px 40px",
+        boxShadow: "0 1px 3px rgba(15, 23, 42, 0.04)",
+      }}
+    >
+      {/* Soft brand-blue glow in the corner. Decorative, ignored by AT. */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          top: -120,
+          right: -120,
+          width: 420,
+          height: 420,
+          borderRadius: "50%",
+          background:
+            "radial-gradient(circle, rgba(8,102,255,0.10) 0%, transparent 70%)",
+          pointerEvents: "none",
+        }}
+      />
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          bottom: -140,
+          left: -100,
+          width: 360,
+          height: 360,
+          borderRadius: "50%",
+          background:
+            "radial-gradient(circle, rgba(214,36,159,0.06) 0%, transparent 70%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          textAlign: "center",
+          maxWidth: 640,
+          margin: "0 auto",
+        }}
+      >
+        {/* Meta logo medallion with a status dot. Status dot here is purely
+            decorative — it tells the eye "this is a live thing waiting to be
+            switched on" before the headline does. */}
+        <div style={{ position: "relative", marginBottom: 22 }}>
+          <img
+            src="/logos/meta.svg"
+            alt="Meta"
+            width={72}
+            height={72}
+            style={{
+              display: "block",
+              borderRadius: 18,
+              boxShadow:
+                "0 10px 28px rgba(8, 102, 255, 0.20), 0 2px 6px rgba(15, 23, 42, 0.10)",
+            }}
+          />
+          <span
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              bottom: -2,
+              right: -2,
+              width: 18,
+              height: 18,
+              borderRadius: 9999,
+              background: "#15803d",
+              border: "3px solid white",
+              boxShadow: "0 0 0 4px rgba(21, 128, 61, 0.18)",
+            }}
+          />
+        </div>
+
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "4px 10px",
+            background: "rgba(8, 102, 255, 0.08)",
+            color: "#0866ff",
+            borderRadius: 9999,
+            fontSize: 12,
+            fontWeight: 600,
+            letterSpacing: "0.02em",
+            marginBottom: 14,
+          }}
+        >
+          <span
+            style={{
+              width: 5,
+              height: 5,
+              borderRadius: 9999,
+              background: "#0866ff",
+            }}
+          />
+          Meta Conversions API
+        </div>
+
+        <Text as="h1" variant="heading2xl">
+          Stop losing 40% of your Meta conversions
+        </Text>
+        <div style={{ height: 12 }} />
+        <div style={{ maxWidth: 560 }}>
+          <Text as="p" variant="bodyLg" tone="subdued">
+            iOS 14, ad blockers, and Safari ITP hide most of your Purchase
+            events from Meta — so your ROAS shows half of what you actually
+            earn. Connect your Pixel and we'll send every order server-side
+            with full hashed identity, then break down exactly which channel
+            earned each one.
+          </Text>
+        </div>
+
+        <div style={{ height: 26 }} />
+
+        {oauthFailed && (
+          <div style={{ width: "100%", maxWidth: 480, marginBottom: 16 }}>
+            <Banner tone="critical">
+              Connection failed:{" "}
+              <strong>{oauthFailed.replace(/_/g, " ")}</strong>.{" "}
+              {oauthFailed === "no_pixel_granted"
+                ? "Make sure to select a Pixel in the Meta consent screen."
+                : "Try again or contact support."}
+            </Banner>
+          </div>
+        )}
+
+        {/* Primary CTA. Native button rather than Polaris Button so we can
+            place the Meta logo inline at the size + radius the brand glow
+            calls for, and so the brand-blue background reads as a Meta
+            action — not a generic primary action. */}
+        <Form method="post">
+          <input type="hidden" name="intent" value="connect" />
+          <button
+            type="submit"
+            disabled={submitting}
+            onClick={() => {
+              // Pre-open the popup synchronously so the browser doesn't
+              // flag it as a popup-blocker candidate.
+              window.open(
+                "about:blank",
+                "meta_pixel_oauth_window",
+                "width=600,height=700,scrollbars=yes,resizable=yes"
+              );
+            }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "13px 22px",
+              background: submitting ? "#3b82f6" : "#0866ff",
+              color: "white",
+              fontSize: 15,
+              fontWeight: 600,
+              border: 0,
+              borderRadius: 12,
+              cursor: submitting ? "wait" : "pointer",
+              boxShadow:
+                "0 8px 20px rgba(8, 102, 255, 0.32), 0 1px 2px rgba(15, 23, 42, 0.08)",
+              transition:
+                "transform 120ms ease, box-shadow 120ms ease, background 120ms ease",
+              opacity: submitting ? 0.85 : 1,
+            }}
+          >
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 22,
+                height: 22,
+                background: "white",
+                borderRadius: 6,
+                overflow: "hidden",
+              }}
+            >
+              <img
+                src="/logos/meta.svg"
+                alt=""
+                width={22}
+                height={22}
+                style={{ display: "block" }}
+              />
+            </span>
+            {submitting ? "Connecting…" : "Connect Meta Pixel"}
+          </button>
+        </Form>
+
+        <div style={{ height: 18 }} />
+
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "center",
+            gap: "8px 18px",
+            color: "#64748b",
+            fontSize: 13,
+          }}
+        >
+          <TrustItem>30-second OAuth</TrustItem>
+          <TrustItem>No code required</TrustItem>
+          <TrustItem>Disconnect anytime</TrustItem>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TrustItem({ children }: { children: React.ReactNode }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <span
+        aria-hidden="true"
+        style={{
+          display: "inline-flex",
+          width: 14,
+          height: 14,
+          color: "#15803d",
+        }}
+      >
+        <svg viewBox="0 0 14 14" fill="none" width={14} height={14}>
+          <path
+            d="M2.5 7.5L5.5 10.5L11.5 4"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+      {children}
+    </span>
+  );
+}
+
+// Three benefit cards, equal weight. Each one answers a different question
+// the merchant is asking themselves at this stage:
+//   1. "What does this app actually do that I can't already?"
+//   2. "What signal do I get back that I'm not getting today?"
+//   3. "Will Meta actually trust the data?"
+// The icons are accent-tinted so the row scans as one composition rather
+// than three unrelated cards.
+function BenefitsRow() {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+        gap: 16,
+      }}
+    >
+      <BenefitCard
+        accent="#0866ff"
+        accentBg="#eff6ff"
+        title="Recover ~40% of lost Purchases"
+        body="Server-side CAPI bypasses iOS 14, ad blockers, and Safari ITP. Meta sees every confirmed order — not just the ones the browser pixel managed to catch."
+        icon={
+          <svg viewBox="0 0 24 24" fill="none" width={20} height={20}>
+            <path
+              d="M4 17L10 11L14 15L20 7M20 7H15M20 7V12"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        }
+      />
+      <BenefitCard
+        accent="#7c3aed"
+        accentBg="#f5f3ff"
+        title="See which channel earns each order"
+        body="Every Purchase is attributed to Facebook Ads, Instagram Ads, or Direct/Organic — so you know where your real revenue comes from before opening Ads Manager."
+        icon={
+          <svg viewBox="0 0 24 24" fill="none" width={20} height={20}>
+            <path
+              d="M12 3V12L18 15"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <circle
+              cx="12"
+              cy="12"
+              r="9"
+              stroke="currentColor"
+              strokeWidth={2}
+            />
+          </svg>
+        }
+      />
+      <BenefitCard
+        accent="#15803d"
+        accentBg="#f0fdf4"
+        title="Maximum match quality"
+        body="Hashed email, phone, name, address, IP, fbp, fbc — every signal Meta uses to identify your customer. We monitor your EMQ score so it stays in the green."
+        icon={
+          <svg viewBox="0 0 24 24" fill="none" width={20} height={20}>
+            <path
+              d="M12 3L4 6V12C4 16.5 7.5 20.5 12 21.5C16.5 20.5 20 16.5 20 12V6L12 3Z"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinejoin="round"
+            />
+            <path
+              d="M9 12L11 14L15 10"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        }
+      />
+    </div>
+  );
+}
+
+function BenefitCard({
+  accent,
+  accentBg,
+  title,
+  body,
+  icon,
+}: {
+  accent: string;
+  accentBg: string;
+  title: string;
+  body: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        background: "white",
+        border: "1px solid #e2e8f0",
+        borderRadius: 12,
+        padding: 20,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+        height: "100%",
+      }}
+    >
+      <div
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 10,
+          background: accentBg,
+          color: accent,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {icon}
+      </div>
+      <Text as="h3" variant="headingSm">
+        {title}
+      </Text>
+      <Text as="p" variant="bodySm" tone="subdued">
+        {body}
+      </Text>
+    </div>
+  );
+}
+
+// Sample-data preview of the connected dashboard. Same component shape as
+// the real cards a few hundred lines above, so the moment the merchant
+// connects the layout doesn't change — only the numbers do. We use generic
+// numbers (12 / 7 / 3 / 2 — 8.2 EMQ) that are realistic for a small store
+// so it doesn't feel performative.
+function DashboardPreview() {
+  return (
+    <Card>
+      <BlockStack gap="400">
+        <InlineStack align="space-between" blockAlign="center">
+          <BlockStack gap="100">
+            <Text as="h3" variant="headingMd">
+              Here's what you'll see
+            </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Real dashboard, sample numbers — yours go live the moment your
+              first order comes in.
+            </Text>
+          </BlockStack>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "3px 8px",
+              background: "#f1f5f9",
+              color: "#64748b",
+              borderRadius: 6,
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+            }}
+          >
+            Preview
+          </span>
+        </InlineStack>
+
+        <div
+          style={{
+            position: "relative",
+            borderRadius: 12,
+            overflow: "hidden",
+            border: "1px solid #e2e8f0",
+            background: "white",
+          }}
+        >
+          <div
+            style={{
+              padding: 20,
+              display: "flex",
+              flexDirection: "column",
+              gap: 16,
+            }}
+          >
+            {/* Mini hero. Same pulse + green palette as the real connected
+                hero — the merchant recognises it the second it goes live. */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                paddingBottom: 14,
+                borderBottom: "1px solid #f1f5f9",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 9999,
+                    background: "#15803d",
+                    boxShadow: "0 0 0 3px rgba(21,128,61,0.18)",
+                  }}
+                />
+                <Text as="span" variant="headingMd">
+                  Tracking is healthy
+                </Text>
+              </div>
+              <Text as="p" variant="bodySm" tone="subdued">
+                12 orders sent to Meta today · last 4m ago.
+              </Text>
+            </div>
+
+            {/* Mini channels. Three rows mirroring the real ChannelRow with
+                bar widths scaled to the largest bucket. */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              <Text as="span" variant="bodySm" fontWeight="semibold">
+                Where orders came from
+              </Text>
+              <PreviewChannelRow
+                label="Facebook Ads"
+                iconUrl="/logos/fb.svg"
+                iconBg="#eff6ff"
+                accent="#0866ff"
+                count={7}
+                pct={58}
+                fillPct={100}
+              />
+              <PreviewChannelRow
+                label="Instagram Ads"
+                iconUrl="/logos/insta.svg"
+                iconBg="#fdf2f8"
+                accent="#d6249f"
+                count={3}
+                pct={25}
+                fillPct={43}
+              />
+              <PreviewChannelRow
+                label="Direct / Organic"
+                iconUrl="/logos/organic.svg"
+                iconBg="#f1f5f9"
+                accent="#475569"
+                count={2}
+                pct={17}
+                fillPct={29}
+              />
+            </div>
+
+            {/* Mini EMQ. Same gradient bar treatment as MatchStrengthBar —
+                if connected, this is what an Excellent score looks like. */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                paddingTop: 14,
+                borderTop: "1px solid #f1f5f9",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "baseline",
+                }}
+              >
+                <Text as="span" variant="bodySm" fontWeight="semibold">
+                  Match strength
+                </Text>
+                <span
+                  style={{
+                    fontSize: 22,
+                    fontWeight: 700,
+                    color: "#15803d",
+                    letterSpacing: "-0.02em",
+                  }}
+                >
+                  8.2{" "}
+                  <span
+                    style={{
+                      color: "#94a3b8",
+                      fontSize: 13,
+                      fontWeight: 500,
+                    }}
+                  >
+                    / 10
+                  </span>
+                </span>
+              </div>
+              <div
+                style={{
+                  position: "relative",
+                  width: "100%",
+                  height: 10,
+                  background: "#eef2f7",
+                  borderRadius: 9999,
+                  overflow: "hidden",
+                  boxShadow: "inset 0 1px 2px rgba(15,23,42,0.08)",
+                }}
+              >
+                <div
+                  style={{
+                    width: "82%",
+                    height: "100%",
+                    background:
+                      "linear-gradient(90deg, #15803d 0%, #22c55e 100%)",
+                    borderRadius: 9999,
+                    boxShadow:
+                      "0 1px 3px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.25)",
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Soft top-down fade so the preview reads as a teaser rather than
+              a finished product the merchant might mistake for live data. */}
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              background:
+                "linear-gradient(180deg, transparent 70%, rgba(241,245,249,0.55) 100%)",
+            }}
+          />
+        </div>
+      </BlockStack>
+    </Card>
+  );
+}
+
+function PreviewChannelRow({
+  label,
+  iconUrl,
+  iconBg,
+  accent,
+  count,
+  pct,
+  fillPct,
+}: {
+  label: string;
+  iconUrl: string;
+  iconBg: string;
+  accent: string;
+  count: number;
+  pct: number;
+  fillPct: number;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "32px 1fr auto",
+        alignItems: "center",
+        gap: 12,
+      }}
+    >
+      <div
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 8,
+          background: iconBg,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+        }}
+      >
+        <img
+          src={iconUrl}
+          alt=""
+          width={20}
+          height={20}
+          style={{ display: "block" }}
+        />
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Text as="span" variant="bodySm" fontWeight="semibold">
+            {label}
+          </Text>
+          <Text as="span" variant="bodySm" tone="subdued">
+            {pct}%
+          </Text>
+        </div>
+        <div
+          style={{
+            position: "relative",
+            width: "100%",
+            height: 5,
+            background: "#f1f5f9",
+            borderRadius: 9999,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: `${fillPct}%`,
+              height: "100%",
+              background: accent,
+              borderRadius: 9999,
+            }}
+          />
+        </div>
+      </div>
+      <Text as="span" variant="bodyMd" fontWeight="semibold">
+        <span
+          style={{
+            fontFeatureSettings: '"tnum" on, "lnum" on',
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {count}
+        </span>
+      </Text>
+    </div>
   );
 }
 
