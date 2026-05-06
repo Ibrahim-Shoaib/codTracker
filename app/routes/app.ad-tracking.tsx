@@ -551,26 +551,26 @@ export default function AdTracking() {
 
     let heroTitle: string;
     let heroSubtitle: string;
-    let heroBadge: { label: string; tone: "success" | "attention" | "warning" };
+    let heroTone: "success" | "attention" | "warning";
     if (retrying > 0) {
       heroTitle = `${tracked} order${tracked === 1 ? "" : "s"} tracked, ${retrying} retrying`;
       heroSubtitle =
         "Meta returned a transient error on the retrying events. They'll auto-resend over the next 30 minutes — no action needed.";
-      heroBadge = { label: "Recovering", tone: "warning" };
+      heroTone = "warning";
     } else if (tracked > 0) {
       heroTitle = `Tracking is healthy`;
       heroSubtitle = `${tracked} order${tracked === 1 ? "" : "s"} sent to Meta today${
         lastSent ? ` · last ${formatRelative(lastSent)}` : ""
       }.`;
-      heroBadge = { label: "Healthy", tone: "success" };
+      heroTone = "success";
     } else if (lastSent) {
       heroTitle = `Tracking is armed`;
       heroSubtitle = `No orders today yet. Last event sent ${formatRelative(lastSent)}.`;
-      heroBadge = { label: "Connected", tone: "success" };
+      heroTone = "success";
     } else {
       heroTitle = `Tracking is armed`;
       heroSubtitle = `Your first order will start the data flowing.`;
-      heroBadge = { label: "Connected", tone: "success" };
+      heroTone = "success";
     }
 
     // Auto-open Connection settings when the storefront embed needs the
@@ -587,18 +587,24 @@ export default function AdTracking() {
         <Layout>
           <Layout.Section>
             <Card>
-              <BlockStack gap="300">
-                <InlineStack align="space-between" blockAlign="start" gap="400">
-                  <BlockStack gap="100">
+              <BlockStack gap="400">
+                <BlockStack gap="100">
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <StatusDot tone={heroTone} />
                     <Text as="h2" variant="headingLg">
                       {heroTitle}
                     </Text>
-                    <Text as="p" variant="bodyMd" tone="subdued">
-                      {heroSubtitle}
-                    </Text>
-                  </BlockStack>
-                  <Badge tone={heroBadge.tone}>{heroBadge.label}</Badge>
-                </InlineStack>
+                  </div>
+                  <Text as="p" variant="bodyMd" tone="subdued">
+                    {heroSubtitle}
+                  </Text>
+                </BlockStack>
 
                 {needsEmbedAction && (
                   <Banner
@@ -617,13 +623,38 @@ export default function AdTracking() {
                   </Banner>
                 )}
 
-                <Text as="p" variant="bodySm" tone="subdued">
-                  Connected to{" "}
-                  <Text as="span" fontWeight="semibold">
-                    {connection.dataset_name ?? `Pixel ${connection.dataset_id}`}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    paddingTop: 8,
+                    borderTop: "1px solid #f1f5f9",
+                  }}
+                >
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Pixel
                   </Text>
-                  {connection.dataset_name ? ` · ID ${connection.dataset_id}` : ""}
-                </Text>
+                  <Text as="span" variant="bodySm" fontWeight="semibold">
+                    {connection.dataset_name ?? `#${connection.dataset_id}`}
+                  </Text>
+                  {connection.dataset_name && (
+                    <>
+                      <span style={{ color: "#cbd5e1" }}>·</span>
+                      <span
+                        style={{
+                          fontFamily:
+                            "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                          fontSize: 12,
+                          color: "#64748b",
+                          letterSpacing: "0.01em",
+                        }}
+                      >
+                        {connection.dataset_id}
+                      </span>
+                    </>
+                  )}
+                </div>
               </BlockStack>
             </Card>
           </Layout.Section>
@@ -1115,6 +1146,37 @@ function emqAccentHex(score: number | null | undefined): string {
   if (score >= 8) return "#15803d"; // green-700
   if (score >= 6) return "#1d4ed8"; // blue-700
   return "#b91c1c"; // red-700
+}
+
+// Hero-level status dot with the same accent + halo treatment used by the
+// Match strength helper, sized larger because it's the page's primary
+// "is this working?" anchor. Tone maps onto the same accent colours we use
+// elsewhere so the page reads as one design system, not three.
+function StatusDot({
+  tone,
+}: {
+  tone: "success" | "attention" | "warning";
+}) {
+  const color =
+    tone === "success"
+      ? "#15803d" // green-700
+      : tone === "warning"
+        ? "#b45309" // amber-700
+        : "#475569"; // slate-600 (attention/neutral)
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: 10,
+        height: 10,
+        borderRadius: 9999,
+        background: color,
+        boxShadow: `0 0 0 4px ${color}1f`,
+        flexShrink: 0,
+        display: "inline-block",
+      }}
+    />
+  );
 }
 
 // Status-pulse dot + one-line helper. The dot picks up the band's accent
