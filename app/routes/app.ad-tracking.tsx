@@ -807,18 +807,17 @@ export default function AdTracking() {
                         Send test events
                       </Text>
                       <Text as="p" variant="bodySm" tone="subdued">
-                        Paste your Test Event Code from{" "}
+                        Fires 7 sample events (PageView through Purchase) at
+                        your Pixel so you can confirm they land in real time.
+                        Find your code at the top of{" "}
                         <Link
                           url={`https://www.facebook.com/events_manager2/list/dataset/${connection.dataset_id}/test_events`}
                           target="_blank"
                         >
                           Events Manager → Test Events
                         </Link>
-                        . Looks like{" "}
-                        <Text as="span" fontWeight="semibold">
-                          TEST30616
-                        </Text>
-                        .
+                        {" "}— it always begins with <CodeChip>TEST</CodeChip>{" "}
+                        followed by a few digits, and is unique to your account.
                       </Text>
                       <Form method="post">
                         <input type="hidden" name="intent" value="test_event" />
@@ -829,12 +828,12 @@ export default function AdTracking() {
                               label="Test Event Code"
                               labelHidden
                               autoComplete="off"
-                              placeholder="TEST30616"
+                              placeholder="e.g. TEST30616"
                               value={testCode}
                               onChange={setTestCode}
                               error={
                                 testCode.length > 0 && !testCodeValid
-                                  ? "Must start with TEST followed by digits/letters"
+                                  ? "Must start with TEST followed by digits or letters"
                                   : undefined
                               }
                             />
@@ -1304,6 +1303,32 @@ function ConnectHero({
         </div>
       </div>
     </div>
+  );
+}
+
+// Inline code-style chip for literal token prefixes ("TEST", a flag name,
+// etc.) embedded in body copy. The bordered monospace pill makes it
+// immediately read as a *value* rather than emphasis the merchant might
+// mistake for the literal string to type — fixes the case where bold
+// "TEST30616" inline read as an instruction to enter that exact code.
+function CodeChip({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        fontFamily:
+          "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+        fontSize: "0.86em",
+        padding: "1px 6px",
+        background: "#f1f5f9",
+        color: "#0f172a",
+        border: "1px solid #e2e8f0",
+        borderRadius: 5,
+        letterSpacing: "0.02em",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </span>
   );
 }
 
