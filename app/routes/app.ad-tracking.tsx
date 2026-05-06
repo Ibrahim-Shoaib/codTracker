@@ -614,23 +614,30 @@ export default function AdTracking() {
           <Layout.Section>
             <Card>
               <BlockStack gap="400">
-                <BlockStack gap="100">
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                  }}
+                >
+                  <MetaMedallion tone={heroTone} />
                   <div
                     style={{
                       display: "flex",
-                      alignItems: "center",
-                      gap: 10,
+                      flexDirection: "column",
+                      gap: 2,
+                      minWidth: 0,
                     }}
                   >
-                    <StatusDot tone={heroTone} />
                     <Text as="h2" variant="headingLg">
                       {heroTitle}
                     </Text>
+                    <Text as="p" variant="bodyMd" tone="subdued">
+                      {heroSubtitle}
+                    </Text>
                   </div>
-                  <Text as="p" variant="bodyMd" tone="subdued">
-                    {heroSubtitle}
-                  </Text>
-                </BlockStack>
+                </div>
 
                 {needsEmbedAction && (
                   <Banner
@@ -816,8 +823,11 @@ export default function AdTracking() {
                         >
                           Events Manager → Test Events
                         </Link>
-                        {" "}— it always begins with <CodeChip>TEST</CodeChip>{" "}
-                        followed by a few digits, and is unique to your account.
+                        {" "}— it always begins with{" "}
+                        <Text as="span" fontWeight="semibold">
+                          TEST
+                        </Text>
+                        {" "}followed by a few digits, and is unique to your account.
                       </Text>
                       <Form method="post">
                         <input type="hidden" name="intent" value="test_event" />
@@ -1303,32 +1313,6 @@ function ConnectHero({
         </div>
       </div>
     </div>
-  );
-}
-
-// Inline code-style chip for literal token prefixes ("TEST", a flag name,
-// etc.) embedded in body copy. The bordered monospace pill makes it
-// immediately read as a *value* rather than emphasis the merchant might
-// mistake for the literal string to type — fixes the case where bold
-// "TEST30616" inline read as an instruction to enter that exact code.
-function CodeChip({ children }: { children: React.ReactNode }) {
-  return (
-    <span
-      style={{
-        fontFamily:
-          "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-        fontSize: "0.86em",
-        padding: "1px 6px",
-        background: "#f1f5f9",
-        color: "#0f172a",
-        border: "1px solid #e2e8f0",
-        borderRadius: 5,
-        letterSpacing: "0.02em",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {children}
-    </span>
   );
 }
 
@@ -2200,34 +2184,59 @@ function emqAccentHex(score: number | null | undefined): string {
   return "#b91c1c"; // red-700
 }
 
-// Hero-level status dot with the same accent + halo treatment used by the
-// Match strength helper, sized larger because it's the page's primary
-// "is this working?" anchor. Tone maps onto the same accent colours we use
-// elsewhere so the page reads as one design system, not three.
-function StatusDot({
+// Meta-branded medallion that anchors the connected hero. Same composition
+// as the disconnected screen's hero medallion (rounded-square Meta mark + a
+// status pulse dot in the bottom-right corner), scaled down to inline-header
+// size so it sits cleanly beside the headingLg title. Tone drives the dot
+// colour exactly as the prior bare StatusDot did — success (green) when
+// tracking, warning (amber) when retries are queued, neutral when armed.
+function MetaMedallion({
   tone,
 }: {
   tone: "success" | "attention" | "warning";
 }) {
-  const color =
+  const dotColor =
     tone === "success"
       ? "#15803d" // green-700
       : tone === "warning"
         ? "#b45309" // amber-700
         : "#475569"; // slate-600 (attention/neutral)
   return (
-    <span
-      aria-hidden="true"
+    <div
       style={{
-        width: 10,
-        height: 10,
-        borderRadius: 9999,
-        background: color,
-        boxShadow: `0 0 0 4px ${color}1f`,
+        position: "relative",
         flexShrink: 0,
-        display: "inline-block",
+        width: 56,
+        height: 56,
       }}
-    />
+    >
+      <img
+        src="/logos/meta.svg"
+        alt="Meta"
+        width={56}
+        height={56}
+        style={{
+          display: "block",
+          borderRadius: 14,
+          boxShadow:
+            "0 6px 18px rgba(8, 102, 255, 0.16), 0 1px 3px rgba(15, 23, 42, 0.08)",
+        }}
+      />
+      <span
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          bottom: -2,
+          right: -2,
+          width: 14,
+          height: 14,
+          borderRadius: 9999,
+          background: dotColor,
+          border: "2.5px solid white",
+          boxShadow: `0 0 0 3.5px ${dotColor}2e`,
+        }}
+      />
+    </div>
   );
 }
 
