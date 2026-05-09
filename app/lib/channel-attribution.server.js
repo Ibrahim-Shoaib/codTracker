@@ -96,20 +96,17 @@ function adminClient() {
 
 /**
  * Classify the visitor's attribution at conversion time and write it into
- * order_attribution. Uses LAST-TOUCH logic to match Meta Ads Manager:
+ * order_attribution. Three-tier classification:
  *
- *   1. If visitor.latest_fbc is set, the buyer had a Meta click cookie
- *      at conversion. Meta credits the ad → we credit the ad. Channel
- *      becomes facebook_ads or instagram_ads depending on the most
- *      recent visitor_event utm_source we can find.
- *   2. If visitor.latest_fbc is null (or visitorId could not be
- *      recovered), classify as direct_organic.
- *
- * We previously used first-touch URL classification, but it under-counted
- * paid orders relative to what merchants see in Ads Manager — a buyer
- * who first visited directly and later came back via a Meta ad click
- * still counts as ad-attributed in Meta's view, and the dashboard needs
- * to match.
+ *   1. visitor.latest_fbc is set → Meta-attributed. Split FB vs IG via the
+ *      most recent visitor_event utm_source.
+ *   2. No visitor row, but order's landing_site URL carries fbclid → use
+ *      URL-based classification (classifyUrlChannel). Critical for
+ *      Instagram/Facebook in-app browser orders, where the IAB sandbox
+ *      blocks the storefront beacons that would normally create a
+ *      visitor row, but the fbclid still rides through the URL onto the
+ *      Shopify order's landing_site field.
+ *   3. Otherwise → direct_organic.
  *
  * Idempotent on (store_id, shopify_order_id) so orders/create +
  * orders/paid converge. Designed to never throw — webhook ack must not
@@ -119,12 +116,14 @@ function adminClient() {
  * @param {string} args.storeId
  * @param {string|number} args.shopifyOrderId
  * @param {string|null} args.visitorId
+ * @param {string|null} [args.landingSite]    Shopify order's landing_site URL
  * @param {Date} [args.attributedAt]
  */
 export async function recordOrderAttribution({
   storeId,
   shopifyOrderId,
   visitorId,
+  landingSite,
   attributedAt,
 }) {
   try {
@@ -135,6 +134,7 @@ export async function recordOrderAttribution({
     let utmMedium = null;
     let utmCampaign = null;
     let attributionUrl = null;
+    let visitorHadFbc = false;
 
     if (visitorId) {
       const { data: visitor } = await supabase
@@ -145,6 +145,7 @@ export async function recordOrderAttribution({
         .maybeSingle();
 
       if (visitor?.latest_fbc) {
+        visitorHadFbc = true;
         // Paid Meta — at minimum credit Facebook (fbclid is FB's click ID).
         // Look for the most recent visitor_event whose URL carries a
         // utm_source so we can split FB vs IG. We scan up to 50 recent
@@ -182,6 +183,22 @@ export async function recordOrderAttribution({
             }
           }
         }
+      }
+    }
+
+    // Tier 2: URL fallback. Triggers when visitor lookup didn't yield an
+    // fbc — typical for Instagram/Facebook IAB orders where the storefront
+    // beacon was blocked but the order still arrived with the fbclid in
+    // landing_site. Without this, every IAB-driven Meta order falls through
+    // to direct_organic, structurally undercounting Meta on the dashboard.
+    if (!visitorHadFbc && landingSite) {
+      const c = classifyUrlChannel(landingSite);
+      if (c.channel !== "direct_organic") {
+        channel = c.channel;
+        utmSource = c.utmSource;
+        utmMedium = c.utmMedium;
+        utmCampaign = c.utmCampaign;
+        attributionUrl = c.firstTouchUrl;
       }
     }
 

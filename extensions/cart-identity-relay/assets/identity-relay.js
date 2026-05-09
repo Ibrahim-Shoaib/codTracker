@@ -127,11 +127,16 @@
     if (sig === lastSig) return;
     lastSig = sig;
 
+    // keepalive lets this fetch survive page navigation. Critical for fast-tap
+    // visitors and Instagram/Facebook in-app browsers — without it, the
+    // cart-update fetch is aborted the moment the customer taps a product or
+    // checkout link, and none of our identity attrs reach the cart.
     fetch("/cart/update.js", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ attributes: ident }),
       credentials: "same-origin",
+      keepalive: true,
     }).catch(function () { /* offline / 404 — non-fatal */ });
   }
 

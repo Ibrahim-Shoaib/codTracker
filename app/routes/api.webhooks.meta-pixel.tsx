@@ -215,6 +215,7 @@ async function handleOrderPaid(shop: string, order: ShopifyOrder) {
     storeId: shop,
     shopifyOrderId: order.id,
     visitorId: recoveredVisitorId ?? null,
+    landingSite: order.landing_site ?? null,
     attributedAt: order.processed_at ? new Date(order.processed_at) : new Date(),
   });
 }
