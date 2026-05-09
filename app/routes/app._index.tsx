@@ -26,6 +26,10 @@ import { isTokenExpired, isTokenExpiringSoon } from "../lib/meta.server.js";
 import { fetchUnfulfilledPipeline } from "../lib/shopify-pipeline.server.js";
 import { fetchDemoPipeline } from "../lib/demo-pipeline.server.js";
 import { effectiveStoreId } from "../lib/demo-pool.server.js";
+import {
+  maskDemoAdSpend,
+  maskDemoAdSpendForTrendPoint,
+} from "../lib/demo-ad-spend.server.js";
 import { getStatsAdapter } from "../lib/stats-adapter.server.js";
 import KPICard from "../components/KPICard.jsx";
 import WarningBanner from "../components/WarningBanner.jsx";
@@ -220,28 +224,45 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           p_granularity:        "day",
         }),
       ]);
+      const curPoints = (cur.data ?? []).map((p: any) => maskDemoAdSpendForTrendPoint(p, store));
+      const priPoints = (pri.data ?? []).map((p: any) => maskDemoAdSpendForTrendPoint(p, store));
       return {
         granularity: "day" as const,
-        current: { from: window30From, to: windowTo,    points: cur.data ?? [] },
-        prior:   { from: prior.from,   to: prior.to,    points: pri.data ?? [] },
+        current: { from: window30From, to: windowTo,    points: curPoints },
+        prior:   { from: prior.from,   to: prior.to,    points: priPoints },
       };
     })(),
   ]);
 
+  // Demo stores without a connected Meta Ads account: zero ad_spend (and
+  // recompute net_profit / margin / ROI / ROAS / POAS / CAC) so the
+  // dashboard doesn't surface synthetic pool spend the merchant never ran.
+  // No-op for real stores and for demo stores that have connected Meta.
+  const todayStat     = maskDemoAdSpend(todayRes.data?.[0]     ?? null, store);
+  const yesterdayStat = maskDemoAdSpend(yesterdayRes.data?.[0] ?? null, store);
+  const mtdStat       = maskDemoAdSpend(mtdRes.data?.[0]       ?? null, store);
+  const lastMonthStat = maskDemoAdSpend(lastMonthRes.data?.[0] ?? null, store);
+  const dbyStat       = maskDemoAdSpend(dbyRes.data?.[0]       ?? null, store);
+  const mtdCompStat   = maskDemoAdSpend(mtdCompRes.data?.[0]   ?? null, store);
+  const mblStat       = maskDemoAdSpend(mblRes.data?.[0]       ?? null, store);
+  const win30Stat     = maskDemoAdSpend(win30Res.data?.[0]     ?? null, store);
+  const win60Stat     = maskDemoAdSpend(win60Res.data?.[0]     ?? null, store);
+  const win90Stat     = maskDemoAdSpend(win90Res.data?.[0]     ?? null, store);
+
   const s = {
-    today:     todayRes.data?.[0]     ?? null,
-    yesterday: yesterdayRes.data?.[0] ?? null,
-    mtd:       mtdRes.data?.[0]       ?? null,
-    lastMonth: lastMonthRes.data?.[0] ?? null,
+    today:     todayStat,
+    yesterday: yesterdayStat,
+    mtd:       mtdStat,
+    lastMonth: lastMonthStat,
   };
 
   // Prior-period stats. Today's prior = Yesterday's current, so we reuse
   // `yesterdayRes` rather than issuing a duplicate RPC.
   const prior = {
-    today:     yesterdayRes.data?.[0] ?? null,
-    yesterday: dbyRes.data?.[0]       ?? null,
-    mtd:       mtdCompRes.data?.[0]   ?? null,
-    lastMonth: mblRes.data?.[0]       ?? null,
+    today:     yesterdayStat,
+    yesterday: dbyStat,
+    mtd:       mtdCompStat,
+    lastMonth: mblStat,
   };
 
   // Derive the break-even card numbers.
@@ -308,9 +329,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   const candidates = [
-    deriveBreakEven(win30Res.data?.[0], window30From, 30),
-    deriveBreakEven(win60Res.data?.[0], window60From, 60),
-    deriveBreakEven(win90Res.data?.[0], window90From, 90),
+    deriveBreakEven(win30Stat, window30From, 30),
+    deriveBreakEven(win60Stat, window60From, 60),
+    deriveBreakEven(win90Stat, window90From, 90),
   ].filter(Boolean) as Array<NonNullable<ReturnType<typeof deriveBreakEven>>>;
 
   // Hybrid window: prefer the strict 30-day window. Only fall back to a

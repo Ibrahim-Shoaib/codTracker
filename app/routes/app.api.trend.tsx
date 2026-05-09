@@ -8,6 +8,7 @@ import {
   getPriorEqualLengthRange,
 } from "../lib/dates.server.js";
 import { effectiveStoreId } from "../lib/demo-pool.server.js";
+import { maskDemoAdSpendForTrendPoint } from "../lib/demo-ad-spend.server.js";
 
 // Resource route the dashboard chart uses to swap windows without reloading.
 // Returns the Shopify-style "current period vs prior equal-length period"
@@ -107,7 +108,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // flag with a single cheap query — same swap the dashboard loader does.
   const { data: storeRow } = await supabase
     .from("stores")
-    .select("is_demo")
+    .select("is_demo, meta_access_token")
     .eq("store_id", shop)
     .single();
   const dataStoreId = effectiveStoreId(storeRow ?? null, shop);
@@ -138,9 +139,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return json({ error: "rpc_failed" }, { status: 500 });
   }
 
+  // Demo stores without a connected Meta account: zero per-bucket ad_spend
+  // (and recompute total_cost / net_profit). No-op for real stores.
+  const curPoints   = (curRes.data   ?? []).map((p: any) => maskDemoAdSpendForTrendPoint(p, storeRow));
+  const priorPoints = (priorRes.data ?? []).map((p: any) => maskDemoAdSpendForTrendPoint(p, storeRow));
+
   return json({
     granularity,
-    current: { from, to, points: curRes.data ?? [] },
-    prior:   { from: prior.from, to: prior.to, points: priorRes.data ?? [] },
+    current: { from, to, points: curPoints },
+    prior:   { from: prior.from, to: prior.to, points: priorPoints },
   });
 };
