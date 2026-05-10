@@ -231,3 +231,42 @@ export async function recordOrderAttribution({
     );
   }
 }
+
+// Mark an order's attribution row as confirmed-sent to Meta CAPI. Called by
+// the live webhook after a successful sendCAPIEventsForShop, by the recon
+// cron after a successful replay, and by the manual replay script. The
+// dashboard hero counts only rows where this column is non-null, so the
+// number stays accurate even when capi_delivery_log entries are evicted by
+// the per-shop row-cap trim. Independent UPDATE (not bundled into the
+// recordOrderAttribution upsert) so a failed/dropped CAPI doesn't pollute
+// the row with a sent timestamp.
+//
+// Idempotent: re-marking an already-sent row just refreshes the timestamp.
+//
+// @param {object} args
+// @param {string} args.storeId
+// @param {string|number} args.shopifyOrderId
+// @param {Date} [args.sentAt]   Defaults to now; pass the CAPI sent_at when
+//                                replaying so the timestamp matches the
+//                                actual delivery, not the replay run.
+export async function markAttributionCapiSent({ storeId, shopifyOrderId, sentAt = null }) {
+  try {
+    const supabase = adminClient();
+    const { error } = await supabase
+      .from("order_attribution")
+      .update({ capi_sent_at: (sentAt ?? new Date()).toISOString() })
+      .eq("store_id", storeId)
+      .eq("shopify_order_id", String(shopifyOrderId));
+    if (error) {
+      console.warn(
+        `[channel-attribution] markAttributionCapiSent failed for ${storeId}/${shopifyOrderId}:`,
+        error.message
+      );
+    }
+  } catch (err) {
+    console.warn(
+      `[channel-attribution] markAttributionCapiSent threw for ${storeId}/${shopifyOrderId}:`,
+      String(err?.message ?? err)
+    );
+  }
+}

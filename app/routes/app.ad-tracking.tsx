@@ -58,6 +58,7 @@ type Channel = "facebook_ads" | "instagram_ads" | "direct_organic";
 type AttributionRow = {
   channel: Channel;
   attributed_at: string;
+  capi_sent_at: string | null;
 };
 
 // Pakistan-default day boundary. Most merchants on this app are PK COD stores;
@@ -127,7 +128,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     Date.now() - 30 * 24 * 3600 * 1000
   ).toISOString();
 
-  const [connRes, todayRes, emqRes, attributionRes] = await Promise.all([
+  const [connRes, emqRes, attributionRes] = await Promise.all([
     supabase
       .from("meta_pixel_connections")
       .select(
@@ -135,16 +136,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       )
       .eq("store_id", shop)
       .maybeSingle(),
-    // Today's Purchase rows only — small, indexed query that powers the hero.
-    // We dedupe to distinct event_ids in JS because Postgres DISTINCT through
-    // PostgREST is awkward and the row count is tiny (~10s/day for active stores).
-    supabase
-      .from("capi_delivery_log")
-      .select("event_id, status")
-      .eq("store_id", shop)
-      .eq("event_name", "Purchase")
-      .gte("sent_at", startIso)
-      .lt("sent_at", endIso),
     supabase
       .from("emq_snapshots")
       .select("captured_at, overall_emq")
@@ -156,7 +147,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // this is at most a few thousand small rows. Sub-50ms.
     supabase
       .from("order_attribution")
-      .select("channel, attributed_at")
+      .select("channel, attributed_at, capi_sent_at")
       .eq("store_id", shop)
       .gte("attributed_at", thirtyDaysAgoIso)
       .order("attributed_at", { ascending: false }),
@@ -165,16 +156,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const conn = connRes.data;
   const latestEMQ = emqRes.data?.[0] ?? null;
 
-  // Distinct Purchase event_ids today: at-least-one-sent → tracked, only-failed → retrying.
-  const sentIds = new Set<string>();
-  const allIds = new Set<string>();
-  for (const r of todayRes.data ?? []) {
-    allIds.add(r.event_id);
-    if (r.status === "sent") sentIds.add(r.event_id);
-  }
-  const retryingCount = [...allIds].filter((id) => !sentIds.has(id)).length;
+  // Hero counts come from order_attribution, not capi_delivery_log. The latter
+  // has a 500-row-per-shop trim that evicts old Purchase rows when beacon
+  // volume is high — the-trendy-homes-pk #9394 (2026-05-10 01:01 UTC) was
+  // the canonical case where the trim under-counted Meta-confirmed sends.
+  // order_attribution is capped at 30d only and carries the new
+  // capi_sent_at column stamped on every successful send (live webhook,
+  // recon cron, manual replay) so the count is the true number of orders
+  // Meta has acknowledged. Diverges from "Where orders came from" total
+  // ONLY when there's a real send gap — preserving the diagnostic discrepancy
+  // the merchant uses to spot CAPI breakages.
+  const startMs = new Date(startIso).getTime();
+  const endMs = new Date(endIso).getTime();
+  const todayAttribution = (attributionRes.data ?? []).filter((a) => {
+    const t = new Date(a.attributed_at).getTime();
+    return t >= startMs && t < endMs;
+  }) as AttributionRow[];
+  const trackedCount = todayAttribution.filter((a) => a.capi_sent_at != null).length;
+  const retryingCount = todayAttribution.filter((a) => a.capi_sent_at == null).length;
   const todayStats: TodayStats = {
-    trackedCount: sentIds.size,
+    trackedCount,
     retryingCount,
   };
 

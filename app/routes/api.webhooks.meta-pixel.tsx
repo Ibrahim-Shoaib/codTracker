@@ -15,7 +15,10 @@ import {
   findRecentVisitorByIpUa,
   pickBestFbc,
 } from "../lib/visitors.server.js";
-import { recordOrderAttribution } from "../lib/channel-attribution.server.js";
+import {
+  recordOrderAttribution,
+  markAttributionCapiSent,
+} from "../lib/channel-attribution.server.js";
 
 // Deterministic event_id for webhook-driven events. Critical for idempotency:
 // Shopify retries any non-2xx webhook with the SAME resource id, so we MUST
@@ -205,7 +208,7 @@ async function handleOrderPaid(shop: string, order: ShopifyOrder) {
     },
   });
 
-  await sendCAPIEventsForShop({ storeId: shop, events: [event] });
+  const capiResult = await sendCAPIEventsForShop({ storeId: shop, events: [event] });
 
   // Record channel attribution for the Ad Tracking dashboard. Runs after
   // the CAPI fire so that latency-sensitive Meta delivery isn't gated on
@@ -218,6 +221,15 @@ async function handleOrderPaid(shop: string, order: ShopifyOrder) {
     landingSite: order.landing_site ?? null,
     attributedAt: order.processed_at ? new Date(order.processed_at) : new Date(),
   });
+
+  // Stamp capi_sent_at on the attribution row so the dashboard hero can
+  // count "actually confirmed sent" without relying on capi_delivery_log
+  // (which has a 500-row-per-shop trim that evicts old Purchase entries
+  // when beacon volume is high). Skipped on failure/silent-drop so the
+  // row stays NULL and the recon cron picks it up next tick.
+  if (capiResult.ok) {
+    await markAttributionCapiSent({ storeId: shop, shopifyOrderId: order.id });
+  }
 }
 
 // ─── Refund → negative-value Purchase (Custom Event "Refund") ─────────────────

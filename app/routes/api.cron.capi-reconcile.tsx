@@ -16,7 +16,10 @@ import {
   findRecentVisitorByIpUa,
   pickBestFbc,
 } from "../lib/visitors.server.js";
-import { recordOrderAttribution } from "../lib/channel-attribution.server.js";
+import {
+  recordOrderAttribution,
+  markAttributionCapiSent,
+} from "../lib/channel-attribution.server.js";
 
 // Railway cron: 0 * * * * (UTC) = every hour, on the hour.
 //
@@ -266,6 +269,10 @@ async function replayPurchase({
       err
     );
   }
+
+  // Stamp capi_sent_at so the dashboard hero stops flagging this order as
+  // pending. Mirrors handleOrderPaid in api.webhooks.meta-pixel.tsx.
+  await markAttributionCapiSent({ storeId: shop, shopifyOrderId: order.id });
 
   return true;
 }
