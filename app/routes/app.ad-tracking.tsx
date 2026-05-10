@@ -2229,9 +2229,11 @@ function emqAccentHex(score: number | null | undefined): string {
 // Meta-branded medallion that anchors the connected hero. Same composition
 // as the disconnected screen's hero medallion (rounded-square Meta mark + a
 // status pulse dot in the bottom-right corner), scaled down to inline-header
-// size so it sits cleanly beside the headingLg title. Tone drives the dot
-// colour exactly as the prior bare StatusDot did — success (green) when
-// tracking, warning (amber) when retries are queued, neutral when armed.
+// size so it sits cleanly beside the headingLg title. Green when tracking;
+// neutral grey for everything else (armed + retry-pending). The merchant
+// preferred a softer signal in the warning state — the hero copy already
+// communicates "X sent, Y pending" verbally, no need for an alarm-coloured
+// dot to compete with it.
 function MetaMedallion({
   tone,
 }: {
@@ -2240,9 +2242,7 @@ function MetaMedallion({
   const dotColor =
     tone === "success"
       ? "#15803d" // green-700
-      : tone === "warning"
-        ? "#b45309" // amber-700
-        : "#475569"; // slate-600 (attention/neutral)
+      : "#475569"; // slate-600 (attention / warning / armed)
   return (
     <div
       style={{

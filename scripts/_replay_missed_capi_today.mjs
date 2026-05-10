@@ -30,6 +30,12 @@ import {
   extractCustomerIdentity,
 } from "../app/lib/cart-attributes.server.js";
 import {
+  getVisitor,
+  findVisitorByFbclid,
+  findRecentVisitorByIpUa,
+  pickBestFbc,
+} from "../app/lib/visitors.server.js";
+import {
   recordOrderAttribution,
   markAttributionCapiSent,
 } from "../app/lib/channel-attribution.server.js";
@@ -104,17 +110,44 @@ for (const order of orders) {
   const identityHints = extractIdentityFromOrder(order);
   const customer = extractCustomerIdentity(order);
 
-  // For these orders no fbp/fbc/visitor_id will be present (Web Pixel was
-  // uninstalled when the merchant disconnected). buildUserData drops nullish
-  // fields automatically — we still get hashed em/ph/fn/ln/ct/st/zp/country
-  // plus client_ip_address + client_user_agent.
+  // Mirror handleOrderPaid's three-tier visitor lookup — without it, the
+  // recordOrderAttribution call below skips Tier 1 (visitor_events scan for
+  // utm_source=ig) and a Meta IAB order classified as instagram_ads gets
+  // clobbered to facebook_ads (URL fallback can't see the IG referrer).
+  let visitor = null;
+  let recoveredVisitorId = identityHints.visitorId;
+  if (recoveredVisitorId) {
+    visitor = await getVisitor({ storeId: SHOP, visitorId: recoveredVisitorId });
+  } else if (identityHints.fbclid) {
+    visitor = await findVisitorByFbclid({ storeId: SHOP, fbclid: identityHints.fbclid });
+    if (visitor) recoveredVisitorId = visitor.visitor_id;
+  }
+  if (!visitor && identityHints.clientIp && identityHints.clientUa) {
+    visitor = await findRecentVisitorByIpUa({
+      storeId: SHOP,
+      ip: identityHints.clientIp,
+      ua: identityHints.clientUa,
+      referenceTime: order.processed_at ?? order.created_at,
+      windowMinutes: 60,
+    });
+    if (visitor) recoveredVisitorId = visitor.visitor_id;
+  }
+
+  const { fbc: bestFbc } = pickBestFbc({
+    cartAttrFbc: identityHints.fbc,
+    visitor,
+  });
+  const externalIds = [];
+  if (recoveredVisitorId) externalIds.push(recoveredVisitorId);
+  if (customer.externalId) externalIds.push(customer.externalId);
+
   const userData = buildUserData({
     ...customer,
-    externalId: customer.externalId ? [customer.externalId] : undefined,
-    fbp: identityHints.fbp ?? undefined,
-    fbc: identityHints.fbc ?? undefined,
-    clientIp: identityHints.clientIp ?? undefined,
-    clientUa: identityHints.clientUa ?? undefined,
+    externalId: externalIds.length ? externalIds : undefined,
+    fbp: identityHints.fbp ?? visitor?.latest_fbp ?? undefined,
+    fbc: bestFbc ?? undefined,
+    clientIp: identityHints.clientIp ?? visitor?.latest_ip ?? undefined,
+    clientUa: identityHints.clientUa ?? visitor?.latest_ua ?? undefined,
   });
 
   // Same deterministic id the webhook handler would have produced. Safe even
@@ -178,7 +211,7 @@ for (const order of orders) {
       await recordOrderAttribution({
         storeId: SHOP,
         shopifyOrderId: order.id,
-        visitorId: null,
+        visitorId: recoveredVisitorId ?? null,
         landingSite: order.landing_site ?? null,
         attributedAt: eventTime,
       });
