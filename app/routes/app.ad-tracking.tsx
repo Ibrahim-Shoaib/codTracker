@@ -128,7 +128,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     Date.now() - 30 * 24 * 3600 * 1000
   ).toISOString();
 
-  const [connRes, emqRes, attributionRes] = await Promise.all([
+  const [connRes, todayCapiRes, emqRes, attributionRes] = await Promise.all([
     supabase
       .from("meta_pixel_connections")
       .select(
@@ -136,6 +136,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       )
       .eq("store_id", shop)
       .maybeSingle(),
+    // Pre-DDL fallback source for trackedCount/retryingCount: counts distinct
+    // sent Purchase event_ids in capi_delivery_log today. Used only when
+    // order_attribution.capi_sent_at hasn't been migrated yet (old rows lack
+    // the field). Subject to the per-shop row-cap trim — accept the slight
+    // under-count for the rollover window.
+    supabase
+      .from("capi_delivery_log")
+      .select("event_id, status")
+      .eq("store_id", shop)
+      .eq("event_name", "Purchase")
+      .gte("sent_at", startIso)
+      .lt("sent_at", endIso),
     supabase
       .from("emq_snapshots")
       .select("captured_at, overall_emq")
@@ -145,9 +157,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // Last 30 days of attribution. Indexed on (store_id, attributed_at DESC),
     // capped at 30 days by the nightly trim — for a 1000-orders/month store
     // this is at most a few thousand small rows. Sub-50ms.
+    //
+    // select("*") on purpose: lets the loader survive the deploy-before-DDL
+    // window when the new capi_sent_at column doesn't exist yet. PostgREST
+    // returns whatever columns are present; the count logic below detects
+    // whether the column is there and falls back gracefully.
     supabase
       .from("order_attribution")
-      .select("channel, attributed_at, capi_sent_at")
+      .select("*")
       .eq("store_id", shop)
       .gte("attributed_at", thirtyDaysAgoIso)
       .order("attributed_at", { ascending: false }),
@@ -156,24 +173,48 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const conn = connRes.data;
   const latestEMQ = emqRes.data?.[0] ?? null;
 
-  // Hero counts come from order_attribution, not capi_delivery_log. The latter
-  // has a 500-row-per-shop trim that evicts old Purchase rows when beacon
-  // volume is high — the-trendy-homes-pk #9394 (2026-05-10 01:01 UTC) was
-  // the canonical case where the trim under-counted Meta-confirmed sends.
-  // order_attribution is capped at 30d only and carries the new
-  // capi_sent_at column stamped on every successful send (live webhook,
-  // recon cron, manual replay) so the count is the true number of orders
-  // Meta has acknowledged. Diverges from "Where orders came from" total
-  // ONLY when there's a real send gap — preserving the diagnostic discrepancy
-  // the merchant uses to spot CAPI breakages.
+  // Hero counts: prefer order_attribution.capi_sent_at (not subject to the
+  // capi_delivery_log row-cap trim). Fall back to counting distinct sent
+  // capi_delivery_log event_ids when the column hasn't been migrated yet —
+  // pre-DDL deploy window. The fallback is the original loader logic verbatim
+  // so behavior pre-DDL matches the prior shipped version.
   const startMs = new Date(startIso).getTime();
   const endMs = new Date(endIso).getTime();
-  const todayAttribution = (attributionRes.data ?? []).filter((a) => {
+  const todayAttribution = (attributionRes.data ?? []).filter((a: { attributed_at: string }) => {
     const t = new Date(a.attributed_at).getTime();
     return t >= startMs && t < endMs;
-  }) as AttributionRow[];
-  const trackedCount = todayAttribution.filter((a) => a.capi_sent_at != null).length;
-  const retryingCount = todayAttribution.filter((a) => a.capi_sent_at == null).length;
+  });
+
+  // Detect column presence on the returned rows. If at least one row has the
+  // capi_sent_at key (even when its value is null), the column exists →
+  // post-DDL world. Otherwise (every row missing the key, or no rows at all
+  // AND the underlying schema lacks it) → fall back. We check `in` rather
+  // than truthy to distinguish a missing column from a NULL value.
+  const hasCapiSentColumn =
+    todayAttribution.length > 0
+      ? todayAttribution.some((a) => "capi_sent_at" in a)
+      : (attributionRes.data?.length ?? 0) > 0
+        ? (attributionRes.data ?? []).some((a) => "capi_sent_at" in a)
+        : true; // empty table — assume new schema, hero shows "armed"
+
+  let trackedCount: number;
+  let retryingCount: number;
+  if (hasCapiSentColumn) {
+    trackedCount = todayAttribution.filter((a) => a.capi_sent_at != null).length;
+    retryingCount = todayAttribution.filter((a) => a.capi_sent_at == null).length;
+  } else {
+    // Pre-DDL: distinct Purchase event_ids today, at-least-one-sent → tracked,
+    // only-failed → retrying. Identical to the pre-cf82eb7 loader.
+    const sentIds = new Set<string>();
+    const allIds = new Set<string>();
+    for (const r of (todayCapiRes.data ?? []) as Array<{ event_id: string; status: string }>) {
+      allIds.add(r.event_id);
+      if (r.status === "sent") sentIds.add(r.event_id);
+    }
+    trackedCount = sentIds.size;
+    retryingCount = [...allIds].filter((id) => !sentIds.has(id)).length;
+  }
+
   const todayStats: TodayStats = {
     trackedCount,
     retryingCount,
