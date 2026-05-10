@@ -31,20 +31,46 @@ function adminClient() {
 
 // ─── Connection lookup ────────────────────────────────────────────────────────
 
-// Returns { datasetId, accessToken } for the shop, or null if no connection
-// exists / connection is revoked. Decrypts the BISU token in memory.
-export async function getCAPIConnection(storeId) {
+// Internal — returns the row state so callers can distinguish "no connection
+// row" (merchant disconnected, expected drop) from "row exists but inactive"
+// (broken connection, the failure mode that lost #9393's Purchase silently).
+// The latter is what we now write a `dropped` log row for.
+async function lookupConnection(storeId) {
   const supabase = adminClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("meta_pixel_connections")
     .select("dataset_id, bisu_token, status")
     .eq("store_id", storeId)
-    .single();
-  if (!data || data.status !== "active") return null;
+    .maybeSingle();
+  if (error) {
+    // Lookup itself failed — log so Railway captures the trace. Treat as
+    // "row exists with unknown state" so the caller logs a drop and the
+    // recon cron eventually retries the underlying order.
+    console.warn(`[meta-capi lookupConnection ${storeId}] query error:`, error.message);
+    return { exists: true, status: null, conn: null };
+  }
+  if (!data) {
+    return { exists: false, status: null, conn: null };
+  }
+  if (data.status !== "active") {
+    console.warn(`[meta-capi lookupConnection ${storeId}] inactive — status=${data.status}`);
+    return { exists: true, status: data.status, conn: null };
+  }
   return {
-    datasetId: data.dataset_id,
-    accessToken: decryptSecret(data.bisu_token),
+    exists: true,
+    status: "active",
+    conn: {
+      datasetId: data.dataset_id,
+      accessToken: decryptSecret(data.bisu_token),
+    },
   };
+}
+
+// Returns { datasetId, accessToken } for the shop, or null if no connection
+// exists / connection is revoked. Decrypts the BISU token in memory.
+export async function getCAPIConnection(storeId) {
+  const { conn } = await lookupConnection(storeId);
+  return conn;
 }
 
 // ─── Event payload ────────────────────────────────────────────────────────────
@@ -164,10 +190,32 @@ export async function postCAPIEvents({ accessToken, datasetId, events, testEvent
  * @param {string} [args.testEventCode]
  */
 export async function sendCAPIEventsForShop({ storeId, events, testEventCode } = {}) {
-  const conn = await getCAPIConnection(storeId);
-  if (!conn) {
+  const lookup = await lookupConnection(storeId);
+  if (!lookup.conn) {
+    // Silent-drop guard: the original bug was that a drop here left no DB
+    // trace at all (no log row, no retry row). When the connection row
+    // EXISTS but the lookup didn't return a usable conn (status flipped,
+    // query error, etc.), we now write a `dropped` log row so the recon
+    // cron and any monitoring pick it up. When the row is absent (merchant
+    // intentionally disconnected) the FK on store_id would block the
+    // insert anyway — we just console.warn and move on.
+    if (lookup.exists) {
+      const supabase = adminClient();
+      await logDeliveries(
+        supabase,
+        storeId,
+        events,
+        { traceId: null, status: 0, body: { error: { message: lookup.status ? `inactive_${lookup.status}` : "no_connection" } } },
+        "dropped"
+      ).catch((err) => {
+        console.warn(`[meta-capi logDeliveries ${storeId}] dropped-row insert failed:`, err?.message ?? err);
+      });
+    } else {
+      console.warn(`[meta-capi sendCAPIEventsForShop ${storeId}] dropping ${events.length} event(s) — connection row absent (merchant disconnected)`);
+    }
     return { ok: false, reason: "no_connection", events: events.length };
   }
+  const conn = lookup.conn;
 
   const supabase = adminClient();
   let result;
@@ -231,7 +279,9 @@ async function logDeliveries(supabase, storeId, events, result, status) {
     status,
     trace_id: result.traceId,
     http_status: result.status,
-    error_msg: status === "failed" ? result.body?.error?.message ?? null : null,
+    // Both `failed` (Meta rejected) and `dropped` (we never sent — broken
+    // local connection state) carry an error reason; `sent` doesn't.
+    error_msg: status === "sent" ? null : result.body?.error?.message ?? null,
   }));
   // Service role bypasses RLS, but capi_delivery_log has a row-cap trigger
   // that fires per insert — keeps each shop's tail at <=500 rows.
