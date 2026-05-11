@@ -282,6 +282,10 @@ async function logDeliveries(supabase, storeId, events, result, status) {
     // Both `failed` (Meta rejected) and `dropped` (we never sent — broken
     // local connection state) carry an error reason; `sent` doesn't.
     error_msg: status === "sent" ? null : result.body?.error?.message ?? null,
+    // Match-key inventory for the EMQ cron. Only populated for `sent` rows —
+    // failed/dropped events never reached Meta, so they shouldn't influence
+    // match-quality aggregates.
+    match_keys: status === "sent" ? Object.keys(e.user_data ?? {}) : null,
   }));
   // Service role bypasses RLS, but capi_delivery_log has a row-cap trigger
   // that fires per insert — keeps each shop's tail at <=500 rows.
