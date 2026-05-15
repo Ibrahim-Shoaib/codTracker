@@ -195,6 +195,7 @@ async function replayPurchase({
 
   const { fbc: bestFbc } = pickBestFbc({
     cartAttrFbc: identityHints.fbc,
+    cartAttrFbcSource: identityHints.fbcSource,
     visitor,
   });
 

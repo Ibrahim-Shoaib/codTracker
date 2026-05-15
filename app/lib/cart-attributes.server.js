@@ -48,11 +48,24 @@ function extractFbclidFromUrl(maybeUrl) {
 
 // Order webhook payload uses `note_attributes`. Checkout uses `attributes`.
 // Some webhooks also surface them under `cart_token`+`presentment_currency`.
+//
+// Returned `fbcSource` distinguishes:
+//   - 'cart_attribute' — fbc came from a real cart attribute written by the
+//     storefront beacon, which itself read the browser's _fbc cookie. The
+//     fbclid component is the full untruncated value.
+//   - 'synthesized_from_landing_site' — fbc was built locally from
+//     order.landing_site's fbclid query param. Shopify TRUNCATES landing_site
+//     URLs (verified ~91 chars in production); the synthesized fbc therefore
+//     has a shortened fbclid, which Meta flags as "modified fbclid value in
+//     fbc parameter" (Diagnostic 1). Callers should prefer visitor.latest_fbc
+//     (which carries the full cookie value) over this synthesized fbc.
+//   - null — no fbc resolved.
 export function extractIdentityFromOrder(order) {
   const attrs = order?.note_attributes ?? order?.attributes ?? [];
 
   const fbp = pickAttr(attrs, KEYS.fbp);
   let fbc = pickAttr(attrs, KEYS.fbc);
+  let fbcSource = fbc ? "cart_attribute" : null;
   let fbclid = pickAttr(attrs, KEYS.fbclid);
 
   // Fallback: if neither cart attributes carry fbclid, parse it from the
@@ -77,11 +90,13 @@ export function extractIdentityFromOrder(order) {
       ? new Date(order.created_at).getTime()
       : Date.now();
     fbc = `fb.1.${clickTs}.${fbclid}`;
+    fbcSource = "synthesized_from_landing_site";
   }
 
   return {
     fbp,
     fbc,
+    fbcSource,
     fbclid,
     eventId: pickAttr(attrs, KEYS.eventId),
     visitorId: pickAttr(attrs, KEYS.visitorId),

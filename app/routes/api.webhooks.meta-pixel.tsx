@@ -132,14 +132,14 @@ async function handleOrderPaid(shop: string, order: ShopifyOrder) {
     }`
   );
 
-  // Pick best fbc: cart-attribute first (most-recent click), then
-  // visitor.latest_fbc, then visitor.fbc_history. The landing_site
-  // fallback inside extractIdentityFromOrder already populates
-  // identityHints.fbc when the URL had ?fbclid=, so this only kicks in
-  // for the "returning visitor whose original click cookie expired"
-  // case — exactly the multi-session pattern we're solving.
+  // Pick best fbc: real cart-attribute (browser cookie) > visitor.latest_fbc
+  // > visitor.fbc_history > synthesized-from-landing_site (last resort —
+  // Shopify truncates landing_site fbclid). Passing fbcSource lets pickBestFbc
+  // demote the synthesized fbc below the visitor row's full fbc when both
+  // exist, fixing Meta's "modified fbclid value in fbc parameter" diagnostic.
   const { fbc: bestFbc, source: fbcSource } = pickBestFbc({
     cartAttrFbc: identityHints.fbc,
+    cartAttrFbcSource: identityHints.fbcSource,
     visitor,
   });
   if (bestFbc && fbcSource !== "cart_attribute") {
@@ -304,6 +304,7 @@ async function handleCheckout(
   }
   const { fbc: bestFbc } = pickBestFbc({
     cartAttrFbc: identityHints.fbc,
+    cartAttrFbcSource: identityHints.fbcSource,
     visitor,
   });
 

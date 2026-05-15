@@ -113,3 +113,31 @@ test("extractCustomerIdentity stringifies numeric customer.id as externalId", ()
   const c = extractCustomerIdentity(order);
   assert.equal(c.externalId, "1234567890");
 });
+
+// fbcSource — distinguishes real cart-attribute fbc (full fbclid from cookie)
+// from synthesized-from-landing_site fbc (truncated fbclid). pickBestFbc uses
+// this to demote synthesized fbc below visitor.latest_fbc.
+test("extractIdentityFromOrder marks fbcSource=cart_attribute when _fbc came from cart", () => {
+  const order = {
+    note_attributes: [{ name: "_fbc", value: "fb.1.789.abc" }],
+  };
+  const id = extractIdentityFromOrder(order);
+  assert.equal(id.fbc, "fb.1.789.abc");
+  assert.equal(id.fbcSource, "cart_attribute");
+});
+
+test("extractIdentityFromOrder marks fbcSource=synthesized_from_landing_site when fbc was built from landing URL", () => {
+  const order = {
+    note_attributes: [],
+    landing_site: "/?fbclid=PAZXh0bgNhZW0BMABTRUNCATEDfbclid",
+  };
+  const id = extractIdentityFromOrder(order);
+  assert.match(id.fbc, /^fb\.1\.\d+\.PAZXh0bgNhZW0BMABTRUNCATEDfbclid$/);
+  assert.equal(id.fbcSource, "synthesized_from_landing_site");
+});
+
+test("extractIdentityFromOrder fbcSource=null when no fbc resolved", () => {
+  const id = extractIdentityFromOrder({});
+  assert.equal(id.fbc, null);
+  assert.equal(id.fbcSource, null);
+});

@@ -351,21 +351,47 @@ export async function recordVisitorEvent({
 }
 
 // Choose the best fbc to send on a Purchase event. Order of preference:
-//   1. The order's cart-attribute fbc (if identity-relay captured it)
-//   2. The visitor row's latest_fbc
+//   1. The order's cart-attribute fbc (if identity-relay captured it from
+//      the browser's _fbc cookie — full untruncated fbclid)
+//   2. The visitor row's latest_fbc (also from a prior browser cookie read)
 //   3. The most-recent entry from visitor.fbc_history
-//   4. Server-side synthesis from order.landing_site fbclid (caller's
-//      job — done in cart-attributes.server.js)
+//   4. Server-side synthesis from order.landing_site fbclid (DEMOTED below
+//      visitor lookups because Shopify's landing_site URL truncates the
+//      fbclid query parameter — verified ~91 chars in production vs ~150
+//      chars from the cookie. Sending the truncated fbclid triggers Meta's
+//      "modified fbclid value in fbc parameter" diagnostic and degrades
+//      attribution.)
+//
+// `cartAttrFbcSource` is optional; when omitted, cartAttrFbc is treated as
+// 'cart_attribute' (legacy behavior preserved for older callers and tests).
+// Production callers MUST pass `cartAttrFbcSource: identityHints.fbcSource`
+// so synthesized fbc gets demoted correctly.
 //
 // Returns { fbc, source } where source explains where it came from
 // (useful for diagnostic logging).
-export function pickBestFbc({ cartAttrFbc, visitor }) {
-  if (cartAttrFbc) return { fbc: cartAttrFbc, source: "cart_attribute" };
-  if (visitor?.latest_fbc) return { fbc: visitor.latest_fbc, source: "visitor_latest" };
+export function pickBestFbc({ cartAttrFbc, cartAttrFbcSource, visitor }) {
+  // Treat omitted source as 'cart_attribute' for backward compat with old
+  // call sites and tests. New code passes the explicit source from
+  // extractIdentityFromOrder.
+  const sourceTag = cartAttrFbcSource ?? (cartAttrFbc ? "cart_attribute" : null);
+
+  // Tier 1: real cart-attribute fbc (full fbclid from browser cookie)
+  if (cartAttrFbc && sourceTag === "cart_attribute") {
+    return { fbc: cartAttrFbc, source: "cart_attribute" };
+  }
+  // Tier 2: visitor row's latest_fbc (also full fbclid from prior cookie reads)
+  if (visitor?.latest_fbc) {
+    return { fbc: visitor.latest_fbc, source: "visitor_latest" };
+  }
+  // Tier 3: visitor history
   const history = visitor?.fbc_history;
   if (Array.isArray(history) && history.length) {
     const latest = history[history.length - 1];
     if (latest?.value) return { fbc: latest.value, source: "visitor_history" };
+  }
+  // Tier 4 (last resort): synthesized-from-landing-site fbc with truncated fbclid
+  if (cartAttrFbc && sourceTag === "synthesized_from_landing_site") {
+    return { fbc: cartAttrFbc, source: "synthesized_from_landing_site" };
   }
   return { fbc: null, source: null };
 }
