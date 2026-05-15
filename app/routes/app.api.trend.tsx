@@ -90,20 +90,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const supabase = await getSupabaseForStore(shop);
 
-  // Mirror dashboard expense math (per-store — even for demo, expenses
-  // are the merchant's own entered values).
-  const { data: expensesList } = await supabase
-    .from("store_expenses")
-    .select("amount, type")
-    .eq("store_id", shop);
-  const exps = expensesList ?? [];
-  const monthlyExp = exps
-    .filter((e: any) => e.type === "monthly")
-    .reduce((s: number, e: any) => s + Number(e.amount), 0);
-  const perOrderExp = exps
-    .filter((e: any) => e.type === "per_order")
-    .reduce((s: number, e: any) => s + Number(e.amount), 0);
-
   // Demo stores read trend data from the shared pool. Fetch the is_demo
   // flag with a single cheap query — same swap the dashboard loader does.
   const { data: storeRow } = await supabase
@@ -115,9 +101,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const args = {
     p_store_id: dataStoreId,
-    p_monthly_expenses: monthlyExp,
-    p_per_order_expenses: perOrderExp,
     p_granularity: granularity,
+    p_expense_store_id: shop,
   };
 
   // Two RPCs in parallel — current and prior buckets aligned by index

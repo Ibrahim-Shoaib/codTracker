@@ -25,6 +25,7 @@
 // without touching components.
 
 import { getSupabaseForStore } from "./supabase.server.js";
+import { allocateExpenses } from "./expense-alloc.server.js";
 
 // ─── Public dispatch ──────────────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ class PostExAdapter {
     };
   }
 
-  async getDashboardStats({ periods, monthlyExp, perOrderExp }) {
+  async getDashboardStats({ periods, expenseStoreId }) {
     const supabase = await getSupabaseForStore(this.store.store_id);
     const out = {};
     await Promise.all(
@@ -65,8 +66,7 @@ class PostExAdapter {
           p_store_id: this.store.store_id,
           p_from_date: range.from,
           p_to_date: range.to,
-          p_monthly_expenses: monthlyExp,
-          p_per_order_expenses: perOrderExp,
+          p_expense_store_id: expenseStoreId ?? this.store.store_id,
         });
         out[key] = data?.[0] ?? null;
       })
@@ -116,7 +116,7 @@ class ShopifyDirectAdapter {
     };
   }
 
-  async getDashboardStats({ periods, monthlyExp, perOrderExp }) {
+  async getDashboardStats({ periods, expenses: expenseRows = [] }) {
     const ranges = Object.values(periods);
     if (!ranges.length) return {};
 
@@ -138,24 +138,23 @@ class ShopifyDirectAdapter {
     // them regardless of ingest_mode, in store currency).
     const adSpendByDay = await this._loadAdSpend(widest.from, widest.to);
 
-    // Days-in-period for monthly-expense proration.
     const out = {};
     for (const [key, range] of Object.entries(periods)) {
       const inRange = orders.filter(
         (o) => o.created_at_iso >= range.from && o.created_at_iso < range.toExclusive
       );
       const adSpend = sumAdSpend(adSpendByDay, range.from, range.toExclusive);
-      const days = daysBetween(range.from, range.toExclusive);
-      const expenses =
-        Number(monthlyExp ?? 0) * (days / 30) +
-        Number(perOrderExp ?? 0) * countNonRefundedOrders(inRange);
+      // Expenses use the one shared allocator (mirrors the SQL RPC), so
+      // shopify_direct net profit matches what the PostEx path would show.
       out[key] = computeStats({
         orders: inRange,
         costsMap,
         adSpend,
-        expenses,
+        expenseRows,
         rangeFromIso: range.from,
         rangeToIso: range.toExclusive,
+        expRangeFrom: range.from,
+        expRangeTo: range.to,
       });
     }
     return out;
@@ -349,7 +348,7 @@ function daysBetween(fromIso, toExclusiveIso) {
 //   - Refunded = sum of refund.transaction_amount for refunds whose
 //     processed_at falls in period (regardless of order creation date).
 //   - Net sales = sales - refunded
-function computeStats({ orders, costsMap, adSpend, expenses, rangeFromIso, rangeToIso }) {
+function computeStats({ orders, costsMap, adSpend, expenses, expenseRows, rangeFromIso, rangeToIso, expRangeFrom, expRangeTo }) {
   let grossSales = 0;
   let units = 0;
   let cogs = 0;
@@ -391,7 +390,23 @@ function computeStats({ orders, costsMap, adSpend, expenses, rangeFromIso, range
   const deliveryCost = 0;       // no courier integration
   const reversalCost = 0;
   const grossProfit = sales - deliveryCost - reversalCost - tax - cogs;
-  const netProfit = grossProfit - adSpend - expenses;
+
+  // Resolve expenses: prefer the shared segment allocator (rows + range);
+  // fall back to a pre-computed numeric for the pure unit tests.
+  let expenseBreakdown = [];
+  let expenseTotal;
+  if (Array.isArray(expenseRows)) {
+    const a = allocateExpenses(expenseRows, expRangeFrom, expRangeTo, {
+      delivered: nonRefundedCount,
+      adSpend,
+      sales,
+    });
+    expenseTotal = a.total;
+    expenseBreakdown = a.breakdown;
+  } else {
+    expenseTotal = Number(expenses ?? 0);
+  }
+  const netProfit = grossProfit - adSpend - expenseTotal;
 
   const safeDiv = (a, b) => (b === 0 || b == null ? null : a / b);
 
@@ -415,7 +430,8 @@ function computeStats({ orders, costsMap, adSpend, expenses, rangeFromIso, range
     tax: round2(tax),
     cogs: round2(cogs),
     ad_spend: round2(adSpend),
-    expenses: round2(expenses),
+    expenses: round2(expenseTotal),
+    _expenseBreakdown: expenseBreakdown,
     gross_profit: round2(grossProfit),
     net_profit: round2(netProfit),
     return_loss: round2(refundedAmount),  // refunded money (used by BreakEvenSection's "cost per return" tile, relabeled in UI)

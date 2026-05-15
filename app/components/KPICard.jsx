@@ -179,6 +179,7 @@ export default function KPICard({
   stats: defaultStats,
   priorStats: defaultPriorStats,
   dateRange: defaultDateRange,
+  expenseBreakdown: defaultExpenseBreakdown,
   unfulfilledPromise,
   onMore,
   currency = "PKR",
@@ -209,6 +210,11 @@ export default function KPICard({
   const priorStats = fetcher.data
     ? fetcher.data?.priorStats ?? null
     : defaultPriorStats;
+  // Custom-range fetch returns its own period-correct breakdown; before any
+  // fetch fall back to the loader-supplied breakdown for the preset range.
+  const expenseBreakdown = fetcher.data
+    ? fetcher.data?.expenseBreakdown ?? []
+    : defaultExpenseBreakdown ?? [];
   const loading = fetcher.state === "loading";
   const presets = computePresets();
 
@@ -460,7 +466,7 @@ export default function KPICard({
               variant="plain"
               loading={loading}
               onClick={() =>
-                onMore(stats, { from: currentFrom, to: currentTo }, displayName)
+                onMore(stats, { from: currentFrom, to: currentTo }, displayName, expenseBreakdown)
               }
             >
               Breakdown →

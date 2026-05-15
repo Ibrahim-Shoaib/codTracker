@@ -47,13 +47,24 @@ const STEP_ROUTES: Record<number, string> = {
 };
 
 
-function statsRpc(supabase: ReturnType<typeof getSupabaseForStore> extends Promise<infer T> ? T : never, shop: string, from: string, to: string, monthlyExp: number, perOrderExp: number) {
+// Expenses are now read inside the RPC from store_expenses. For demo stores
+// orders come from the pool (dataStoreId) but expenses stay the merchant's
+// own (expenseStoreId = session.shop); p_expense_store_id keeps them apart.
+function statsRpc(supabase: ReturnType<typeof getSupabaseForStore> extends Promise<infer T> ? T : never, dataStoreId: string, from: string, to: string, expenseStoreId: string) {
   return (supabase as any).rpc("get_dashboard_stats", {
-    p_store_id:           shop,
-    p_from_date:          from,
-    p_to_date:            to,
-    p_monthly_expenses:   monthlyExp,
-    p_per_order_expenses: perOrderExp,
+    p_store_id:         dataStoreId,
+    p_from_date:        from,
+    p_to_date:          to,
+    p_expense_store_id: expenseStoreId,
+  });
+}
+
+function breakdownRpc(supabase: any, dataStoreId: string, from: string, to: string, expenseStoreId: string) {
+  return supabase.rpc("get_expense_breakdown", {
+    p_store_id:         dataStoreId,
+    p_from_date:        from,
+    p_to_date:          to,
+    p_expense_store_id: expenseStoreId,
   });
 }
 
@@ -73,7 +84,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       .single(),
     supabase
       .from("store_expenses")
-      .select("id, name, amount, type")
+      .select("id, series_id, name, amount, kind, is_variable, pct_base, effective_from, effective_to")
       .eq("store_id", shop)
       .order("created_at"),
   ]);
@@ -93,8 +104,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   const expenses = expensesList ?? [];
-  const monthlyExp   = expenses.filter((e: any) => e.type === "monthly").reduce((s: number, e: any) => s + Number(e.amount), 0);
-  const perOrderExp  = expenses.filter((e: any) => e.type === "per_order").reduce((s: number, e: any) => s + Number(e.amount), 0);
 
   // For demo stores, all orders/ad_spend reads target the shared pool
   // store_id; expenses + COGS lookups continue to use the merchant's
@@ -115,7 +124,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // render — same shape from the adapter as from the RPC.
   if (store.ingest_mode === "shopify_direct") {
     return buildShopifyDirectResponse({
-      session, store, expenses, monthlyExp, perOrderExp,
+      session, store, expenses,
       today, yesterday, mtd, lastMonth,
     });
   }
@@ -180,17 +189,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     { count: unmatchedCount },
     cityRes,
     trendRes,
+    bdTodayRes,
+    bdYestRes,
+    bdMtdRes,
+    bdLmRes,
   ] = await Promise.all([
-    statsRpc(supabase, dataStoreId, todayFrom, todayTo, monthlyExp, perOrderExp),
-    statsRpc(supabase, dataStoreId, yestFrom,  yestTo,  monthlyExp, perOrderExp),
-    statsRpc(supabase, dataStoreId, mtdFrom,   mtdTo,   monthlyExp, perOrderExp),
-    statsRpc(supabase, dataStoreId, lmFrom,    lmTo,    monthlyExp, perOrderExp),
-    statsRpc(supabase, dataStoreId, dbyFrom,     dbyTo,     monthlyExp, perOrderExp),
-    statsRpc(supabase, dataStoreId, mtdCompFrom, mtdCompTo, monthlyExp, perOrderExp),
-    statsRpc(supabase, dataStoreId, mblFrom,     mblTo,     monthlyExp, perOrderExp),
-    statsRpc(supabase, dataStoreId, window30From, windowTo, monthlyExp, perOrderExp),
-    statsRpc(supabase, dataStoreId, window60From, windowTo, monthlyExp, perOrderExp),
-    statsRpc(supabase, dataStoreId, window90From, windowTo, monthlyExp, perOrderExp),
+    statsRpc(supabase, dataStoreId, todayFrom, todayTo, shop),
+    statsRpc(supabase, dataStoreId, yestFrom,  yestTo,  shop),
+    statsRpc(supabase, dataStoreId, mtdFrom,   mtdTo,   shop),
+    statsRpc(supabase, dataStoreId, lmFrom,    lmTo,    shop),
+    statsRpc(supabase, dataStoreId, dbyFrom,     dbyTo,     shop),
+    statsRpc(supabase, dataStoreId, mtdCompFrom, mtdCompTo, shop),
+    statsRpc(supabase, dataStoreId, mblFrom,     mblTo,     shop),
+    statsRpc(supabase, dataStoreId, window30From, windowTo, shop),
+    statsRpc(supabase, dataStoreId, window60From, windowTo, shop),
+    statsRpc(supabase, dataStoreId, window90From, windowTo, shop),
     supabase
       .from("orders")
       .select("id", { count: "exact", head: true })
@@ -208,20 +221,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const prior = getPriorEqualLengthRange(window30From, windowTo);
       const [cur, pri] = await Promise.all([
         (supabase as any).rpc("get_trend_series", {
-          p_store_id:           dataStoreId,
-          p_from_date:          window30From,
-          p_to_date:            windowTo,
-          p_monthly_expenses:   monthlyExp,
-          p_per_order_expenses: perOrderExp,
-          p_granularity:        "day",
+          p_store_id:         dataStoreId,
+          p_from_date:        window30From,
+          p_to_date:          windowTo,
+          p_granularity:      "day",
+          p_expense_store_id: shop,
         }),
         (supabase as any).rpc("get_trend_series", {
-          p_store_id:           dataStoreId,
-          p_from_date:          prior.from,
-          p_to_date:            prior.to,
-          p_monthly_expenses:   monthlyExp,
-          p_per_order_expenses: perOrderExp,
-          p_granularity:        "day",
+          p_store_id:         dataStoreId,
+          p_from_date:        prior.from,
+          p_to_date:          prior.to,
+          p_granularity:      "day",
+          p_expense_store_id: shop,
         }),
       ]);
       const curPoints = (cur.data ?? []).map((p: any) => maskDemoAdSpendForTrendPoint(p, store));
@@ -232,6 +243,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         prior:   { from: prior.from,   to: prior.to,    points: priPoints },
       };
     })(),
+    breakdownRpc(supabase, dataStoreId, todayFrom, todayTo, shop),
+    breakdownRpc(supabase, dataStoreId, yestFrom,  yestTo,  shop),
+    breakdownRpc(supabase, dataStoreId, mtdFrom,   mtdTo,   shop),
+    breakdownRpc(supabase, dataStoreId, lmFrom,    lmTo,    shop),
   ]);
 
   // Demo stores without a connected Meta Ads account: zero ad_spend (and
@@ -388,10 +403,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       returnsUnit: "count",
     },
     periods: {
-      today:     { stats: s.today,     priorStats: prior.today,     dateRange: { from: todayFrom, to: todayTo } },
-      yesterday: { stats: s.yesterday, priorStats: prior.yesterday, dateRange: { from: yestFrom,  to: yestTo  } },
-      mtd:       { stats: s.mtd,       priorStats: prior.mtd,       dateRange: { from: mtdFrom,   to: mtdTo   } },
-      lastMonth: { stats: s.lastMonth, priorStats: prior.lastMonth, dateRange: { from: lmFrom,    to: lmTo    } },
+      today:     { stats: s.today,     priorStats: prior.today,     dateRange: { from: todayFrom, to: todayTo }, expenseBreakdown: bdTodayRes.data ?? [] },
+      yesterday: { stats: s.yesterday, priorStats: prior.yesterday, dateRange: { from: yestFrom,  to: yestTo  }, expenseBreakdown: bdYestRes.data ?? [] },
+      mtd:       { stats: s.mtd,       priorStats: prior.mtd,       dateRange: { from: mtdFrom,   to: mtdTo   }, expenseBreakdown: bdMtdRes.data ?? [] },
+      lastMonth: { stats: s.lastMonth, priorStats: prior.lastMonth, dateRange: { from: lmFrom,    to: lmTo    }, expenseBreakdown: bdLmRes.data ?? [] },
     },
     breakEven,
     cityBreakdown: {
@@ -417,11 +432,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 // success-rate instead of delivery-success.
 
 async function buildShopifyDirectResponse({
-  session, store, expenses, monthlyExp, perOrderExp,
+  session, store, expenses,
   today, yesterday, mtd, lastMonth,
 }: {
   session: any; store: any; expenses: any[];
-  monthlyExp: number; perOrderExp: number;
   today: any; yesterday: any; mtd: any; lastMonth: any;
 }) {
   const todayFrom = formatPKTDate(today.start);
@@ -460,8 +474,8 @@ async function buildShopifyDirectResponse({
   // Single broad-range fetch under the hood — both calls share the
   // 60s cache, so the second is a memory hit.
   const [s, prior] = await Promise.all([
-    adapter.getDashboardStats({ periods: periodsCurrent, monthlyExp, perOrderExp }),
-    adapter.getDashboardStats({ periods: periodsPrior,   monthlyExp, perOrderExp }),
+    adapter.getDashboardStats({ periods: periodsCurrent, expenses }),
+    adapter.getDashboardStats({ periods: periodsPrior,   expenses }),
   ]);
 
   // Break-even windows (30/60/90 days). For shopify_direct these use
@@ -483,8 +497,7 @@ async function buildShopifyDirectResponse({
       w60: { from: window60From, toExclusive: windowTo, to: windowTo },
       w90: { from: window90From, toExclusive: windowTo, to: windowTo },
     },
-    monthlyExp,
-    perOrderExp,
+    expenses,
   });
 
   function deriveBreakEven(stats: any, windowFrom: string, days: number) {
@@ -549,10 +562,10 @@ async function buildShopifyDirectResponse({
     metaAdAccountCurrency: store.meta_ad_account_currency ?? null,
     caps: adapter.capabilities(),
     periods: {
-      today:     { stats: s.today,     priorStats: prior.today,     dateRange: { from: todayFrom, to: todayTo } },
-      yesterday: { stats: s.yesterday, priorStats: prior.yesterday, dateRange: { from: yestFrom,  to: yestTo  } },
-      mtd:       { stats: s.mtd,       priorStats: prior.mtd,       dateRange: { from: mtdFrom,   to: mtdTo   } },
-      lastMonth: { stats: s.lastMonth, priorStats: prior.lastMonth, dateRange: { from: lmFrom,    to: lmTo    } },
+      today:     { stats: s.today,     priorStats: prior.today,     dateRange: { from: todayFrom, to: todayTo }, expenseBreakdown: s.today?._expenseBreakdown     ?? [] },
+      yesterday: { stats: s.yesterday, priorStats: prior.yesterday, dateRange: { from: yestFrom,  to: yestTo  }, expenseBreakdown: s.yesterday?._expenseBreakdown ?? [] },
+      mtd:       { stats: s.mtd,       priorStats: prior.mtd,       dateRange: { from: mtdFrom,   to: mtdTo   }, expenseBreakdown: s.mtd?._expenseBreakdown       ?? [] },
+      lastMonth: { stats: s.lastMonth, priorStats: prior.lastMonth, dateRange: { from: lmFrom,    to: lmTo    }, expenseBreakdown: s.lastMonth?._expenseBreakdown ?? [] },
     },
     breakEven,
     cityBreakdown: { cities: [], from: window30From, to: windowTo },
@@ -567,13 +580,14 @@ export default function Dashboard() {
   const data = useLoaderData<typeof loader>();
   const [detail, setDetail] = useState<{
     stats: any; dateRange: { from: string; to: string }; title: string;
+    expenseBreakdown: any[];
   } | null>(null);
 
   if ("redirectTo" in data) {
     return <Navigate to={(data as { redirectTo: string }).redirectTo} replace />;
   }
 
-  const { periods, expensesList, unmatchedCOGSCount,
+  const { periods, unmatchedCOGSCount,
           metaConnected, isMetaExpired, isMetaExpiringSoon, metaExpiresAt,
           metaSyncError,
           backfillInProgress, cityBreakdown, breakEven, trend,
@@ -626,11 +640,12 @@ export default function Dashboard() {
                   stats={periods[key].stats}
                   priorStats={periods[key].priorStats}
                   dateRange={periods[key].dateRange}
+                  expenseBreakdown={periods[key].expenseBreakdown}
                   unfulfilledPromise={unfulfilledPipeline}
                   currency={currency}
                   caps={caps}
-                  onMore={(stats, dateRange, title) =>
-                    setDetail({ stats, dateRange, title })
+                  onMore={(stats, dateRange, title, expenseBreakdown) =>
+                    setDetail({ stats, dateRange, title, expenseBreakdown })
                   }
                 />
               ))}
@@ -663,7 +678,7 @@ export default function Dashboard() {
           title={detail.title}
           stats={detail.stats}
           dateRange={detail.dateRange}
-          expensesList={expensesList}
+          expenseBreakdown={detail.expenseBreakdown}
           open={!!detail}
           onClose={() => setDetail(null)}
           currency={currency}

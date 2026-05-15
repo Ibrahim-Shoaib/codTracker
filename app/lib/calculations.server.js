@@ -2,11 +2,10 @@
 // Return null for ratio metrics when denominator is 0 — UI renders null as "N/A".
 // Returning 0 for a ratio when there is no denominator is misleading (e.g. 0 ROAS ≠ no ad spend).
 
-export function calcExpenses(amount, type, daysInPeriod, deliveredOrders) {
-  if (type === 'monthly')   return amount * (daysInPeriod / 30);
-  if (type === 'per_order') return amount * deliveredOrders;
-  return 0;
-}
+// NOTE: expense allocation now lives in one place — the SQL RPCs
+// (migration 025) and its JS mirror app/lib/expense-alloc.server.js.
+// The old calcExpenses() pro-rata helper was dead code with a formula
+// that contradicted the RPC; removed to keep a single source of truth.
 
 export const calcGrossProfit = (sales, deliveryCost, cogs) =>
   sales - deliveryCost - cogs;
