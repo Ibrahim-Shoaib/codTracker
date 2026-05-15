@@ -14,6 +14,7 @@ import {
   findVisitorByFbclid,
   findRecentVisitorByIpUa,
   pickBestFbc,
+  upsertVisitor,
 } from "../lib/visitors.server.js";
 import {
   recordOrderAttribution,
@@ -209,6 +210,39 @@ async function handleOrderPaid(shop: string, order: ShopifyOrder) {
   });
 
   const capiResult = await sendCAPIEventsForShop({ storeId: shop, events: [event] });
+
+  // Cross-session identity write-back. The order webhook is the ONLY place
+  // we reliably learn an anonymous COD buyer's email/phone/address (the
+  // storefront theme embed can't read it — Checkout Extensibility doesn't
+  // load theme app embeds, and the consent-gated Web Pixel is often silent).
+  // Persisting the order's hashed PII onto the visitor row means this
+  // visitor's FUTURE browse events (PageView/ViewContent/AddToCart) ship
+  // with em/ph too, lifting their Event Match Quality from "weak id only"
+  // toward Meta's good band. upsertVisitor's preserveOrUpdate semantics
+  // never null-out an existing value, so this is purely additive. Runs
+  // after the CAPI fire so Meta-delivery latency isn't gated on the write;
+  // best-effort, never blocks the 200.
+  if (recoveredVisitorId) {
+    await upsertVisitor({
+      storeId: shop,
+      visitorId: recoveredVisitorId,
+      input: {
+        email: customer.email ?? undefined,
+        phone: customer.phone ?? undefined,
+        firstName: customer.firstName ?? undefined,
+        lastName: customer.lastName ?? undefined,
+        city: customer.city ?? undefined,
+        state: customer.state ?? undefined,
+        zip: customer.zip ?? undefined,
+        country: customer.country ?? undefined,
+        externalId: customer.externalId ?? undefined,
+        fbp: identityHints.fbp ?? visitor?.latest_fbp ?? undefined,
+        fbc: bestFbc ?? undefined,
+        ip: identityHints.clientIp ?? visitor?.latest_ip ?? undefined,
+        ua: identityHints.clientUa ?? visitor?.latest_ua ?? undefined,
+      },
+    }).catch(() => {});
+  }
 
   // Record channel attribution for the Ad Tracking dashboard. Runs after
   // the CAPI fire so that latency-sensitive Meta delivery isn't gated on

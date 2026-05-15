@@ -29,17 +29,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     .single();
   const dataStoreId = effectiveStoreId(storeRow ?? null, shop);
 
-  const { data: expensesList } = await supabase
-    .from("store_expenses")
-    .select("id, name, amount, type")
-    .eq("store_id", shop);
-
-  const expenses    = expensesList ?? [];
-  const monthlyExp  = expenses.filter((e: any) => e.type === "monthly")
-    .reduce((s: number, e: any) => s + Number(e.amount), 0);
-  const perOrderExp = expenses.filter((e: any) => e.type === "per_order")
-    .reduce((s: number, e: any) => s + Number(e.amount), 0);
-
   // Equal-length immediately preceding range — same comparison rule the
   // dashboard's preset cards use, applied to whatever range the picker hands us.
   const prior = getPriorEqualLengthRange(from, to);
@@ -52,20 +41,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ? fetchDemoUnfulfilledForRange(supabase, dataStoreId, from, to)
     : fetchUnfulfilledForRange(session, from, to);
 
-  const [{ data }, { data: priorData }, unfulfilled] = await Promise.all([
+  const [{ data }, { data: priorData }, { data: breakdownData }, unfulfilled] = await Promise.all([
     (supabase as any).rpc("get_dashboard_stats", {
-      p_store_id:           dataStoreId,
-      p_from_date:          from,
-      p_to_date:            to,
-      p_monthly_expenses:   monthlyExp,
-      p_per_order_expenses: perOrderExp,
+      p_store_id:         dataStoreId,
+      p_from_date:        from,
+      p_to_date:          to,
+      p_expense_store_id: shop,
     }),
     (supabase as any).rpc("get_dashboard_stats", {
-      p_store_id:           dataStoreId,
-      p_from_date:          prior.from,
-      p_to_date:            prior.to,
-      p_monthly_expenses:   monthlyExp,
-      p_per_order_expenses: perOrderExp,
+      p_store_id:         dataStoreId,
+      p_from_date:        prior.from,
+      p_to_date:          prior.to,
+      p_expense_store_id: shop,
+    }),
+    (supabase as any).rpc("get_expense_breakdown", {
+      p_store_id:         dataStoreId,
+      p_from_date:        from,
+      p_to_date:          to,
+      p_expense_store_id: shop,
     }),
     unfulfilledPromise.catch((err: Error) => {
       console.error("[api.stats] unfulfilled fetch failed:", err);
@@ -81,6 +74,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return json({
     stats,
     priorStats,
+    expenseBreakdown: breakdownData ?? [],
     unfulfilled,                  // { count, value } for the selected range
   });
 };

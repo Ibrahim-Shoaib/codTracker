@@ -645,7 +645,14 @@
         var path = window.location.pathname || "";
 
         // ── PageView (always)
-        fireEvent("PageView", "pageview:" + shop + ":" + psid);
+        // event_id prefix MUST be "page_viewed" (not "pageview") so it
+        // matches the sandboxed Custom Web Pixel's fallbackId("page_viewed")
+        // = "page_viewed:<shop>:<psid>". Both contexts share the same psid
+        // (_codprofit_psid cookie), so when the Web Pixel is also active
+        // (consented visitors) Meta dedupes the dual PageView instead of
+        // double-counting it. ViewContent / AddToCart already follow this
+        // Shopify-event-name convention ("product_viewed"/"product_added_to_cart").
+        fireEvent("PageView", "page_viewed:" + shop + ":" + psid);
 
         // ── ViewContent on product pages.
         // /products/<handle>[/...] is the canonical Shopify product URL.

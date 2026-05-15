@@ -5,6 +5,7 @@ import {
   InlineStack,
   Text,
   Button,
+  Badge,
   Divider,
 } from "@shopify/polaris";
 import { formatMoney, formatNegative } from "../lib/format.js";
@@ -39,17 +40,19 @@ function Row({ label, value, onClick }) {
 }
 
 // Props:
-//   title        string — modal heading
-//   stats        object from get_dashboard_stats RPC
-//   dateRange    { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }
-//   expensesList Array<{ id, name, amount, type }>
-//   open         boolean
-//   onClose      () => void
+//   title            string — modal heading
+//   stats            object from get_dashboard_stats RPC
+//   dateRange        { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }
+//   expenseBreakdown Array<{ name, value, estimated }> — from get_expense_breakdown
+//                    (or the shared JS allocator for shopify_direct). Already
+//                    period-correct and always sums to stats.expenses.
+//   open             boolean
+//   onClose          () => void
 export default function DetailPanel({
   title,
   stats,
   dateRange,
-  expensesList,
+  expenseBreakdown,
   open,
   onClose,
   currency = "PKR",
@@ -59,34 +62,16 @@ export default function DetailPanel({
 
   if (!stats) return null;
 
-  // Compute per-expense amounts for this period
-  const expenses = expensesList ?? [];
-  // Count how many 1st-of-months fall within the date range — mirrors the SQL v_month_count logic.
-  // Pure string comparison on YYYY-MM-DD avoids UTC vs local timezone mismatch.
-  function countMonthStarts(from, to) {
-    let count = 0;
-    let [y, m] = from.split('-').map(Number);
-    while (true) {
-      const first = `${y}-${String(m).padStart(2, '0')}-01`;
-      if (first > to) break;
-      if (first >= from) count++;
-      m++;
-      if (m > 12) { m = 1; y++; }
-    }
-    return count;
-  }
-  const monthCount = dateRange ? countMonthStarts(dateRange.from, dateRange.to) : 0;
-
-  // stats.orders now includes returns; per-order expenses in the SQL multiply
-  // by delivered count only, so the breakdown subtracts returns to match.
-  const deliveredCount = Math.max(0, Number(stats.orders ?? 0) - Number(stats.returns ?? 0));
-  const expBreakdown = expenses.map((exp) => ({
-    name: exp.name,
-    value:
-      exp.type === "monthly"
-        ? Number(exp.amount) * monthCount
-        : Number(exp.amount) * deliveredCount,
-  }));
+  // Per-expense amounts come straight from the allocator (SQL or shared
+  // JS mirror) — already period-correct and reconcile to stats.expenses.
+  // Hide zero-contribution rows (e.g. an expense not active this period).
+  const expBreakdown = (expenseBreakdown ?? [])
+    .map((e) => ({
+      name: e.name,
+      value: Number(e.value ?? 0),
+      estimated: !!e.estimated,
+    }))
+    .filter((e) => e.value !== 0 || e.estimated);
 
   return (
     <>
@@ -131,11 +116,16 @@ export default function DetailPanel({
             />
             {showExpBreakdown && expBreakdown.length > 0 && (
               <BlockStack gap="100">
-                {expBreakdown.map((item) => (
-                  <InlineStack key={item.name} align="space-between" blockAlign="center">
-                    <Text as="span" variant="bodySm" tone="subdued">
-                      &nbsp;&nbsp;&nbsp;{item.name}
-                    </Text>
+                {expBreakdown.map((item, i) => (
+                  <InlineStack key={`${item.name}-${i}`} align="space-between" blockAlign="center">
+                    <InlineStack gap="150" blockAlign="center">
+                      <Text as="span" variant="bodySm" tone="subdued">
+                        &nbsp;&nbsp;&nbsp;{item.name}
+                      </Text>
+                      {item.estimated && (
+                        <Badge tone="attention" size="small">est.</Badge>
+                      )}
+                    </InlineStack>
                     <Text as="span" variant="bodySm" tone="subdued">
                       {fmtCost(item.value, currency)}
                     </Text>
