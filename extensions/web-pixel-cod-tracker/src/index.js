@@ -158,15 +158,86 @@ register(({ analytics, browser, init, settings }) => {
     }
   }
 
+  // ─── Identity cache (Match-Strength fix) ────────────────────────────────────
+  //
+  // When the buyer enters email/phone/address in checkout, Shopify emits
+  // `checkout_contact_info_submitted` and `checkout_address_info_submitted`
+  // events. We capture those fields into localStorage so EVERY subsequent
+  // beacon (PageView, ViewContent, AddToCart, IC) carries them. The server
+  // hashes and merges them into the CAPI user_data, raising Event Match
+  // Quality on browse events from ~2.4 toward 6+ (Meta's "good" band).
+  //
+  // 24h TTL — long enough for a typical browse-to-buy session, short enough
+  // that stale identity from a different visitor on a shared device doesn't
+  // leak. The cache lives in browser.localStorage (sandbox-available per
+  // the @shopify/web-pixels-extension API surface).
+  const IDENTITY_KEY = "_codprofit_identity";
+  const IDENTITY_TTL_MS = 24 * 60 * 60 * 1000;
+  // Whitelisted to defend against the cache absorbing arbitrary keys from
+  // future Shopify event-payload changes.
+  const IDENTITY_FIELDS = [
+    "email",
+    "phone",
+    "first_name",
+    "last_name",
+    "city",
+    "state",
+    "zip",
+    "country",
+    "external_id",
+  ];
+
+  async function loadCachedIdentity() {
+    try {
+      const raw = await browser.localStorage.getItem(IDENTITY_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return {};
+      if (typeof parsed._t !== "number" || Date.now() - parsed._t > IDENTITY_TTL_MS) {
+        return {};
+      }
+      const out = {};
+      for (const k of IDENTITY_FIELDS) {
+        if (typeof parsed[k] === "string" && parsed[k]) out[k] = parsed[k];
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  // Merge new identity fields into the cache and persist. Any prior values
+  // are preserved when the new event omits a field (mirrors the server-side
+  // preserveOrUpdate semantics in upsertVisitor).
+  async function cacheIdentity(updates) {
+    const cleaned = {};
+    for (const k of IDENTITY_FIELDS) {
+      const v = updates?.[k];
+      if (typeof v === "string" && v) cleaned[k] = v;
+    }
+    if (!Object.keys(cleaned).length) return;
+    try {
+      const existing = await loadCachedIdentity();
+      const merged = { ...existing, ...cleaned, _t: Date.now() };
+      await browser.localStorage.setItem(IDENTITY_KEY, JSON.stringify(merged));
+    } catch {
+      /* swallow — best-effort */
+    }
+  }
+
   // track() now resolves eventId before sending. eventId may be a string
   // (deterministic, when a resource id is in scope) OR a Promise<string>
   // (fallback, when we have to read the shared page-session cookie). The
   // wrapper normalizes both so subscribe handlers stay tidy.
+  //
+  // The cached identity is merged in BEFORE customData so per-event fields
+  // from the customer-event payload (which are typically fresher) win.
   async function track(eventName, eventId, customData = {}) {
     const resolvedId =
       typeof eventId === "string" ? eventId : await eventId;
     const { fbp, fbc } = await ensureFbCookies();
     const visitorId = await getVisitorId();
+    const cachedIdentity = await loadCachedIdentity();
     const payload = {
       event: eventName,
       event_id: resolvedId,
@@ -175,7 +246,30 @@ register(({ analytics, browser, init, settings }) => {
       fbp,
       fbc,
       user_agent: init.context.navigator?.userAgent,
+      ...cachedIdentity,
       ...customData,
+    };
+    if (visitorId) payload.visitor_id = visitorId;
+    send(payload);
+  }
+
+  // Identity-only beacon — no Meta event mapping, just persists PII to the
+  // visitor row server-side. Used by the checkout_*_info_submitted handlers
+  // below. The server's /apps/tracking/track endpoint upserts the visitor
+  // row with these fields and 204s without firing CAPI.
+  async function sendIdentityUpdate(updates) {
+    await cacheIdentity(updates);
+    const { fbp, fbc } = await ensureFbCookies();
+    const visitorId = await getVisitorId();
+    const merged = await loadCachedIdentity();
+    const payload = {
+      event: "identity_update",
+      event_time: Date.now(),
+      url: init.context.window.location.href,
+      fbp,
+      fbc,
+      user_agent: init.context.navigator?.userAgent,
+      ...merged,
     };
     if (visitorId) payload.visitor_id = visitorId;
     send(payload);
@@ -218,6 +312,39 @@ register(({ analytics, browser, init, settings }) => {
     if (!query) return;
     track("search_submitted", fallbackId("search_submitted"), {
       search_string: query,
+    });
+  });
+
+  // ─── Identity-capture subscriptions (no Meta CAPI fire) ──────────────────
+  //
+  // These two events fire as soon as the buyer types their email/phone
+  // (contact_info) or shipping address (address_info) — typically minutes
+  // before checkout_completed. We capture and beacon them so the visitor
+  // row gains em_hash/ph_hash/etc immediately, and any later browse events
+  // in the same session attach the cached identity to their CAPI payloads.
+
+  analytics.subscribe("checkout_contact_info_submitted", (event) => {
+    const c = event?.data?.checkout;
+    if (!c) return;
+    sendIdentityUpdate({
+      email: c.email,
+      phone: c.phone,
+    });
+  });
+
+  analytics.subscribe("checkout_address_info_submitted", (event) => {
+    const c = event?.data?.checkout;
+    const a = c?.shippingAddress ?? c?.billingAddress;
+    if (!c && !a) return;
+    sendIdentityUpdate({
+      email: c?.email,
+      phone: c?.phone,
+      first_name: a?.firstName,
+      last_name: a?.lastName,
+      city: a?.city,
+      state: a?.provinceCode ?? a?.province,
+      zip: a?.zip,
+      country: a?.countryCode ?? a?.country,
     });
   });
 
@@ -276,6 +403,20 @@ register(({ analytics, browser, init, settings }) => {
     const eventId = orderId
       ? deterministicId("Purchase", orderId)
       : fallbackId("checkout_completed");
+    const a = c.shippingAddress ?? c.billingAddress;
+    const identity = {
+      email: c.email,
+      phone: c.phone,
+      first_name: a?.firstName,
+      last_name: a?.lastName,
+      city: a?.city,
+      state: a?.provinceCode ?? a?.province,
+      zip: a?.zip,
+      country: a?.countryCode ?? a?.country,
+      external_id: c.order?.customer?.id ? String(c.order.customer.id) : undefined,
+    };
+    // Cache for any post-purchase browse events (thank-you page upsells, etc.)
+    cacheIdentity(identity);
     track("checkout_completed", eventId, {
       value: Number(c.totalPrice?.amount ?? 0),
       currency: c.totalPrice?.currencyCode,
@@ -287,9 +428,7 @@ register(({ analytics, browser, init, settings }) => {
         c.lineItems?.map?.((li) =>
           li.variant?.product?.id ? String(li.variant.product.id) : null
         ).filter(Boolean) ?? [],
-      email: c.email,
-      phone: c.phone,
-      external_id: c.order?.customer?.id ? String(c.order.customer.id) : undefined,
+      ...identity,
     });
   });
 });

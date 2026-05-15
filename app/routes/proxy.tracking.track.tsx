@@ -75,8 +75,51 @@ async function handle(request: Request) {
     ? { visitorId: explicitVisitorId }
     : resolveVisitorId(cookieHeader);
 
+  // Network identity needed for both the visitor upsert AND the CAPI fire,
+  // so extract it BEFORE we decide whether this beacon results in a Meta
+  // event. The browser doesn't know its own public IP — Shopify forwards
+  // it via X-Forwarded-For on App Proxy requests.
+  const clientIp = extractClientIp(request) ?? undefined;
+  const clientUa =
+    body.user_agent ?? request.headers.get("user-agent") ?? undefined;
+
+  // UPSERT the visitor row FIRST — runs for every signed beacon, even
+  // identity-only events (`checkout_contact_info_submitted`,
+  // `checkout_address_info_submitted`) that don't map to a Meta standard
+  // event. This is the Match-Strength fix: when the buyer types their
+  // email/phone in checkout, the Web Pixel beacons it here with no Meta
+  // event mapping, and we still persist em_hash/ph_hash on the visitor row.
+  // Subsequent browse events from the same visitor pick up the stored PII
+  // (the Web Pixel attaches its localStorage identity cache to every
+  // beacon body), so PageView/ViewContent/AddToCart EMQ rises after the
+  // first checkout-info event in a session.
+  await upsertVisitor({
+    storeId: shop,
+    visitorId,
+    input: {
+      email: body.email,
+      phone: body.phone,
+      firstName: body.first_name,
+      lastName: body.last_name,
+      city: body.city,
+      state: body.state,
+      zip: body.zip,
+      country: body.country,
+      externalId: body.external_id,
+      fbp: body.fbp,
+      fbc: body.fbc,
+      fbclid: body.fbclid,
+      ip: clientIp,
+      ua: clientUa,
+      utmSource: body.utm_source,
+      utmCampaign: body.utm_campaign,
+      utmContent: body.utm_content,
+    },
+  }).catch(() => {});
+
   // Map Shopify customer-event name → Meta standard event. Unknown / skipped
-  // events return null — we just 204 those without doing any work.
+  // events (including `checkout_contact_info_submitted` etc) return null —
+  // we 204 those AFTER the visitor upsert above so identity still persists.
   const metaEventName = shopifyEventToMeta(body.event);
   if (!metaEventName) {
     return new Response(null, {
@@ -91,10 +134,6 @@ async function handle(request: Request) {
       headers: { "Set-Cookie": visitorCookieHeader(visitorId) },
     });
   }
-
-  const clientIp = extractClientIp(request) ?? undefined;
-  const clientUa =
-    body.user_agent ?? request.headers.get("user-agent") ?? undefined;
 
   // Build external_id list. Two slots, deduped:
   //   1. body.external_id  — what the browser fbq fired with (this is
@@ -121,33 +160,21 @@ async function handle(request: Request) {
     fbp: body.fbp,
     fbc: body.fbc,
     clientUa,
-    // The browser doesn't know its own public IP — Shopify forwards it via
-    // X-Forwarded-For on App Proxy requests.
     clientIp,
     email: body.email,
     phone: body.phone,
+    // Web Pixel attaches cached identity from localStorage to every beacon
+    // (set after a prior checkout_contact/address_info event), so these
+    // fields are typically present on PageView/ViewContent etc. once the
+    // buyer has entered them anywhere in the session.
+    firstName: body.first_name,
+    lastName: body.last_name,
+    city: body.city,
+    state: body.state,
+    zip: body.zip,
+    country: body.country,
     externalId: externalIds.length ? externalIds : undefined,
   });
-
-  // UPSERT the visitor row with whatever signals are on this event.
-  // Best-effort — never blocks the CAPI fire path.
-  await upsertVisitor({
-    storeId: shop,
-    visitorId,
-    input: {
-      email: body.email,
-      phone: body.phone,
-      externalId: body.external_id,
-      fbp: body.fbp,
-      fbc: body.fbc,
-      fbclid: body.fbclid,
-      ip: clientIp,
-      ua: clientUa,
-      utmSource: body.utm_source,
-      utmCampaign: body.utm_campaign,
-      utmContent: body.utm_content,
-    },
-  }).catch(() => {});
 
   // Per-event breadcrumb for the 30-day audit trail. Best-effort.
   recordVisitorEvent({
@@ -226,15 +253,27 @@ function extractClientIp(request: Request): string | null {
 
 type BeaconPayload = {
   event: string;            // Shopify customer-event name (e.g. "product_added_to_cart")
-  event_id: string;         // UUID for dedup with server-side
+  event_id?: string;        // UUID for dedup with server-side; absent on identity-only beacons
   event_time?: number;      // unix ms or s
   url?: string;
   fbp?: string;
   fbc?: string;
   fbclid?: string;
   user_agent?: string;
+  // Identity fields. The Web Pixel captures these from
+  // checkout_contact_info_submitted / checkout_address_info_submitted /
+  // checkout_completed events and caches them in localStorage so EVERY
+  // subsequent beacon (PageView, ViewContent, AddToCart) carries them.
+  // The server hashes via meta-hash and writes em_hash/ph_hash/etc to the
+  // visitor row.
   email?: string;
   phone?: string;
+  first_name?: string;
+  last_name?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
   external_id?: string;
   visitor_id?: string;      // long-lived cod_visitor_id (echoed by theme block from /apps/tracking/config)
   utm_source?: string;
