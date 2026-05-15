@@ -350,22 +350,31 @@ export async function recordVisitorEvent({
   }
 }
 
-// Choose the best fbc to send on a Purchase event. Order of preference:
-//   1. The order's cart-attribute fbc (if identity-relay captured it from
-//      the browser's _fbc cookie — full untruncated fbclid)
-//   2. The visitor row's latest_fbc (also from a prior browser cookie read)
-//   3. The most-recent entry from visitor.fbc_history
-//   4. Server-side synthesis from order.landing_site fbclid (DEMOTED below
-//      visitor lookups because Shopify's landing_site URL truncates the
-//      fbclid query parameter — verified ~91 chars in production vs ~150
-//      chars from the cookie. Sending the truncated fbclid triggers Meta's
-//      "modified fbclid value in fbc parameter" diagnostic and degrades
-//      attribution.)
+// Choose the best fbc to send on a Purchase / InitiateCheckout event.
+//
+// HARD INVARIANT (Meta CAPI compliance): every value this function returns
+// is a *real _fbc cookie value the browser actually wrote* — never a
+// server-side reconstruction from a bare fbclid. Meta's "Server sending
+// modified fbclid value in fbc parameter" diagnostic fires when the fbclid
+// is lowercased or truncated; Shopify truncates `order.landing_site` to
+// ~91 chars (verified live: cookie fbclid p50≈159 chars vs landing_site
+// fbclid =91), so a fbc synthesized from landing_site carries a truncated
+// fbclid. Meta scores an *omitted* fbc strictly better than a *modified*
+// one and explicitly instructs senders not to send the modified value, so
+// when the only thing available is a synthesized/truncated fbc we return
+// null and let the event ship with its other identifiers (em/ph/external_id
+// /fbp/ip+ua) instead.
+//
+// Order of preference (all sources below are genuine browser cookie values):
+//   1. cart-attribute fbc — identity-relay captured the browser's _fbc cookie
+//   2. visitor.latest_fbc — same cookie value seen on a prior beacon
+//   3. visitor.fbc_history — older genuine cookie values
+//   (no tier 4: a synthesized-from-landing_site fbc is NEVER returned)
 //
 // `cartAttrFbcSource` is optional; when omitted, cartAttrFbc is treated as
 // 'cart_attribute' (legacy behavior preserved for older callers and tests).
 // Production callers MUST pass `cartAttrFbcSource: identityHints.fbcSource`
-// so synthesized fbc gets demoted correctly.
+// so a synthesized fbc is correctly identified and dropped.
 //
 // Returns { fbc, source } where source explains where it came from
 // (useful for diagnostic logging).
@@ -389,9 +398,11 @@ export function pickBestFbc({ cartAttrFbc, cartAttrFbcSource, visitor }) {
     const latest = history[history.length - 1];
     if (latest?.value) return { fbc: latest.value, source: "visitor_history" };
   }
-  // Tier 4 (last resort): synthesized-from-landing-site fbc with truncated fbclid
-  if (cartAttrFbc && sourceTag === "synthesized_from_landing_site") {
-    return { fbc: cartAttrFbc, source: "synthesized_from_landing_site" };
-  }
+  // NO Tier 4. A `synthesized_from_landing_site` cartAttrFbc carries a
+  // Shopify-truncated fbclid; sending it triggers Meta's "modified fbclid"
+  // diagnostic and degrades attribution. Omit fbc instead — the event still
+  // carries em/ph/external_id/fbp/ip+ua for matching. (The bare fbclid is
+  // still used elsewhere for visitor lookup + channel attribution; it is
+  // only the *fbc wire value* we refuse to fabricate here.)
   return { fbc: null, source: null };
 }

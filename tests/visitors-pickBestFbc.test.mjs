@@ -45,15 +45,43 @@ test("pickBestFbc tier 3: visitor.fbc_history when latest_fbc is missing", () =>
   assert.equal(r.source, "visitor_history");
 });
 
-test("pickBestFbc tier 4 (last resort): synthesized fbc when no visitor row exists", () => {
-  // No visitor lookup hit at all — synthesized fbc is better than nothing.
+test("pickBestFbc NEVER returns a synthesized fbc, even as last resort", () => {
+  // Meta CAPI invariant: a `synthesized_from_landing_site` fbc carries a
+  // Shopify-truncated fbclid. Meta's "modified fbclid value in fbc
+  // parameter" diagnostic fires on that, and Meta scores an omitted fbc
+  // better than a modified one. So with no genuine cookie fbc anywhere,
+  // we must omit fbc (null) — NOT fall back to the truncated synth value.
   const r = pickBestFbc({
     cartAttrFbc: SYNTH_FBC,
     cartAttrFbcSource: "synthesized_from_landing_site",
     visitor: null,
   });
-  assert.equal(r.fbc, SYNTH_FBC);
-  assert.equal(r.source, "synthesized_from_landing_site");
+  assert.equal(r.fbc, null);
+  assert.equal(r.source, null);
+});
+
+test("pickBestFbc never emits synth even when visitor exists without fbc", () => {
+  // Visitor row found but it has no fbc of its own; the only fbc on hand
+  // is the synthesized/truncated one. Still must omit, not send modified.
+  const r = pickBestFbc({
+    cartAttrFbc: SYNTH_FBC,
+    cartAttrFbcSource: "synthesized_from_landing_site",
+    visitor: { latest_fbc: null, fbc_history: [] },
+  });
+  assert.equal(r.fbc, null);
+  assert.equal(r.source, null);
+});
+
+test("pickBestFbc still prefers a genuine visitor fbc over a synth cart fbc", () => {
+  // Regression guard for the original Diagnostic-1 fix: synth present but a
+  // real prior cookie value exists on the visitor row — send the real one.
+  const r = pickBestFbc({
+    cartAttrFbc: SYNTH_FBC,
+    cartAttrFbcSource: "synthesized_from_landing_site",
+    visitor: { latest_fbc: VISITOR_FBC },
+  });
+  assert.equal(r.fbc, VISITOR_FBC);
+  assert.equal(r.source, "visitor_latest");
 });
 
 test("pickBestFbc returns null/null when nothing available", () => {

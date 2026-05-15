@@ -15,6 +15,7 @@ import {
   findVisitorByFbclid,
   findRecentVisitorByIpUa,
   pickBestFbc,
+  upsertVisitor,
 } from "../lib/visitors.server.js";
 import {
   recordOrderAttribution,
@@ -249,6 +250,31 @@ async function replayPurchase({
   if (!result.ok) {
     console.warn(`[capi-reconcile ${shop} #${order.name}] send failed: ${result.reason}`);
     return false;
+  }
+
+  // Mirror handleOrderPaid's cross-session identity write-back so a Purchase
+  // recovered by the reconcile cron enriches the visitor row identically to
+  // one handled by the live webhook. Additive (preserveOrUpdate); best-effort.
+  if (recoveredVisitorId) {
+    await upsertVisitor({
+      storeId: shop,
+      visitorId: recoveredVisitorId,
+      input: {
+        email: customer.email ?? undefined,
+        phone: customer.phone ?? undefined,
+        firstName: customer.firstName ?? undefined,
+        lastName: customer.lastName ?? undefined,
+        city: customer.city ?? undefined,
+        state: customer.state ?? undefined,
+        zip: customer.zip ?? undefined,
+        country: customer.country ?? undefined,
+        externalId: customer.externalId ?? undefined,
+        fbp: identityHints.fbp ?? visitor?.latest_fbp ?? undefined,
+        fbc: bestFbc ?? undefined,
+        ip: identityHints.clientIp ?? visitor?.latest_ip ?? undefined,
+        ua: identityHints.clientUa ?? visitor?.latest_ua ?? undefined,
+      },
+    }).catch(() => {});
   }
 
   // Mirror the live webhook: write the attribution row if it's missing.
