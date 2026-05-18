@@ -29,8 +29,6 @@ import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { validateToken } from "../lib/postex.server.js";
 import { getMetaAuthUrl, isTokenExpired, isTokenExpiringSoon } from "../lib/meta.server.js";
 import { metaOAuthSession } from "../lib/meta-session.server.js";
-import { handleExpenseAction, summarizeExpenses } from "../lib/expense-actions.server.js";
-import ExpenseManager from "../components/ExpenseManager.jsx";
 
 // ─── Loader ───────────────────────────────────────────────────────────────────
 
@@ -48,26 +46,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const supabase = await getSupabaseForStore(shop);
 
-  const [storeRes, expensesRes] = await Promise.all([
-    supabase
-      .from("stores")
-      .select(
-        "postex_token, meta_access_token, meta_ad_account_id, meta_ad_account_name, meta_token_expires_at, meta_sync_error, currency, money_format, meta_ad_account_currency"
-      )
-      .eq("store_id", shop)
-      .single(),
-    supabase
-      .from("store_expenses")
-      .select("id, series_id, name, amount, kind, is_variable, pct_base, effective_from, effective_to")
-      .eq("store_id", shop)
-      .order("created_at"),
-  ]);
-
-  const store = storeRes.data;
+  const { data: store } = await supabase
+    .from("stores")
+    .select(
+      "postex_token, meta_access_token, meta_ad_account_id, meta_ad_account_name, meta_token_expires_at, meta_sync_error, currency, money_format, meta_ad_account_currency"
+    )
+    .eq("store_id", shop)
+    .single();
 
   return json({
     store,
-    expensesList: summarizeExpenses(expensesRes.data ?? []),
     pendingToken,
     pendingAccounts,
     metaJustConnected,
@@ -177,17 +165,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return redirect("/app/settings?meta=connected", { headers: { "Set-Cookie": destroyCookie } });
   }
 
-  // ── Section 3: Expenses (add / edit / stop / delete / set-month) ──────────
-  const exp = await handleExpenseAction(supabase, shop, formData);
-  if (exp.handled) return json(exp.result);
-
   return json({ intent: "", error: "Unknown action." });
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const { store, expensesList, pendingToken, pendingAccounts,
+  const { store, pendingToken, pendingAccounts,
           metaJustConnected, isMetaExpired, isMetaExpiringSoon,
           metaSyncError } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
@@ -437,15 +421,21 @@ export default function SettingsPage() {
 
         {/* ── Section 4: Expenses ───────────────────────────────────────── */}
         <Layout.Section>
-          <ExpenseManager
-            expenses={expensesList}
-            currency={store?.currency ?? "PKR"}
-            actionData={
-              String((actionData as any)?.intent ?? "").startsWith("expense_")
-                ? actionData
-                : null
-            }
-          />
+          <Card>
+            <BlockStack gap="400">
+              <Text as="h2" variant="headingMd">Business Expenses</Text>
+              <Text as="p" variant="bodyMd" tone="subdued">
+                Rent, salaries, packaging and payment fees — everything that
+                eats into profit. Managed on its own page so changes are clear
+                and the impact on net profit is visible.
+              </Text>
+              <InlineStack>
+                <Button url="/app/expenses" variant="primary">
+                  Manage expenses
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          </Card>
         </Layout.Section>
 
       </Layout>

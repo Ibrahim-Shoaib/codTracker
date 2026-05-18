@@ -13,10 +13,10 @@ import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 
 const STEPS = [
-  { num: 1, slug: "step1", label: "PostEx" },
-  { num: 2, slug: "step2", label: "Meta Ads" },
-  { num: 3, slug: "step3", label: "COGS" },
-  { num: 4, slug: "step4", label: "Expenses" },
+  { num: 1, slug: "step1", label: "PostEx",   path: "/app/onboarding/step1-postex" },
+  { num: 2, slug: "step2", label: "Meta Ads", path: "/app/onboarding/step2-meta" },
+  { num: 3, slug: "step3", label: "COGS",     path: "/app/onboarding/step3-cogs" },
+  { num: 4, slug: "step4", label: "Expenses", path: "/app/onboarding/step4-expenses" },
 ];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -28,9 +28,16 @@ export default function OnboardingLayout() {
   const location = useLocation();
   const currentStep =
     STEPS.find(s => location.pathname.includes(s.slug))?.num ?? 1;
+  const prevStep = STEPS.find(s => s.num === currentStep - 1);
 
   return (
-    <Page>
+    <Page
+      backAction={
+        prevStep
+          ? { content: prevStep.label, url: prevStep.path }
+          : undefined
+      }
+    >
       <TitleBar title="Setup" />
       <Layout>
         <Layout.Section>
