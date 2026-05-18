@@ -545,7 +545,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AdTracking() {
-  const { shop, connection, pending, todayStats, purchaseEMQ, funnelEMQ, attribution } =
+  const { shop, connection, pending, todayStats, purchaseEMQ, attribution } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
@@ -834,50 +834,6 @@ export default function AdTracking() {
                     <MatchStrengthHelper score={null} />
                   </BlockStack>
                 )}
-
-                {funnelEMQ.length > 0 && (
-                  <BlockStack gap="200">
-                    <div
-                      style={{
-                        height: 1,
-                        background: "#e2e8f0",
-                        margin: "4px 0 0",
-                      }}
-                    />
-                    <Text as="p" variant="bodySm" fontWeight="semibold">
-                      Browse signal{" "}
-                      <Text as="span" variant="bodySm" tone="subdued">
-                        (before checkout)
-                      </Text>
-                    </Text>
-                    <BlockStack gap="100">
-                      {funnelEMQ.map((f) => (
-                        <InlineStack
-                          key={f.name}
-                          align="space-between"
-                          blockAlign="center"
-                        >
-                          <Text as="span" variant="bodySm" tone="subdued">
-                            {f.name}
-                          </Text>
-                          <Text as="span" variant="bodySm" tone="subdued">
-                            {f.score.toFixed(1)} / 10
-                          </Text>
-                        </InlineStack>
-                      ))}
-                    </BlockStack>
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      Naturally lower — shoppers are anonymous until they enter
-                      their details at checkout. Meta doesn&apos;t optimize on
-                      these, so it doesn&apos;t hold back your ad performance.
-                    </Text>
-                  </BlockStack>
-                )}
-
-                <Text as="p" variant="bodySm" tone="subdued">
-                  Our own estimate from the identity we send Meta — not the
-                  Events Manager score, which Meta&apos;s API doesn&apos;t expose.
-                </Text>
               </BlockStack>
             </Card>
           </Layout.Section>
