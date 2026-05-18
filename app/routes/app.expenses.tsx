@@ -7,11 +7,11 @@ import {
   Card,
   BlockStack,
   InlineStack,
-  Box,
   Text,
   Badge,
-  Divider,
+  Icon,
 } from "@shopify/polaris";
+import { CalendarIcon } from "@shopify/polaris-icons";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
@@ -123,12 +123,74 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-function ImpactStat({ label, value }: { label: string; value: string }) {
+const SEG = {
+  fixed:   { label: "Fixed",     fill: "var(--p-color-bg-fill-info)" },
+  perOrder:{ label: "Per order", fill: "var(--p-color-bg-fill-success)" },
+  percent: { label: "% fees",    fill: "var(--p-color-bg-fill-magic)" },
+} as const;
+
+function ProportionBar({ parts }: { parts: Array<{ key: keyof typeof SEG; value: number }> }) {
+  const total = parts.reduce((s, p) => s + Math.max(0, p.value), 0);
   return (
-    <BlockStack gap="050">
-      <Text as="span" variant="bodySm" tone="subdued">{label}</Text>
-      <Text as="span" variant="bodyMd" fontWeight="semibold">{value}</Text>
-    </BlockStack>
+    <div
+      style={{
+        display: "flex",
+        width: "100%",
+        height: 10,
+        borderRadius: "var(--p-border-radius-full)",
+        overflow: "hidden",
+        background: "var(--p-color-bg-surface-secondary)",
+        gap: total > 0 ? 2 : 0,
+      }}
+    >
+      {total > 0 &&
+        parts
+          .filter((p) => p.value > 0)
+          .map((p) => (
+            <div
+              key={p.key}
+              title={`${SEG[p.key].label}: ${Math.round((p.value / total) * 100)}%`}
+              style={{
+                width: `${(p.value / total) * 100}%`,
+                background: SEG[p.key].fill,
+              }}
+            />
+          ))}
+    </div>
+  );
+}
+
+function Legend({
+  parts,
+  fmt,
+}: {
+  parts: Array<{ key: keyof typeof SEG; value: number }>;
+  fmt: (n: number) => string;
+}) {
+  return (
+    <InlineStack gap="600" wrap>
+      {parts.map((p) => (
+        <InlineStack key={p.key} gap="200" blockAlign="center" wrap={false}>
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: "var(--p-border-radius-full)",
+              background: SEG[p.key].fill,
+              flex: "0 0 auto",
+            }}
+          />
+          <BlockStack gap="0">
+            <Text as="span" variant="bodyMd" fontWeight="semibold">
+              {fmt(p.value)}
+            </Text>
+            <Text as="span" variant="bodySm" tone="subdued">
+              {SEG[p.key].label}
+            </Text>
+          </BlockStack>
+        </InlineStack>
+      ))}
+    </InlineStack>
   );
 }
 
@@ -137,6 +199,14 @@ export default function ExpensesPage() {
   const actionData = useActionData<typeof action>();
 
   const fmt = (n: number) => formatMoney(n, currency, { nullDisplay: "—" });
+
+  const parts = impact
+    ? ([
+        { key: "fixed",    value: impact.fixed },
+        { key: "perOrder", value: impact.perOrder },
+        { key: "percent",  value: impact.percent },
+      ] as Array<{ key: keyof typeof SEG; value: number }>)
+    : [];
 
   return (
     <Page
@@ -149,39 +219,26 @@ export default function ExpensesPage() {
           <BlockStack gap="400">
             {impact && (
               <Card>
-                <BlockStack gap="300">
-                  <InlineStack align="space-between" blockAlign="center" wrap={false}>
-                    <Text as="h2" variant="headingSm" tone="subdued">
-                      This month&rsquo;s expense impact &middot; {impact.monthLabel}
-                    </Text>
+                <BlockStack gap="500">
+                  <InlineStack align="space-between" blockAlign="start" wrap={false}>
+                    <BlockStack gap="100">
+                      <InlineStack gap="150" blockAlign="center">
+                        <Icon source={CalendarIcon} tone="subdued" />
+                        <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">
+                          Expense impact &middot; {impact.monthLabel}
+                        </Text>
+                      </InlineStack>
+                      <Text as="p" variant="heading2xl">{fmt(impact.total)}</Text>
+                    </BlockStack>
                     {impact.anyEstimated && (
-                      <Badge tone="attention">Includes estimates</Badge>
+                      <Badge tone="attention">Estimated</Badge>
                     )}
                   </InlineStack>
 
-                  <Text as="p" variant="heading2xl">{fmt(impact.total)}</Text>
-
-                  <Box
-                    background="bg-surface-secondary"
-                    padding="300"
-                    borderRadius="200"
-                  >
-                    <InlineStack gap="600" blockAlign="center" wrap>
-                      <ImpactStat label="Fixed monthly" value={fmt(impact.fixed)} />
-                      <ImpactStat label="Per delivered order" value={fmt(impact.perOrder)} />
-                      <ImpactStat label="Percentage fees" value={fmt(impact.percent)} />
-                    </InlineStack>
-                  </Box>
-
-                  <Divider />
-
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    Expenses are subtracted from gross profit to give your true
-                    net profit. These exact figures flow into every period on
-                    your dashboard{impact.anyEstimated
-                      ? " — amounts marked “Monthly” still use last month’s value until you confirm this month."
-                      : "."}
-                  </Text>
+                  <BlockStack gap="300">
+                    <ProportionBar parts={parts} />
+                    <Legend parts={parts} fmt={fmt} />
+                  </BlockStack>
                 </BlockStack>
               </Card>
             )}
@@ -191,7 +248,6 @@ export default function ExpensesPage() {
               currency={currency}
               actionData={actionData}
               title="Business expenses"
-              subtitle="Rent, salaries, packaging and payment fees — anything that eats into profit. Changes apply across every dashboard period."
             />
           </BlockStack>
         </Layout.Section>
