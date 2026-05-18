@@ -90,7 +90,7 @@ export default function Step4Expenses() {
         currency={currency}
         actionData={actionData}
         title="Set your business expenses"
-        subtitle="Add rent, salaries, packaging, payment fees — anything that eats into profit. You can change these any time in Settings."
+        subtitle="Add rent, salaries, packaging and payment fees so your profit is accurate from day one. This step is optional."
       />
 
       <Card>
@@ -100,11 +100,9 @@ export default function Step4Expenses() {
             <Button submit variant="primary" loading={finishing}>
               Finish setup
             </Button>
-            {expenses.length === 0 && (
-              <Text as="span" variant="bodySm" tone="subdued">
-                or skip — you can add expenses later in Settings
-              </Text>
-            )}
+            <Text as="span" variant="bodySm" tone="subdued">
+              You can add or change these anytime on the Expenses page.
+            </Text>
           </InlineStack>
         </Form>
       </Card>
