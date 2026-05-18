@@ -13,9 +13,21 @@ import {
   Badge,
   Divider,
   Modal,
-  Popover,
   ChoiceList,
+  Icon,
+  ActionList,
+  Popover,
 } from "@shopify/polaris";
+import {
+  CalendarIcon,
+  CalendarTimeIcon,
+  PackageIcon,
+  CashDollarIcon,
+  PlusIcon,
+  MenuHorizontalIcon,
+  ReceiptIcon,
+} from "@shopify/polaris-icons";
+import { formatMoney } from "../lib/format.js";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -28,7 +40,7 @@ function currentYM() {
   const d = new Date();
   return `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}`;
 }
-// Build a small set of stop-after options: this month + the 2 prior.
+// this month + the 2 prior, for the "stop after" picker.
 function stopMonthOptions() {
   const d = new Date();
   const opts = [];
@@ -42,95 +54,114 @@ function stopMonthOptions() {
 }
 
 const KIND_OPTIONS = [
-  { value: "fixed",     label: "Fixed monthly",       help: "Same amount every month (rent, salary)." },
-  { value: "variable",  label: "Changes monthly",     help: "You set the amount each month (e.g. shipping)." },
-  { value: "per_order", label: "Per delivered order", help: "Multiplied by delivered orders (packaging)." },
-  { value: "percent",   label: "% of ad spend / sales", help: "A percentage (payment / gateway fees)." },
+  { value: "fixed",     label: "Fixed monthly",        help: "Same amount every month — rent, salary." },
+  { value: "variable",  label: "Changes monthly",      help: "You set the amount each month — e.g. shipping." },
+  { value: "per_order", label: "Per delivered order",  help: "Multiplied by delivered orders — packaging." },
+  { value: "percent",   label: "% of ad spend / sales", help: "A percentage — payment / gateway fees." },
 ];
 
-function kindSummary(e, currency) {
-  const money = (n) => `${currency} ${Number(n).toLocaleString()}`;
-  if (e.kind === "per_order") return `Per delivered order · ${money(e.amount)}`;
+// One source of truth for how each kind is presented (icon, colour, label,
+// one-line summary). Keeps the row, badge and icon-chip consistent.
+function kindMeta(e, currency) {
+  const money = (n) => formatMoney(n, currency, { nullDisplay: "—" });
+  if (e.kind === "per_order")
+    return { label: "Per order", tone: "success", bg: "bg-surface-success",
+             iconTone: "success", icon: PackageIcon,
+             summary: `${money(e.amount)} · per delivered order` };
   if (e.kind === "percent")
-    return `${Number(e.amount)}% of ${e.pctBase === "net_sales" ? "net sales" : "ad spend"}`;
-  if (e.isVariable) return `Changes monthly · now ${money(e.amount)}`;
-  return `Fixed monthly · ${money(e.amount)}`;
+    return { label: "% fee", tone: "magic", bg: "bg-surface-magic",
+             iconTone: "magic", icon: CashDollarIcon,
+             summary: `${Number(e.amount)}% of ${e.pctBase === "net_sales" ? "net sales" : "ad spend"}` };
+  if (e.isVariable)
+    return { label: "Monthly", tone: "attention", bg: "bg-surface-caution",
+             iconTone: "caution", icon: CalendarTimeIcon,
+             summary: `${money(e.amount)} · changes monthly` };
+  return { label: "Fixed", tone: "info", bg: "bg-surface-info",
+           iconTone: "info", icon: CalendarIcon,
+           summary: `${money(e.amount)} · every month` };
 }
 
-// ── Add form ─────────────────────────────────────────────────────────────────
-function AddExpense({ currency, submitting }) {
-  const [name, setName] = useState("");
+// ── Add / Edit form body (shared inside a Modal) ─────────────────────────────
+function ExpenseFields({ currency }) {
   const [kind, setKind] = useState("fixed");
-  const [amount, setAmount] = useState("0");
   const [pctBase, setPctBase] = useState("ad_spend");
-  const nav = useNavigation();
-  const adding = submitting && nav.formData?.get("intent") === "expense_add";
 
   const amountLabel =
-    kind === "percent" ? "Percent" :
+    kind === "percent"   ? "Percentage" :
     kind === "per_order" ? `Amount per order (${currency})` :
-    kind === "variable" ? `This month's amount (${currency})` :
+    kind === "variable"  ? `This month's amount (${currency})` :
     `Monthly amount (${currency})`;
 
   return (
-    <Form method="post" onSubmit={() => { setName(""); setAmount("0"); }}>
-      <input type="hidden" name="intent" value="expense_add" />
-      <BlockStack gap="300">
-        <TextField
-          label="Name"
-          name="name"
-          value={name}
-          onChange={setName}
-          placeholder="e.g. Warehouse rent"
-          autoComplete="off"
-        />
-        <Select
-          label="Type"
-          name="kind"
-          options={KIND_OPTIONS.map((k) => ({ label: k.label, value: k.value }))}
-          value={kind}
-          onChange={setKind}
-          helpText={KIND_OPTIONS.find((k) => k.value === kind)?.help}
-        />
-        <InlineStack gap="300" blockAlign="end" wrap={false}>
-          <Box width="100%">
-            <TextField
-              label={amountLabel}
-              name="amount"
-              type="number"
-              min="0"
-              step="any"
-              value={amount}
-              onChange={setAmount}
-              autoComplete="off"
-              suffix={kind === "percent" ? "%" : undefined}
+    <BlockStack gap="400">
+      <TextField
+        label="Name"
+        name="name"
+        placeholder="e.g. Warehouse rent"
+        autoComplete="off"
+        requiredIndicator
+      />
+      <Select
+        label="Type"
+        name="kind"
+        options={KIND_OPTIONS.map((k) => ({ label: k.label, value: k.value }))}
+        value={kind}
+        onChange={setKind}
+        helpText={KIND_OPTIONS.find((k) => k.value === kind)?.help}
+      />
+      <InlineStack gap="300" blockAlign="end" wrap={false}>
+        <Box width="100%">
+          <TextField
+            label={amountLabel}
+            name="amount"
+            type="number"
+            min="0"
+            step="any"
+            autoComplete="off"
+            suffix={kind === "percent" ? "%" : undefined}
+          />
+        </Box>
+        {kind === "percent" && (
+          <Box minWidth="170px">
+            <Select
+              label="Applied to"
+              name="pct_base"
+              options={[
+                { label: "Ad spend", value: "ad_spend" },
+                { label: "Net sales", value: "net_sales" },
+              ]}
+              value={pctBase}
+              onChange={setPctBase}
             />
           </Box>
-          {kind === "percent" && (
-            <Box minWidth="170px">
-              <Select
-                label="Applied to"
-                name="pct_base"
-                options={[
-                  { label: "Ad spend", value: "ad_spend" },
-                  { label: "Net sales", value: "net_sales" },
-                ]}
-                value={pctBase}
-                onChange={setPctBase}
-              />
-            </Box>
-          )}
-        </InlineStack>
-        <InlineStack align="start">
-          <Button submit variant="primary" loading={adding}>Add expense</Button>
-        </InlineStack>
-      </BlockStack>
-    </Form>
+        )}
+      </InlineStack>
+    </BlockStack>
+  );
+}
+
+function AddModal({ currency, onClose, submitting, error }) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Add an expense"
+      primaryAction={{ content: "Add expense", submit: true, formId: "add-expense-form", loading: submitting }}
+      secondaryActions={[{ content: "Cancel", onAction: onClose }]}
+    >
+      <Modal.Section>
+        <Form method="post" id="add-expense-form">
+          <input type="hidden" name="intent" value="expense_add" />
+          {error && <Box paddingBlockEnd="300"><Banner tone="critical">{error}</Banner></Box>}
+          <ExpenseFields currency={currency} />
+        </Form>
+      </Modal.Section>
+    </Modal>
   );
 }
 
 // ── Edit amount modal ────────────────────────────────────────────────────────
-function EditModal({ expense, currency, onClose, submitting }) {
+function EditModal({ expense, currency, onClose, submitting, error }) {
   const [amount, setAmount] = useState(String(expense.amount));
   const [mode, setMode] = useState(["forward"]);
   return (
@@ -147,6 +178,7 @@ function EditModal({ expense, currency, onClose, submitting }) {
           <input type="hidden" name="series_id" value={expense.seriesId} />
           <input type="hidden" name="mode" value={mode[0]} />
           <BlockStack gap="400">
+            {error && <Banner tone="critical">{error}</Banner>}
             <TextField
               label={`New amount${expense.kind === "percent" ? " (%)" : ` (${currency})`}`}
               name="amount"
@@ -177,16 +209,28 @@ function EditModal({ expense, currency, onClose, submitting }) {
   );
 }
 
-// ── Remove popover ───────────────────────────────────────────────────────────
-function RemovePopover({ expense, onClose, submitting }) {
+// ── Remove modal (stop after a month, or delete outright) ────────────────────
+function RemoveModal({ expense, onClose, submitting, error }) {
   const [choice, setChoice] = useState(["stop"]);
   const opts = stopMonthOptions();
   const [stopMonth, setStopMonth] = useState(opts[0].value);
   const isStop = choice[0] === "stop";
   return (
-    <Popover.Pane>
-      <Box padding="400" minWidth="320px">
-        <Form method="post" onSubmit={onClose}>
+    <Modal
+      open
+      onClose={onClose}
+      title={`Remove “${expense.name}”`}
+      primaryAction={{
+        content: isStop ? "Stop expense" : "Delete permanently",
+        destructive: !isStop,
+        loading: submitting,
+        submit: true,
+        formId: "remove-expense-form",
+      }}
+      secondaryActions={[{ content: "Cancel", onAction: onClose }]}
+    >
+      <Modal.Section>
+        <Form method="post" id="remove-expense-form">
           <input
             type="hidden"
             name="intent"
@@ -194,8 +238,8 @@ function RemovePopover({ expense, onClose, submitting }) {
           />
           <input type="hidden" name="series_id" value={expense.seriesId} />
           {isStop && <input type="hidden" name="stop_month" value={stopMonth} />}
-          <BlockStack gap="300">
-            <Text as="p" variant="headingSm">Remove “{expense.name}”?</Text>
+          <BlockStack gap="400">
+            {error && <Banner tone="critical">{error}</Banner>}
             <ChoiceList
               title=""
               titleHidden
@@ -203,7 +247,7 @@ function RemovePopover({ expense, onClose, submitting }) {
               onChange={setChoice}
               choices={[
                 { label: "Stop it after a month", value: "stop",
-                  helpText: "Keeps past months correct; just ends it." },
+                  helpText: "Keeps past months correct — just ends it." },
                 { label: "Delete completely", value: "delete",
                   helpText: "Also removes it from past periods." },
               ]}
@@ -211,27 +255,15 @@ function RemovePopover({ expense, onClose, submitting }) {
             {isStop && (
               <Select
                 label="Last active month"
-                labelHidden
                 options={opts}
                 value={stopMonth}
                 onChange={setStopMonth}
               />
             )}
-            <InlineStack align="end" gap="200">
-              <Button onClick={onClose}>Cancel</Button>
-              <Button
-                submit
-                variant="primary"
-                tone={isStop ? undefined : "critical"}
-                loading={submitting}
-              >
-                {isStop ? "Stop expense" : "Delete"}
-              </Button>
-            </InlineStack>
           </BlockStack>
         </Form>
-      </Box>
-    </Popover.Pane>
+      </Modal.Section>
+    </Modal>
   );
 }
 
@@ -239,12 +271,8 @@ function RemovePopover({ expense, onClose, submitting }) {
 function MonthlyNudge({ items, currency, submitting }) {
   if (items.length === 0) return null;
   return (
-    <Banner tone="attention" title={`Confirm this month's costs — ${monthLabel(currentYM())}`}>
+    <Banner tone="attention" title={`Confirm ${monthLabel(currentYM())} costs`}>
       <BlockStack gap="300">
-        <Text as="p" variant="bodySm" tone="subdued">
-          These change every month. We're showing last month's value as an
-          estimate until you confirm.
-        </Text>
         {items.map((e) => (
           <Form method="post" key={e.seriesId}>
             <input type="hidden" name="intent" value="expense_set_month" />
@@ -260,7 +288,6 @@ function MonthlyNudge({ items, currency, submitting }) {
                   defaultValue={String(e.amount)}
                   autoComplete="off"
                   prefix={currency}
-                  helpText={`Last set: ${currency} ${Number(e.amount).toLocaleString()}`}
                 />
               </Box>
               <Button submit variant="primary" loading={submitting}>Save</Button>
@@ -272,10 +299,59 @@ function MonthlyNudge({ items, currency, submitting }) {
   );
 }
 
+// ── One expense row ──────────────────────────────────────────────────────────
+function ExpenseRow({ e, currency, onEdit, onRemove }) {
+  const [menu, setMenu] = useState(false);
+  const m = kindMeta(e, currency);
+  return (
+    <Box paddingBlock="300">
+      <InlineStack align="space-between" blockAlign="center" wrap={false} gap="300">
+        <InlineStack gap="300" blockAlign="center" wrap={false}>
+          <Box background={m.bg} padding="200" borderRadius="full">
+            <Icon source={m.icon} tone={m.iconTone} />
+          </Box>
+          <BlockStack gap="050">
+            <InlineStack gap="200" blockAlign="center">
+              <Text as="span" variant="bodyMd" fontWeight="semibold">{e.name}</Text>
+              {e.needsThisMonth && (
+                <Badge tone="attention" size="small">{`Needs ${monthLabel(currentYM())}`}</Badge>
+              )}
+            </InlineStack>
+            <InlineStack gap="150" blockAlign="center">
+              <Badge tone={m.tone} size="small">{m.label}</Badge>
+              <Text as="span" variant="bodySm" tone="subdued">{m.summary}</Text>
+            </InlineStack>
+          </BlockStack>
+        </InlineStack>
+        <Popover
+          active={menu}
+          onClose={() => setMenu(false)}
+          activator={
+            <Button
+              variant="tertiary"
+              icon={MenuHorizontalIcon}
+              accessibilityLabel={`Actions for ${e.name}`}
+              onClick={() => setMenu((v) => !v)}
+            />
+          }
+        >
+          <ActionList
+            actionRole="menuitem"
+            items={[
+              { content: "Edit amount", onAction: () => { setMenu(false); onEdit(e); } },
+              { content: "Remove", destructive: true, onAction: () => { setMenu(false); onRemove(e); } },
+            ]}
+          />
+        </Popover>
+      </InlineStack>
+    </Box>
+  );
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 // Props:
-//   expenses  summarized list from summarizeExpenses() (server)
-//   currency  string
+//   expenses   summarized list from summarizeExpenses() (server)
+//   currency   string
 //   actionData last action result ({ intent, success?, error? })
 //   title / subtitle optional copy
 export default function ExpenseManager({
@@ -283,32 +359,46 @@ export default function ExpenseManager({
   currency = "PKR",
   actionData,
   title = "Business expenses",
-  subtitle = "Fixed costs, per-order costs and percentage fees. Used to compute your true net profit.",
+  subtitle,
 }) {
   const nav = useNavigation();
   const submitting = nav.state === "submitting";
+  const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [removingFor, setRemovingFor] = useState(null);
+  const [removing, setRemoving] = useState(null);
 
-  // Close overlays once a mutation finishes.
+  // Close overlays once a mutation finishes successfully.
   useEffect(() => {
     if (nav.state === "idle" && actionData?.success) {
+      setAdding(false);
       setEditing(null);
-      setRemovingFor(null);
+      setRemoving(null);
     }
   }, [nav.state, actionData]);
 
   const needMonth = expenses.filter((e) => e.needsThisMonth);
+  const err = actionData?.error ?? null;
 
   return (
     <Card>
       <BlockStack gap="400">
-        <BlockStack gap="100">
-          <Text as="h2" variant="headingMd">{title}</Text>
-          <Text as="p" variant="bodySm" tone="subdued">{subtitle}</Text>
-        </BlockStack>
+        <InlineStack align="space-between" blockAlign="center" wrap={false}>
+          <BlockStack gap="050">
+            <Text as="h2" variant="headingMd">{title}</Text>
+            {subtitle && (
+              <Text as="p" variant="bodySm" tone="subdued">{subtitle}</Text>
+            )}
+          </BlockStack>
+          {expenses.length > 0 && (
+            <Button variant="primary" icon={PlusIcon} onClick={() => setAdding(true)}>
+              Add expense
+            </Button>
+          )}
+        </InlineStack>
 
-        {actionData?.error && <Banner tone="critical">{actionData.error}</Banner>}
+        {err && !adding && !editing && !removing && (
+          <Banner tone="critical">{err}</Banner>
+        )}
 
         <MonthlyNudge items={needMonth} currency={currency} submitting={submitting} />
 
@@ -317,67 +407,58 @@ export default function ExpenseManager({
             {expenses.map((e, i) => (
               <Box key={e.seriesId}>
                 {i > 0 && <Divider />}
-                <Box paddingBlock="300">
-                  <InlineStack align="space-between" blockAlign="center" wrap={false}>
-                    <BlockStack gap="050">
-                      <InlineStack gap="200" blockAlign="center">
-                        <Text as="span" variant="bodyMd" fontWeight="semibold">
-                          {e.name}
-                        </Text>
-                        {e.isVariable && <Badge tone="info" size="small">Monthly</Badge>}
-                        {e.needsThisMonth && <Badge tone="attention" size="small">needs {monthLabel(currentYM())}</Badge>}
-                      </InlineStack>
-                      <Text as="span" variant="bodySm" tone="subdued">
-                        {kindSummary(e, currency)}
-                      </Text>
-                    </BlockStack>
-                    <InlineStack gap="200" blockAlign="center">
-                      <Button variant="plain" onClick={() => setEditing(e)}>Edit</Button>
-                      <Popover
-                        active={removingFor === e.seriesId}
-                        onClose={() => setRemovingFor(null)}
-                        activator={
-                          <Button
-                            variant="plain"
-                            tone="critical"
-                            onClick={() => setRemovingFor(e.seriesId)}
-                          >
-                            Remove
-                          </Button>
-                        }
-                      >
-                        <RemovePopover
-                          expense={e}
-                          submitting={submitting}
-                          onClose={() => setRemovingFor(null)}
-                        />
-                      </Popover>
-                    </InlineStack>
-                  </InlineStack>
-                </Box>
+                <ExpenseRow
+                  e={e}
+                  currency={currency}
+                  onEdit={setEditing}
+                  onRemove={setRemoving}
+                />
               </Box>
             ))}
           </BlockStack>
         ) : (
-          <Text as="p" variant="bodySm" tone="subdued">
-            No expenses yet. Add your first one below.
-          </Text>
+          <Box paddingBlock="500">
+            <BlockStack gap="300" inlineAlign="center">
+              <Box background="bg-surface-secondary" padding="400" borderRadius="full">
+                <Icon source={ReceiptIcon} tone="subdued" />
+              </Box>
+              <BlockStack gap="100" inlineAlign="center">
+                <Text as="h3" variant="headingSm">No expenses yet</Text>
+                <Text as="p" variant="bodySm" tone="subdued" alignment="center">
+                  Add rent, packaging and fees to see your true net profit.
+                </Text>
+              </BlockStack>
+              <Button variant="primary" icon={PlusIcon} onClick={() => setAdding(true)}>
+                Add your first expense
+              </Button>
+            </BlockStack>
+          </Box>
         )}
-
-        <Divider />
-
-        <BlockStack gap="300">
-          <Text as="h3" variant="headingSm">Add an expense</Text>
-          <AddExpense currency={currency} submitting={submitting} />
-        </BlockStack>
       </BlockStack>
 
+      {adding && (
+        <AddModal
+          currency={currency}
+          submitting={submitting}
+          error={err}
+          onClose={() => setAdding(false)}
+        />
+      )}
       {editing && (
         <EditModal
           expense={editing}
           currency={currency}
           submitting={submitting}
+          error={err}
           onClose={() => setEditing(null)}
+        />
+      )}
+      {removing && (
+        <RemoveModal
+          expense={removing}
+          submitting={submitting}
+          error={err}
+          onClose={() => setRemoving(null)}
         />
       )}
     </Card>

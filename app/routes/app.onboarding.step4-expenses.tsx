@@ -90,7 +90,7 @@ export default function Step4Expenses() {
         currency={currency}
         actionData={actionData}
         title="Set your business expenses"
-        subtitle="Add rent, salaries, packaging and payment fees so your profit is accurate from day one. This step is optional."
+        subtitle="Optional — add rent, packaging and fees for accurate profit."
       />
 
       <Card>
