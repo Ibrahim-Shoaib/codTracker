@@ -164,7 +164,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       .lt("sent_at", endIso),
     supabase
       .from("emq_snapshots")
-      .select("captured_at, overall_emq")
+      .select("captured_at, overall_emq, per_event")
       .eq("store_id", shop)
       .order("captured_at", { ascending: false })
       .limit(1),
@@ -186,6 +186,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const conn = connRes.data;
   const latestEMQ = emqRes.data?.[0] ?? null;
+
+  // The headline is the Purchase event's match quality — that's the conversion
+  // signal Meta's optimization and ROAS actually run on, and the part of the
+  // pipeline we control (the order webhook always carries hashed email/phone/
+  // address). The blended `overall_emq` averages every event TYPE equally, so
+  // anonymous top-of-funnel browse events (PageView/ViewContent — inherently
+  // low-EMQ for ANY store because the shopper hasn't identified yet) drag a
+  // genuinely strong Purchase score down into a scary-looking number. We still
+  // expose the funnel scores below as an honest diagnostic, just not as the
+  // headline. Note: this is our own estimate from the identity we send, NOT
+  // Meta Events Manager's EMQ (the Graph API doesn't expose that — see
+  // api.cron.emq.tsx).
+  const perEvent = (latestEMQ?.per_event ?? {}) as Record<string, number>;
+  const purchaseEMQ =
+    typeof perEvent.Purchase === "number" ? perEvent.Purchase : null;
+  const FUNNEL_ORDER = [
+    "ViewContent",
+    "AddToCart",
+    "InitiateCheckout",
+    "PageView",
+  ];
+  const FUNNEL_LABEL: Record<string, string> = {
+    ViewContent: "Product views",
+    AddToCart: "Add to cart",
+    InitiateCheckout: "Checkout started",
+    PageView: "Page views",
+  };
+  const funnelEMQ = FUNNEL_ORDER.filter(
+    (n) => typeof perEvent[n] === "number"
+  ).map((n) => ({ name: FUNNEL_LABEL[n] ?? n, score: perEvent[n] }));
 
   // Hero counts: prefer order_attribution.capi_sent_at (not subject to the
   // capi_delivery_log row-cap trim). Fall back to counting distinct sent
@@ -244,7 +274,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
       : null,
     todayStats,
-    latestEMQ,
+    purchaseEMQ,
+    funnelEMQ,
     attribution: (attributionRes.data ?? []) as AttributionRow[],
   });
 };
@@ -514,7 +545,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AdTracking() {
-  const { shop, connection, pending, todayStats, latestEMQ, attribution } =
+  const { shop, connection, pending, todayStats, purchaseEMQ, funnelEMQ, attribution } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
@@ -765,15 +796,16 @@ export default function AdTracking() {
                       Match strength
                     </Text>
                     <Text as="p" variant="bodySm" tone="subdued">
-                      Meta's score for how well we identify your customers.
+                      How well we identify the buyer on each tracked purchase —
+                      the signal Meta optimizes your ads against.
                     </Text>
                   </BlockStack>
-                  <Badge tone={emqBadgeTone(latestEMQ?.overall_emq)}>
-                    {emqBadgeLabel(latestEMQ?.overall_emq)}
+                  <Badge tone={emqBadgeTone(purchaseEMQ)}>
+                    {emqBadgeLabel(purchaseEMQ)}
                   </Badge>
                 </InlineStack>
 
-                {latestEMQ?.overall_emq != null ? (
+                {purchaseEMQ != null ? (
                   <BlockStack gap="300">
                     <InlineStack gap="200" blockAlign="baseline">
                       <span
@@ -781,20 +813,20 @@ export default function AdTracking() {
                           fontSize: 36,
                           fontWeight: 700,
                           letterSpacing: "-0.02em",
-                          color: emqAccentHex(latestEMQ.overall_emq),
+                          color: emqAccentHex(purchaseEMQ),
                           lineHeight: 1,
                         }}
                       >
-                        {Number(latestEMQ.overall_emq).toFixed(1)}
+                        {purchaseEMQ.toFixed(1)}
                       </span>
                       <Text as="span" variant="bodyMd" tone="subdued">
-                        / 10
+                        / 10 · Purchase events
                       </Text>
                     </InlineStack>
 
-                    <MatchStrengthBar score={Number(latestEMQ.overall_emq)} />
+                    <MatchStrengthBar score={purchaseEMQ} />
 
-                    <MatchStrengthHelper score={Number(latestEMQ.overall_emq)} />
+                    <MatchStrengthHelper score={purchaseEMQ} />
                   </BlockStack>
                 ) : (
                   <BlockStack gap="300">
@@ -802,6 +834,50 @@ export default function AdTracking() {
                     <MatchStrengthHelper score={null} />
                   </BlockStack>
                 )}
+
+                {funnelEMQ.length > 0 && (
+                  <BlockStack gap="200">
+                    <div
+                      style={{
+                        height: 1,
+                        background: "#e2e8f0",
+                        margin: "4px 0 0",
+                      }}
+                    />
+                    <Text as="p" variant="bodySm" fontWeight="semibold">
+                      Browse signal{" "}
+                      <Text as="span" variant="bodySm" tone="subdued">
+                        (before checkout)
+                      </Text>
+                    </Text>
+                    <BlockStack gap="100">
+                      {funnelEMQ.map((f) => (
+                        <InlineStack
+                          key={f.name}
+                          align="space-between"
+                          blockAlign="center"
+                        >
+                          <Text as="span" variant="bodySm" tone="subdued">
+                            {f.name}
+                          </Text>
+                          <Text as="span" variant="bodySm" tone="subdued">
+                            {f.score.toFixed(1)} / 10
+                          </Text>
+                        </InlineStack>
+                      ))}
+                    </BlockStack>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Naturally lower — shoppers are anonymous until they enter
+                      their details at checkout. Meta doesn&apos;t optimize on
+                      these, so it doesn&apos;t hold back your ad performance.
+                    </Text>
+                  </BlockStack>
+                )}
+
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Our own estimate from the identity we send Meta — not the
+                  Events Manager score, which Meta&apos;s API doesn&apos;t expose.
+                </Text>
               </BlockStack>
             </Card>
           </Layout.Section>
@@ -2231,10 +2307,10 @@ function formatRelative(isoString: string): string {
   return `${d}d ago`;
 }
 
-// EMQ presentation: merchants don't read raw 0-10 scores well, and a low
-// number reads as "this app is broken" when it's actually just identity-
-// signal warm-up. We bucket into qualitative bands and pair each with a
-// reassuring helper line that frames warm-up as expected behaviour.
+// EMQ presentation: merchants don't read raw 0-10 scores well, so we bucket
+// the Purchase match score into qualitative bands. The helper copy is honest,
+// not just reassuring — a low Purchase score is a real, actionable problem
+// (orders arriving without email/phone), not warm-up that fixes itself.
 function emqBadgeTone(
   score: number | null | undefined,
 ): "success" | "info" | "attention" | "new" {
@@ -2461,12 +2537,14 @@ function emqBadgeLabel(score: number | null | undefined): string {
   if (score == null) return "Calibrating";
   if (score >= 8) return "Excellent";
   if (score >= 6) return "Good";
-  return "Improving";
+  return "Low";
 }
 
 function emqBadgeHelper(score: number | null | undefined): string {
-  if (score == null) return "Calibrating — first reading in a day or two.";
-  if (score >= 8) return "Top of the industry.";
-  if (score >= 6) return "Solid. We keep tuning — climbs over the next 2-3 weeks.";
-  return "Optimizing. Usually settles within a week.";
+  if (score == null)
+    return "No tracked purchases yet — this appears after your first sale.";
+  if (score >= 8)
+    return "Strong — buyers are matched to Meta with high confidence.";
+  if (score >= 6) return "Good — most buyers are matched to Meta.";
+  return "Some orders reach Meta with weak identity — usually a missing email or phone on the order.";
 }
