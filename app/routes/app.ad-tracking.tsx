@@ -55,6 +55,8 @@ type TodayStats = {
 
 type Channel = "facebook_ads" | "instagram_ads" | "direct_organic";
 
+type ChannelWindow = "today" | "yesterday" | "7d" | "30d";
+
 type AttributionRow = {
   channel: Channel;
   attributed_at: string;
@@ -73,6 +75,18 @@ function pktTodayWindowUtc(): { startIso: string; endIso: string } {
   return {
     startIso: new Date(startUtcMs).toISOString(),
     endIso: new Date(startUtcMs + 24 * 3600 * 1000).toISOString(),
+  };
+}
+
+// Yesterday's full PKT calendar day as a closed [start, end) UTC range.
+// Anchored off today's window so the day boundary stays consistent with
+// the "today" tab (no double-counting at the rollover edge).
+function pktYesterdayWindowUtc(): { startIso: string; endIso: string } {
+  const { startIso: todayStartIso } = pktTodayWindowUtc();
+  const todayStartMs = new Date(todayStartIso).getTime();
+  return {
+    startIso: new Date(todayStartMs - 24 * 3600 * 1000).toISOString(),
+    endIso: todayStartIso,
   };
 }
 
@@ -519,7 +533,7 @@ export default function AdTracking() {
   // Channels card window: defaults to today, never causes a refetch — the
   // loader pulls 30 days once and we group client-side.
   const [channelWindow, setChannelWindow] =
-    useState<"today" | "7d" | "30d">("today");
+    useState<ChannelWindow>("today");
 
   // Open the popup and navigate it to Meta when the action returns the URL.
   useEffect(() => {
@@ -1866,8 +1880,9 @@ const CHANNEL_ORDER: Channel[] = [
   "direct_organic",
 ];
 
-const WINDOW_OPTIONS: Array<{ value: "today" | "7d" | "30d"; label: string }> = [
+const WINDOW_OPTIONS: Array<{ value: ChannelWindow; label: string }> = [
   { value: "today", label: "Today" },
+  { value: "yesterday", label: "Yesterday" },
   { value: "7d", label: "7 days" },
   { value: "30d", label: "30 days" },
 ];
@@ -1877,12 +1892,17 @@ const WINDOW_OPTIONS: Array<{ value: "today" | "7d" | "30d"; label: string }> = 
 // the tab switch stays cheap (zero queries, just a recompute).
 function bucketAttribution(
   rows: AttributionRow[],
-  windowKey: "today" | "7d" | "30d"
+  windowKey: ChannelWindow
 ): { totals: Record<Channel, number>; total: number } {
   let lowerBoundMs: number;
+  let upperBoundMs = Infinity;
   if (windowKey === "today") {
     const { startIso } = pktTodayWindowUtc();
     lowerBoundMs = new Date(startIso).getTime();
+  } else if (windowKey === "yesterday") {
+    const { startIso, endIso } = pktYesterdayWindowUtc();
+    lowerBoundMs = new Date(startIso).getTime();
+    upperBoundMs = new Date(endIso).getTime();
   } else if (windowKey === "7d") {
     lowerBoundMs = Date.now() - 7 * 24 * 3600 * 1000;
   } else {
@@ -1895,7 +1915,8 @@ function bucketAttribution(
   };
   let total = 0;
   for (const r of rows) {
-    if (new Date(r.attributed_at).getTime() < lowerBoundMs) continue;
+    const t = new Date(r.attributed_at).getTime();
+    if (t < lowerBoundMs || t >= upperBoundMs) continue;
     totals[r.channel] += 1;
     total += 1;
   }
@@ -1908,8 +1929,8 @@ function ChannelsCard({
   setWindow,
 }: {
   attribution: AttributionRow[];
-  window: "today" | "7d" | "30d";
-  setWindow: (w: "today" | "7d" | "30d") => void;
+  window: ChannelWindow;
+  setWindow: (w: ChannelWindow) => void;
 }) {
   const { totals, total } = bucketAttribution(attribution, window);
 
@@ -1919,12 +1940,18 @@ function ChannelsCard({
   const max = Math.max(1, ...CHANNEL_ORDER.map((c) => totals[c]));
 
   const windowLabel =
-    window === "today" ? "today" : window === "7d" ? "in the last 7 days" : "in the last 30 days";
+    window === "today"
+      ? "today"
+      : window === "yesterday"
+        ? "yesterday"
+        : window === "7d"
+          ? "in the last 7 days"
+          : "in the last 30 days";
 
   return (
     <Card>
       <BlockStack gap="400">
-        <InlineStack align="space-between" blockAlign="center" wrap={false}>
+        <InlineStack align="space-between" blockAlign="center" gap="300">
           <BlockStack gap="100">
             <Text as="h3" variant="headingMd">
               Where orders came from
@@ -2105,6 +2132,8 @@ function SegmentedTabs<T extends string>({
       role="tablist"
       style={{
         display: "inline-flex",
+        flexWrap: "wrap",
+        maxWidth: "100%",
         padding: 3,
         background: "#f1f5f9",
         borderRadius: 10,
