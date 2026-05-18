@@ -209,10 +209,7 @@ export default function ExpensesPage() {
     : [];
 
   return (
-    <Page
-      backAction={{ content: "Settings", url: "/app/settings" }}
-      title="Expenses"
-    >
+    <Page>
       <TitleBar title="Expenses" />
       <Layout>
         <Layout.Section>

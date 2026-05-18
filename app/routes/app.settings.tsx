@@ -419,25 +419,6 @@ export default function SettingsPage() {
           </Card>
         </Layout.Section>
 
-        {/* ── Section 4: Expenses ───────────────────────────────────────── */}
-        <Layout.Section>
-          <Card>
-            <BlockStack gap="400">
-              <Text as="h2" variant="headingMd">Business Expenses</Text>
-              <Text as="p" variant="bodyMd" tone="subdued">
-                Rent, salaries, packaging and payment fees — everything that
-                eats into profit. Managed on its own page so changes are clear
-                and the impact on net profit is visible.
-              </Text>
-              <InlineStack>
-                <Button url="/app/expenses" variant="primary">
-                  Manage expenses
-                </Button>
-              </InlineStack>
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-
       </Layout>
     </Page>
   );
