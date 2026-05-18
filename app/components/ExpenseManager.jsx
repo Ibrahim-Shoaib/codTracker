@@ -83,6 +83,8 @@ function kindMeta(e, currency) {
 
 // ── Add / Edit form body (shared inside a Modal) ─────────────────────────────
 function ExpenseFields({ currency }) {
+  const [name, setName] = useState("");
+  const [amount, setAmount] = useState("");
   const [kind, setKind] = useState("fixed");
   const [pctBase, setPctBase] = useState("ad_spend");
 
@@ -97,6 +99,8 @@ function ExpenseFields({ currency }) {
       <TextField
         label="Name"
         name="name"
+        value={name}
+        onChange={setName}
         placeholder="e.g. Warehouse rent"
         autoComplete="off"
         requiredIndicator
@@ -117,6 +121,8 @@ function ExpenseFields({ currency }) {
             type="number"
             min="0"
             step="any"
+            value={amount}
+            onChange={setAmount}
             autoComplete="off"
             suffix={kind === "percent" ? "%" : undefined}
           />
