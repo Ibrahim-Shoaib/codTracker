@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { syncStore, retroactiveCOGSMatch } from "../lib/sync.server.js";
 import { fixZeroInvoicePayments } from "../lib/invoice-fix.server.js";
-import { sessionStorage } from "../shopify.server";
+import { unauthenticated } from "../shopify.server";
 
 const CONCURRENCY = 5;
 
@@ -41,9 +41,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const supabase = await getSupabaseForStore(store.store_id);
         await syncStore(store, supabase);
         void retroactiveCOGSMatch(supabase, store.store_id);
-        const offlineSession = await sessionStorage.loadSession(`offline_${store.store_id}`);
-        if (offlineSession) {
-          void fixZeroInvoicePayments(supabase, store.store_id, offlineSession);
+        // unauthenticated.admin(shop) loads the offline session AND refreshes
+        // the access token if it's near expiry. Do not call sessionStorage.loadSession
+        // directly here — that path skips the refresh helper and returns stale tokens
+        // once expiringOfflineAccessTokens is on.
+        try {
+          const { session: offlineSession } = await unauthenticated.admin(store.store_id);
+          if (offlineSession) {
+            void fixZeroInvoicePayments(supabase, store.store_id, offlineSession);
+          }
+        } catch (err) {
+          console.warn(`[cron.postex] no valid offline session for ${store.store_id}:`, err);
         }
       })
     );

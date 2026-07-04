@@ -21,6 +21,7 @@ import {
   recordOrderAttribution,
   markAttributionCapiSent,
 } from "../lib/channel-attribution.server.js";
+import { unauthenticated } from "../shopify.server";
 
 // Railway cron: 0 * * * * (UTC) = every hour, on the hour.
 //
@@ -98,20 +99,21 @@ async function reconcileShop({
 }) {
   const stat = { ordersChecked: 0, missing: 0, replayed: 0, replayFailed: 0 };
 
-  const { data: sessions } = await supabase
-    .from("shopify_sessions")
-    .select("accessToken")
-    .eq("shop", shop)
-    .eq("isOnline", false)
-    .limit(1);
-  const accessToken = (sessions?.[0] as { accessToken?: string } | undefined)?.accessToken;
-  if (!accessToken) {
-    console.warn(`[capi-reconcile ${shop}] no offline session — skipping`);
+  // Route through unauthenticated.admin(shop) instead of reading accessToken
+  // straight out of shopify_sessions: with expiring offline tokens the raw
+  // column is often stale, but the library auto-refreshes here.
+  let accessToken: string;
+  try {
+    const { session } = await unauthenticated.admin(shop);
+    if (!session?.accessToken) throw new Error("no accessToken on session");
+    accessToken = session.accessToken;
+  } catch (err) {
+    console.warn(`[capi-reconcile ${shop}] no valid offline session — skipping:`, err);
     return stat;
   }
 
   const url =
-    `https://${shop}/admin/api/2025-01/orders.json?` +
+    `https://${shop}/admin/api/2026-04/orders.json?` +
     new URLSearchParams({
       created_at_min: sinceIso,
       status: "any",

@@ -45,7 +45,7 @@ const scopes = process.env.SHOPIFY_SCOPES
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
   apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
-  apiVersion: ApiVersion.October25,
+  apiVersion: ApiVersion.April26,
   scopes,
   appUrl: process.env.SHOPIFY_APP_URL || "",
   authPathPrefix: "/auth",
@@ -103,15 +103,21 @@ const shopify = shopifyApp({
     },
   },
   future: {
+    // Token Exchange strategy for embedded admin — no OAuth redirect dance.
     unstable_newEmbeddedAuthStrategy: true,
+    // Expiring offline tokens (60-min TTL + refresh token). Required for new
+    // public apps as of 2026-04-01; existing apps must migrate by 2027-01-01.
+    // When on, token exchange requests include `expiring=1` and the library
+    // auto-refreshes near expiry inside authenticate.admin / authenticate.webhook
+    // / unauthenticated.admin. Background jobs MUST use unauthenticated.admin(shop);
+    // reading session.accessToken from sessionStorage directly bypasses the
+    // refresh path and will start hitting 401s.
+    expiringOfflineAccessTokens: true,
   },
-  ...(process.env.SHOP_CUSTOM_DOMAIN
-    ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
-    : {}),
 });
 
 export default shopify;
-export const apiVersion = ApiVersion.October25;
+export const apiVersion = ApiVersion.April26;
 export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
 export const authenticate = shopify.authenticate;
 export const unauthenticated = shopify.unauthenticated;

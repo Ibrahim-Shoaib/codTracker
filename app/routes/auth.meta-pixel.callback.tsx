@@ -12,7 +12,7 @@ import {
 import { metaPixelOAuthSession } from "../lib/meta-pixel-session.server.js";
 import { encryptSecret } from "../lib/crypto.server.js";
 import { installWebPixel } from "../lib/web-pixel-install.server.js";
-import { sessionStorage } from "../shopify.server";
+import { unauthenticated } from "../shopify.server";
 
 // Same popup-postMessage UX as auth.meta.callback — the embedded admin opens a
 // popup, this route runs in the popup, broadcasts the result back to the
@@ -54,12 +54,20 @@ async function autoCompleteConnection(args: {
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
   );
 
-  // Look up the Shopify Admin access token from the session store. We don't
-  // have the request session here (we're in the popup callback), so we go via
-  // the persisted offline session that shopify-app-remix maintains.
-  const offlineSession = await sessionStorage.loadSession(
-    `offline_${args.shop}`
-  );
+  // Look up the Shopify Admin access token via unauthenticated.admin so the
+  // library refreshes an expiring offline token before we call the Web Pixel
+  // install endpoint. We can't reuse the request session here — we're in a
+  // popup callback triggered by Meta, not embedded admin.
+  let offlineSession: Awaited<ReturnType<typeof unauthenticated.admin>>["session"] | null = null;
+  try {
+    const res = await unauthenticated.admin(args.shop);
+    offlineSession = res.session;
+  } catch (err) {
+    console.warn(
+      `[meta-pixel oauth] failed to load Shopify offline session for ${args.shop}:`,
+      err
+    );
+  }
 
   let webPixelId: string | null = null;
   if (offlineSession?.accessToken) {

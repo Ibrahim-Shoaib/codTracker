@@ -33,14 +33,23 @@ const MAX_ORDER_DATE_ATTEMPTS = 5;
 // Load the Shopify offline session for a shop. Returns undefined if the
 // session was deleted (uninstall) or never existed.
 //
+// Routes through unauthenticated.admin(shop) so the library auto-refreshes
+// an expiring token before we hand the session back to the caller — reading
+// sessionStorage directly would return a stale accessToken.
+//
 // Dynamic import so that one-shot scripts (which only need
 // enrichOrdersWithShopify and bring their own session) can `import` from
 // this file without dragging in the .ts shopify.server module that raw
 // Node ESM can't resolve. The import only fires when this function is
 // actually called (cron / webhook / onboarding paths).
 export async function loadOfflineSession(shop) {
-  const { sessionStorage } = await import('../shopify.server');
-  return sessionStorage.loadSession(`offline_${shop}`);
+  const { unauthenticated } = await import('../shopify.server');
+  try {
+    const { session } = await unauthenticated.admin(shop);
+    return session;
+  } catch {
+    return undefined;
+  }
 }
 
 // Enrich orders with Shopify data (line_items + order_date) for a given window.
