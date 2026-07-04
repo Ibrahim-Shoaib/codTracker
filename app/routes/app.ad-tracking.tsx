@@ -101,15 +101,14 @@ function pktYesterdayWindowUtc(): { startIso: string; endIso: string } {
 // Format (per Shopify's official docs):
 //   activateAppId=<api_key>/<block_handle>
 // The API key must match the app the merchant actually installed on this
-// store — this was previously hardcoded to the production Trendy app, which
-// broke the second Railway deployment ("app embed does not exist" because
-// the store had installed a *different* app). Read from process.env at
-// request time so the same code works across both deployments.
-function buildThemeActivationUrl(shop: string): string {
-  const apiKey = process.env.SHOPIFY_API_KEY;
-  if (!apiKey) {
-    throw new Error("SHOPIFY_API_KEY is not set — cannot build theme activation URL");
-  }
+// store — hardcoding it broke the second Railway deployment (activation
+// URL pointed at a different app → "app embed does not exist"). Now taken
+// as a parameter so the same helper works on server (loader/action pass
+// process.env.SHOPIFY_API_KEY) and on the client-hydrated JSX (passes
+// shopifyApiKey from the loader payload). Never reads process.env
+// directly — this file's JSX runs in the browser during hydration, where
+// process.env is undefined.
+function buildThemeActivationUrl(shop: string, apiKey: string): string {
   // shop is "the-trendy-homes-pk.myshopify.com" → handle is the-trendy-homes-pk
   const shopHandle = shop.replace(/\.myshopify\.com$/, "");
   const params = new URLSearchParams({
@@ -396,7 +395,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       {
         intent,
         success: true,
-        themeActivationUrl: buildThemeActivationUrl(shop),
+        themeActivationUrl: buildThemeActivationUrl(shop, process.env.SHOPIFY_API_KEY ?? ""),
       },
       { headers: { "Set-Cookie": destroy } }
     );
@@ -610,7 +609,7 @@ export default function AdTracking() {
       if (event.data?.type === "meta_pixel_oauth_complete") {
         if (event.data?.auto) {
           window.open(
-            buildThemeActivationUrlClient(shop, shopifyApiKey),
+            buildThemeActivationUrl(shop, shopifyApiKey),
             "_blank",
             "noopener,noreferrer"
           );
@@ -739,7 +738,7 @@ export default function AdTracking() {
                     tone="info"
                     action={{
                       content: "Open theme editor",
-                      url: buildThemeActivationUrl(shop),
+                      url: buildThemeActivationUrl(shop, shopifyApiKey),
                       external: true,
                     }}
                   >
@@ -889,7 +888,7 @@ export default function AdTracking() {
                           metaPixelActive ? undefined : "Open theme editor"
                         }
                         actionUrl={
-                          metaPixelActive ? undefined : buildThemeActivationUrl(shop)
+                          metaPixelActive ? undefined : buildThemeActivationUrl(shop, shopifyApiKey)
                         }
                       />
                       <StatusRow
@@ -2244,19 +2243,6 @@ function StatusRow(props: {
       )}
     </InlineStack>
   );
-}
-
-// Same activation-URL builder as the server side, but reachable from
-// useEffect handlers running in the browser (where `process.env` isn't
-// available). The API key is passed in from the loader payload.
-function buildThemeActivationUrlClient(shop: string, apiKey: string): string {
-  const shopHandle = shop.replace(/\.myshopify\.com$/, "");
-  const params = new URLSearchParams({
-    context: "apps",
-    template: "index",
-    activateAppId: `${apiKey}/meta-pixel`,
-  });
-  return `https://admin.shopify.com/store/${shopHandle}/themes/current/editor?${params}`;
 }
 
 function formatRelative(isoString: string): string {
