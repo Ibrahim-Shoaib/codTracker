@@ -10,6 +10,15 @@
 (function () {
   "use strict";
 
+  // Run-once guard. The meta-pixel block now bundles this script alongside
+  // meta-pixel.js so one theme-editor click enables both effects — but merchants
+  // whose install predates that consolidation still have the standalone
+  // identity-relay block enabled, which loads identity-relay.js a second time
+  // per page. The guard means the /cart/update.js POST only fires once
+  // regardless.
+  if (window.__codprofitIdentityRelayInitialized) return;
+  window.__codprofitIdentityRelayInitialized = true;
+
   function getCookie(name) {
     const m = document.cookie.match(
       new RegExp("(?:^|; )" + name.replace(/[.$?*|{}()[\]\\\/+^]/g, "\\$&") + "=([^;]*)")
