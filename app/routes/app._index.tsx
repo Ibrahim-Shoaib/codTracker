@@ -453,20 +453,29 @@ async function buildShopifyDirectResponse({
   const mblFrom   = formatPKTDate(getMonthBeforeLastPKT().start);
   const mblTo     = formatPKTDate(getMonthBeforeLastPKT().end);
 
-  // Adapter ranges use [from, toExclusive) semantics so comparisons line
-  // up with date math elsewhere; PKT 'to' comes back as same day already
-  // (start of next), but we name it explicitly here for clarity.
+  // formatPKTDate(period.end) collapses 23:59:59.999 of the last inclusive
+  // day back to the same date string as period.start (both "2026-07-04" for
+  // today). That's fine for display (`to`) but wrong for the exclusive
+  // upper bound used by sumAdSpend / the orders filter — which do
+  // `date < toExclusive`, so today's own row gets filtered out and every
+  // single-day KPI card shows 0. Advance one day for the query bound only.
+  function nextDayISO(dateStr: string): string {
+    const d = new Date(dateStr + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+
   const periodsCurrent = {
-    today:     { from: todayFrom, toExclusive: todayTo, to: todayTo },
-    yesterday: { from: yestFrom,  toExclusive: yestTo,  to: yestTo  },
-    mtd:       { from: mtdFrom,   toExclusive: mtdTo,   to: mtdTo   },
-    lastMonth: { from: lmFrom,    toExclusive: lmTo,    to: lmTo    },
+    today:     { from: todayFrom, toExclusive: nextDayISO(todayTo), to: todayTo },
+    yesterday: { from: yestFrom,  toExclusive: nextDayISO(yestTo),  to: yestTo  },
+    mtd:       { from: mtdFrom,   toExclusive: nextDayISO(mtdTo),   to: mtdTo   },
+    lastMonth: { from: lmFrom,    toExclusive: nextDayISO(lmTo),    to: lmTo    },
   };
   const periodsPrior = {
-    today:     { from: yestFrom,    toExclusive: yestTo,    to: yestTo    },
-    yesterday: { from: dbyFrom,     toExclusive: dbyTo,     to: dbyTo     },
-    mtd:       { from: mtdCompFrom, toExclusive: mtdCompTo, to: mtdCompTo },
-    lastMonth: { from: mblFrom,     toExclusive: mblTo,     to: mblTo     },
+    today:     { from: yestFrom,    toExclusive: nextDayISO(yestTo),    to: yestTo    },
+    yesterday: { from: dbyFrom,     toExclusive: nextDayISO(dbyTo),     to: dbyTo     },
+    mtd:       { from: mtdCompFrom, toExclusive: nextDayISO(mtdCompTo), to: mtdCompTo },
+    lastMonth: { from: mblFrom,     toExclusive: nextDayISO(mblTo),     to: mblTo     },
   };
 
   const adapter = await getStatsAdapter(store, session);
@@ -490,12 +499,13 @@ async function buildShopifyDirectResponse({
   const window60From = rollingFromUTC(60);
   const window90From = rollingFromUTC(90);
   const windowTo = todayTo;
+  const windowToExclusive = nextDayISO(windowTo);
 
   const breakEvenStats = await adapter.getDashboardStats({
     periods: {
-      w30: { from: window30From, toExclusive: windowTo, to: windowTo },
-      w60: { from: window60From, toExclusive: windowTo, to: windowTo },
-      w90: { from: window90From, toExclusive: windowTo, to: windowTo },
+      w30: { from: window30From, toExclusive: windowToExclusive, to: windowTo },
+      w60: { from: window60From, toExclusive: windowToExclusive, to: windowTo },
+      w90: { from: window90From, toExclusive: windowToExclusive, to: windowTo },
     },
     expenses,
   });
