@@ -26,7 +26,7 @@
 
 import { getSupabaseForStore } from "./supabase.server.js";
 import { allocateExpenses } from "./expense-alloc.server.js";
-import { formatDate } from "./dates.server.js";
+import { formatDate, dayStartUTC } from "./dates.server.js";
 
 // ─── Public dispatch ──────────────────────────────────────────────────────
 
@@ -123,12 +123,22 @@ class ShopifyDirectAdapter {
 
     // Span the widest covered range so a single fetch + filter covers
     // all four periods. This is the key efficiency win.
-    const widest = {
-      from: ranges.reduce((a, r) => (r.from < a ? r.from : a), ranges[0].from),
-      to:   ranges.reduce((a, r) => (r.to   > a ? r.to   : a), ranges[0].to),
-    };
+    const tz = this.store.timezone ?? "Asia/Karachi";
+    const widestFrom = ranges.reduce((a, r) => (r.from < a ? r.from : a), ranges[0].from);
+    const widestTo   = ranges.reduce((a, r) => (r.to   > a ? r.to   : a), ranges[0].to);
 
-    const orders = await this._fetchOrders(widest.from, widest.to);
+    // Fetch through the day AFTER the latest period day, as precise UTC
+    // instants derived from the store's timezone. A bare created_at_max date
+    // is treated by Shopify as that day's midnight, which would clip every
+    // order placed later today (and on any last day) — so "today" read 0 for
+    // non-UTC stores. Fetching an exclusive upper bound of (widestTo + 1 day)
+    // start-of-day guarantees the full last day is covered; the per-period
+    // created_at_iso filter below still buckets each order exactly.
+    const fetchToExclusive = addDaysIso(widestTo, 1);
+    const orders = await this._fetchOrders(
+      dayStartUTC(widestFrom, tz).toISOString(),
+      dayStartUTC(fetchToExclusive, tz).toISOString(),
+    );
 
     // Pre-compute COGS map once: variant_id → unit_cost. Same source
     // as the PostEx mode (product_costs table written from the COGS
@@ -136,8 +146,9 @@ class ShopifyDirectAdapter {
     const costsMap = await this._loadCostsMap();
 
     // Pre-fetch ad_spend rows for the full window (Meta cron writes
-    // them regardless of ingest_mode, in store currency).
-    const adSpendByDay = await this._loadAdSpend(widest.from, widest.to);
+    // them regardless of ingest_mode, in store currency). Upper bound is the
+    // same exclusive next-day so the last day's spend isn't dropped.
+    const adSpendByDay = await this._loadAdSpend(widestFrom, fetchToExclusive);
 
     const out = {};
     for (const [key, range] of Object.entries(periods)) {
@@ -283,6 +294,14 @@ class ShopifyDirectAdapter {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
+
+// 'YYYY-MM-DD' + n calendar days → 'YYYY-MM-DD' (UTC arithmetic; the value is
+// a pure calendar date, timezone-independent).
+function addDaysIso(ymd, n) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + n));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
 
 // Convert a Shopify order's raw timestamp to the store-local ISO date string
 // (YYYY-MM-DD) for period-bucket comparisons. The date is computed in the
@@ -471,4 +490,5 @@ export const __test__ = {
   countNonRefundedOrders,
   sumAdSpend,
   daysBetween,
+  addDaysIso,
 };

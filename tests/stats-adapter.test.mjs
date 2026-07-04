@@ -6,7 +6,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { __test__ } from "../app/lib/stats-adapter.server.js";
 
-const { computeStats, normalizeOrder, countNonRefundedOrders, sumAdSpend, daysBetween } = __test__;
+const { computeStats, normalizeOrder, countNonRefundedOrders, sumAdSpend, daysBetween, addDaysIso } = __test__;
+
+test("addDaysIso advances the calendar date, rolling months/years", () => {
+  assert.equal(addDaysIso("2026-07-04", 1), "2026-07-05");   // fetch upper bound for a 'today' = Jul 4
+  assert.equal(addDaysIso("2026-07-31", 1), "2026-08-01");   // month rollover
+  assert.equal(addDaysIso("2026-12-31", 1), "2027-01-01");   // year rollover
+});
 
 // ─── normalizeOrder ──────────────────────────────────────────────────────
 
