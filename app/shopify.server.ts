@@ -16,13 +16,14 @@ if (!process.env.SUPABASE_DATABASE_URL) {
   throw new Error("SUPABASE_DATABASE_URL is not set. Add it to Railway environment variables.");
 }
 
-// Canonical scope list — must stay in sync with shopify.app.toml. Hardcoded
-// (rather than read from process.env.SHOPIFY_SCOPES) so a stale Railway env
-// var can't silently leave the app requesting fewer scopes than the code
-// requires. When the toml changes, update this list — both must match
-// exactly or shopify-app-remix's scope-diff detection won't trigger re-auth
-// for existing merchants on the Ad Tracking page.
-const CANONICAL_SCOPES = [
+// Canonical scope list — must stay in sync with shopify.app.toml. The env
+// override we used to allow (SHOPIFY_SCOPES) turned out to be pure footgun:
+// stale Railway values quietly narrowed the scope-diff detection to a
+// subset of what the toml actually grants, which triggered spurious re-auth
+// prompts and made log audits misleading. Managed install reads scopes from
+// the toml on grant, so runtime overrides never affected what merchants
+// actually gave us — only what we *thought* they gave us. Hardcode.
+const scopes = [
   "read_orders",
   "read_products",
   "read_inventory",
@@ -33,14 +34,6 @@ const CANONICAL_SCOPES = [
   "read_customer_events",
   "read_themes",
 ];
-
-// Allow env override for dev/staging where you might want to test with fewer
-// scopes — but never silently fall back to "no scopes" if the env var is
-// unset, which is what the previous `process.env.SHOPIFY_SCOPES?.split(",")`
-// pattern did.
-const scopes = process.env.SHOPIFY_SCOPES
-  ? process.env.SHOPIFY_SCOPES.split(",").map((s) => s.trim()).filter(Boolean)
-  : CANONICAL_SCOPES;
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,

@@ -18,7 +18,7 @@
 // This is the same pattern Klaviyo, Triple Whale, and TrackBee use to drive
 // the "Connected" pill in their dashboards once the merchant clicks Save.
 
-const API_VERSION = "2025-10";
+const API_VERSION = "2026-04";
 
 // The block path Shopify writes into settings_data.json when our embed is
 // active. Format:

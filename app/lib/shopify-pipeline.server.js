@@ -9,7 +9,7 @@
 
 import { formatPKTDate } from './dates.server.js';
 
-const API_VERSION = '2025-10';
+const API_VERSION = '2026-04';
 
 function emptyBuckets() {
   return {

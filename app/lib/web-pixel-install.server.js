@@ -5,7 +5,7 @@
 // calling webPixelCreate twice for the same shop is an error, so we use
 // webPixelUpdate when an id is already known.
 
-const API_VERSION = "2025-10";
+const API_VERSION = "2026-04";
 
 function adminUrl(shop) {
   return `https://${shop}/admin/api/${API_VERSION}/graphql.json`;

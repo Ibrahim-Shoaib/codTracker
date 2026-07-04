@@ -1,4 +1,4 @@
-const API_VERSION = '2025-10';
+const API_VERSION = '2026-04';
 
 // Fixes orders where invoice_payment = 0 by looking up the real amount in Shopify.
 // Safe matching rules — ALL three must hold:
