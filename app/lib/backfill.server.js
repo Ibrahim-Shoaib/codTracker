@@ -4,15 +4,14 @@ import { getSupabaseForStore } from './supabase.server.js';
 import { enrichOrdersWithShopify, loadOfflineSession } from './enrich.server.js';
 import { cancelStaleBooked } from './stale-orders.server.js';
 
+import { formatDate } from './dates.server.js';
+
 const CHUNK_DAYS = 60;
 const STOP_AFTER_EMPTY = 2;
 
-function todayPKT() {
-  const pkt = new Date(Date.now() + 5 * 60 * 60 * 1000);
-  const y = pkt.getUTCFullYear();
-  const m = String(pkt.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(pkt.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+// Today's 'YYYY-MM-DD' in the store's local timezone.
+function todayLocal(tz = 'Asia/Karachi') {
+  return formatDate(new Date(), tz);
 }
 
 function subtractDays(dateStr, days) {
@@ -27,7 +26,11 @@ function subtractDays(dateStr, days) {
 export async function runHistoricalBackfill({ store_id, postex_token }) {
   const supabase = await getSupabaseForStore(store_id);
 
-  let end = todayPKT();
+  const { data: tzRow } = await supabase
+    .from('stores').select('timezone').eq('store_id', store_id).single();
+  const tz = tzRow?.timezone ?? 'Asia/Karachi';
+
+  let end = todayLocal(tz);
   let start = subtractDays(end, CHUNK_DAYS - 1);
   let consecutiveEmpty = 0;
   let totalOrders = 0;
@@ -122,13 +125,14 @@ export async function runMetaHistoricalBackfill({ store_id, access_token, ad_acc
   // to convert when account currency differs from store currency.
   const { data: storeRow } = await supabase
     .from('stores')
-    .select('currency, meta_ad_account_currency')
+    .select('currency, meta_ad_account_currency, timezone')
     .eq('store_id', store_id)
     .single();
   const storeCurrency = storeRow?.currency ?? 'PKR';
   const accountCurrency = storeRow?.meta_ad_account_currency ?? null;
+  const tz = storeRow?.timezone ?? 'Asia/Karachi';
 
-  let end = todayPKT();
+  let end = todayLocal(tz);
   let start = subtractDays(end, CHUNK_DAYS - 1);
   let consecutiveEmpty = 0;
   let totalDays = 0;

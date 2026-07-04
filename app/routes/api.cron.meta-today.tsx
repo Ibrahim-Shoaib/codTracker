@@ -2,7 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { createClient } from "@supabase/supabase-js";
 import { fetchSpendInStoreCurrency, isTokenExpired } from "../lib/meta.server.js";
-import { getTodayPKT, formatPKTDate } from "../lib/dates.server.js";
+import { getToday, formatDate } from "../lib/dates.server.js";
 
 // Railway cron: 0 */2 * * * (UTC) = every 2 hours
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -17,7 +17,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const { data: stores } = await adminClient
     .from("stores")
-    .select("store_id, meta_access_token, meta_ad_account_id, meta_token_expires_at, currency, meta_ad_account_currency")
+    .select("store_id, meta_access_token, meta_ad_account_id, meta_token_expires_at, currency, meta_ad_account_currency, timezone")
     .not("meta_access_token", "is", null)
     // Demo stores complete real Meta OAuth (so the connected-account UX is
     // intact) but their ad_spend is fabricated — never query Meta for them.
@@ -26,9 +26,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!stores?.length) {
     return json({ synced: 0, skipped: 0, errors: 0 });
   }
-
-  const today = getTodayPKT();
-  const todayStr = formatPKTDate(today.start);
 
   let synced = 0;
   let skipped = 0;
@@ -46,6 +43,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       continue;
     }
     try {
+      // "Today" in the store's own timezone — Meta's time_range is
+      // interpreted in the ad account's local day, so a UK store must ask
+      // for the London day, not PKT.
+      const todayStr = formatDate(getToday(store.timezone ?? "Asia/Karachi").start, store.timezone ?? "Asia/Karachi");
       // Convert from ad-account currency to store currency at ingest
       // time. Identity passthrough when they match (typical PKR-on-PKR
       // case); FX-converted via fx.server.js when they differ.

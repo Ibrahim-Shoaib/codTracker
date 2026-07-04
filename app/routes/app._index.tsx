@@ -12,14 +12,14 @@ import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { metaOAuthSession } from "../lib/meta-session.server.js";
 import {
-  getTodayPKT,
-  getYesterdayPKT,
-  getMTDPKT,
-  getLastMonthPKT,
-  getDayBeforeYesterdayPKT,
-  getMTDComparisonPKT,
-  getMonthBeforeLastPKT,
-  formatPKTDate,
+  getToday,
+  getYesterday,
+  getMTD,
+  getLastMonth,
+  getDayBeforeYesterday,
+  getMTDComparison,
+  getMonthBeforeLast,
+  formatDate,
   getPriorEqualLengthRange,
 } from "../lib/dates.server.js";
 import { isTokenExpired, isTokenExpiringSoon } from "../lib/meta.server.js";
@@ -78,7 +78,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     supabase
       .from("stores")
       .select(
-        "store_id, postex_token, onboarding_complete, onboarding_step, sellable_returns_pct, meta_access_token, meta_token_expires_at, meta_sync_error, last_postex_sync_at, is_demo, currency, money_format, meta_ad_account_currency, ingest_mode"
+        "store_id, postex_token, onboarding_complete, onboarding_step, sellable_returns_pct, meta_access_token, meta_token_expires_at, meta_sync_error, last_postex_sync_at, is_demo, currency, money_format, meta_ad_account_currency, ingest_mode, timezone"
       )
       .eq("store_id", shop)
       .single(),
@@ -111,11 +111,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // the same data" work without changing the rest of the dashboard.
   const dataStoreId = effectiveStoreId(store, shop);
 
+  // Store's local timezone drives every "what day is it" boundary below.
+  const tz = store.timezone ?? "Asia/Karachi";
+  const fmt = (d: Date) => formatDate(d, tz);
+
   // 2. Period boundaries
-  const today     = getTodayPKT();
-  const yesterday = getYesterdayPKT();
-  const mtd       = getMTDPKT();
-  const lastMonth = getLastMonthPKT();
+  const today     = getToday(tz);
+  const yesterday = getYesterday(tz);
+  const mtd       = getMTD(tz);
+  const lastMonth = getLastMonth(tz);
 
   // ── ShopifyDirect ingest mode ────────────────────────────────────────
   // Merchants who skipped the courier integration (no PostEx). Dashboard
@@ -124,7 +128,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // render — same shape from the adapter as from the RPC.
   if (store.ingest_mode === "shopify_direct") {
     return buildShopifyDirectResponse({
-      session, store, expenses,
+      session, store, expenses, tz,
       today, yesterday, mtd, lastMonth,
     });
   }
@@ -132,24 +136,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Prior periods (Option A: equal-length immediately preceding for the daily
   // and monthly cards, days-elapsed mirror for MTD). Today's prior = Yesterday,
   // so we reuse the existing `yesterdayRes` and don't issue a 5th call.
-  const dayBeforeYest   = getDayBeforeYesterdayPKT();
-  const mtdComp         = getMTDComparisonPKT();
-  const monthBeforeLast = getMonthBeforeLastPKT();
+  const dayBeforeYest   = getDayBeforeYesterday(tz);
+  const mtdComp         = getMTDComparison(tz);
+  const monthBeforeLast = getMonthBeforeLast(tz);
 
-  const todayFrom    = formatPKTDate(today.start);
-  const todayTo      = formatPKTDate(today.end);
-  const yestFrom     = formatPKTDate(yesterday.start);
-  const yestTo       = formatPKTDate(yesterday.end);
-  const mtdFrom      = formatPKTDate(mtd.start);
-  const mtdTo        = formatPKTDate(mtd.end);
-  const lmFrom       = formatPKTDate(lastMonth.start);
-  const lmTo         = formatPKTDate(lastMonth.end);
-  const dbyFrom      = formatPKTDate(dayBeforeYest.start);
-  const dbyTo        = formatPKTDate(dayBeforeYest.end);
-  const mtdCompFrom  = formatPKTDate(mtdComp.start);
-  const mtdCompTo    = formatPKTDate(mtdComp.end);
-  const mblFrom      = formatPKTDate(monthBeforeLast.start);
-  const mblTo        = formatPKTDate(monthBeforeLast.end);
+  const todayFrom    = fmt(today.start);
+  const todayTo      = fmt(today.end);
+  const yestFrom     = fmt(yesterday.start);
+  const yestTo       = fmt(yesterday.end);
+  const mtdFrom      = fmt(mtd.start);
+  const mtdTo        = fmt(mtd.end);
+  const lmFrom       = fmt(lastMonth.start);
+  const lmTo         = fmt(lastMonth.end);
+  const dbyFrom      = fmt(dayBeforeYest.start);
+  const dbyTo        = fmt(dayBeforeYest.end);
+  const mtdCompFrom  = fmt(mtdComp.start);
+  const mtdCompTo    = fmt(mtdComp.end);
+  const mblFrom      = fmt(monthBeforeLast.start);
+  const mblTo        = fmt(monthBeforeLast.end);
 
   // City panel default window — "Maximum" (all-time). 2010-01-01 predates
   // any Pakistani Shopify merchant, and the partial idx_orders_city_terminal
@@ -164,7 +168,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   function rollingFromUTC(days: number) {
     const s = new Date(today.start);
     s.setUTCDate(s.getUTCDate() - (days - 1));
-    return formatPKTDate(s);
+    return fmt(s);
   }
   const window30From = rollingFromUTC(30);
   const window60From = rollingFromUTC(60);
@@ -378,7 +382,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const unfulfilledPipeline = (
     store.is_demo
       ? fetchDemoPipeline(supabase, dataStoreId, pipelineRanges)
-      : fetchUnfulfilledPipeline(session, pipelineRanges)
+      : fetchUnfulfilledPipeline(session, pipelineRanges, tz)
   ).catch((err) => {
     console.error("Pipeline fetch failed:", err);
     return null;
@@ -394,6 +398,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     backfillInProgress: !store.last_postex_sync_at,
     unmatchedCOGSCount: unmatchedCount ?? 0,
     currency:           store.currency ?? "PKR",
+    timezone:           tz,
     metaAdAccountCurrency: store.meta_ad_account_currency ?? null,
     caps: {
       mode: "postex",
@@ -432,26 +437,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 // success-rate instead of delivery-success.
 
 async function buildShopifyDirectResponse({
-  session, store, expenses,
+  session, store, expenses, tz,
   today, yesterday, mtd, lastMonth,
 }: {
-  session: any; store: any; expenses: any[];
+  session: any; store: any; expenses: any[]; tz: string;
   today: any; yesterday: any; mtd: any; lastMonth: any;
 }) {
-  const todayFrom = formatPKTDate(today.start);
-  const todayTo   = formatPKTDate(today.end);
-  const yestFrom  = formatPKTDate(yesterday.start);
-  const yestTo    = formatPKTDate(yesterday.end);
-  const mtdFrom   = formatPKTDate(mtd.start);
-  const mtdTo     = formatPKTDate(mtd.end);
-  const lmFrom    = formatPKTDate(lastMonth.start);
-  const lmTo      = formatPKTDate(lastMonth.end);
-  const dbyFrom   = formatPKTDate(getDayBeforeYesterdayPKT().start);
-  const dbyTo     = formatPKTDate(getDayBeforeYesterdayPKT().end);
-  const mtdCompFrom = formatPKTDate(getMTDComparisonPKT().start);
-  const mtdCompTo   = formatPKTDate(getMTDComparisonPKT().end);
-  const mblFrom   = formatPKTDate(getMonthBeforeLastPKT().start);
-  const mblTo     = formatPKTDate(getMonthBeforeLastPKT().end);
+  const fmt = (d: Date) => formatDate(d, tz);
+  const todayFrom = fmt(today.start);
+  const todayTo   = fmt(today.end);
+  const yestFrom  = fmt(yesterday.start);
+  const yestTo    = fmt(yesterday.end);
+  const mtdFrom   = fmt(mtd.start);
+  const mtdTo     = fmt(mtd.end);
+  const lmFrom    = fmt(lastMonth.start);
+  const lmTo      = fmt(lastMonth.end);
+  const dbyFrom   = fmt(getDayBeforeYesterday(tz).start);
+  const dbyTo     = fmt(getDayBeforeYesterday(tz).end);
+  const mtdCompFrom = fmt(getMTDComparison(tz).start);
+  const mtdCompTo   = fmt(getMTDComparison(tz).end);
+  const mblFrom   = fmt(getMonthBeforeLast(tz).start);
+  const mblTo     = fmt(getMonthBeforeLast(tz).end);
 
   // formatPKTDate(period.end) collapses 23:59:59.999 of the last inclusive
   // day back to the same date string as period.start (both "2026-07-04" for
@@ -493,7 +499,7 @@ async function buildShopifyDirectResponse({
   // `return_loss` with refund-derived values.
   function rollingFromUTC(days: number) {
     const startMs = today.start.getTime() - (days - 1) * 24 * 60 * 60 * 1000;
-    return formatPKTDate(new Date(startMs));
+    return fmt(new Date(startMs));
   }
   const window30From = rollingFromUTC(30);
   const window60From = rollingFromUTC(60);
@@ -569,6 +575,7 @@ async function buildShopifyDirectResponse({
     backfillInProgress: false, // no historical backfill in shopify_direct
     unmatchedCOGSCount: 0,
     currency:           store.currency ?? "PKR",
+    timezone:           tz,
     metaAdAccountCurrency: store.meta_ad_account_currency ?? null,
     caps: adapter.capabilities(),
     periods: {
@@ -603,6 +610,7 @@ export default function Dashboard() {
           backfillInProgress, cityBreakdown, breakEven, trend,
           unfulfilledPipeline,
           currency,
+          timezone,
           caps = { showPipelinePills: true, showCityLoss: true, returnsLabel: "Returns", returnsUnit: "count" } } = data;
 
   // Auto-revalidate while data is being populated (real-store PostEx
@@ -653,6 +661,7 @@ export default function Dashboard() {
                   expenseBreakdown={periods[key].expenseBreakdown}
                   unfulfilledPromise={unfulfilledPipeline}
                   currency={currency}
+                  timezone={timezone}
                   caps={caps}
                   onMore={(stats, dateRange, title, expenseBreakdown) =>
                     setDetail({ stats, dateRange, title, expenseBreakdown })

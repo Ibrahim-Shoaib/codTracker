@@ -7,7 +7,7 @@
 // volume cap (4 pages × 250 = 1000 unfulfilled orders) is far above realistic
 // COD store backlogs.
 
-import { formatPKTDate } from './dates.server.js';
+import { formatDate, dayStartUTC } from './dates.server.js';
 
 const API_VERSION = '2026-04';
 
@@ -34,7 +34,7 @@ function parseNextUrl(linkHeader) {
 // On failure (no token, network error, Shopify error) returns null so the
 // caller can render the dashboard without the Unfulfilled pills rather than
 // blowing up.
-export async function fetchUnfulfilledPipeline(session, ranges) {
+export async function fetchUnfulfilledPipeline(session, ranges, tz = 'Asia/Karachi') {
   if (!session?.accessToken || !session?.shop) return null;
 
   // Earliest from-date across all 4 ranges. Last Month is usually the floor,
@@ -43,9 +43,9 @@ export async function fetchUnfulfilledPipeline(session, ranges) {
     (min, r) => (r.from < min ? r.from : min),
     '9999-12-31'
   );
-  // Express the floor as start-of-day PKT in ISO 8601 with +05:00 offset so
-  // Shopify's created_at_min semantics line up with our PKT day boundaries.
-  const createdAtMin = `${floor}T00:00:00+05:00`;
+  // Express the floor as the UTC instant of start-of-day in the store's
+  // timezone so Shopify's created_at_min lines up with our day boundaries.
+  const createdAtMin = dayStartUTC(floor, tz).toISOString();
 
   const headers = {
     'X-Shopify-Access-Token': session.accessToken,
@@ -83,9 +83,9 @@ export async function fetchUnfulfilledPipeline(session, ranges) {
 
   const buckets = emptyBuckets();
   for (const o of collected) {
-    const pkt = formatPKTDate(new Date(o.createdAt));
+    const day = formatDate(new Date(o.createdAt), tz);
     for (const [key, range] of Object.entries(ranges)) {
-      if (pkt >= range.from && pkt <= range.to) {
+      if (day >= range.from && day <= range.to) {
         buckets[key].count += 1;
         buckets[key].value += o.amount;
       }
@@ -101,10 +101,10 @@ export async function fetchUnfulfilledPipeline(session, ranges) {
 //
 // Returns { count: 0, value: 0 } on any failure so the caller can render
 // the pill at zero rather than blowing up the dashboard.
-export async function fetchUnfulfilledForRange(session, fromYmd, toYmd) {
+export async function fetchUnfulfilledForRange(session, fromYmd, toYmd, tz = 'Asia/Karachi') {
   if (!session?.accessToken || !session?.shop) return { count: 0, value: 0 };
 
-  const createdAtMin = `${fromYmd}T00:00:00+05:00`;
+  const createdAtMin = dayStartUTC(fromYmd, tz).toISOString();
   const headers = {
     'X-Shopify-Access-Token': session.accessToken,
     'Content-Type': 'application/json',
@@ -132,8 +132,8 @@ export async function fetchUnfulfilledForRange(session, fromYmd, toYmd) {
     }
     const { orders } = await res.json();
     for (const o of orders ?? []) {
-      const pkt = formatPKTDate(new Date(o.created_at));
-      if (pkt >= fromYmd && pkt <= toYmd) {
+      const day = formatDate(new Date(o.created_at), tz);
+      if (day >= fromYmd && day <= toYmd) {
         count += 1;
         value += Number(o.total_price) || 0;
       }

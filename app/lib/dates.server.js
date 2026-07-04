@@ -1,99 +1,112 @@
-// All date logic is PKT (UTC+5). Railway runs UTC — we shift by +5h to work in PKT,
-// then return real UTC timestamps for Supabase queries.
+// Date logic is per-store: every function takes an IANA timezone (e.g.
+// 'Asia/Karachi', 'Europe/London') and computes that store's local calendar
+// day, then returns real UTC timestamps for Supabase queries. Railway and the
+// DB session both run UTC; we derive the local day via Intl.DateTimeFormat so
+// DST (e.g. UK BST/GMT) is handled correctly — no fixed offset.
+//
+// The default 'Asia/Karachi' preserves the historical PKT behaviour for any
+// caller that hasn't threaded a store timezone yet.
 
-const PKT_OFFSET_MS = 5 * 60 * 60 * 1000; // UTC+5
+const DEFAULT_TZ = 'Asia/Karachi';
 
-// Returns a Date object whose UTC fields read as PKT local time
-function nowPKT() {
-  return new Date(Date.now() + PKT_OFFSET_MS);
+// Milliseconds `tz` is ahead of UTC at the given instant (DST-aware, signed).
+function tzOffsetMs(date, tz) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  });
+  const p = Object.fromEntries(dtf.formatToParts(date).map((x) => [x.type, x.value]));
+  const hour = p.hour === '24' ? 0 : Number(p.hour); // some engines emit '24' for midnight
+  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, hour, +p.minute, +p.second);
+  // Compare at whole-second precision (formatToParts has no ms); tz offsets are
+  // always whole minutes, so this keeps the caller's sub-second field intact.
+  return asUTC - (date.getTime() - date.getMilliseconds());
 }
 
-// Given a Date whose UTC fields = PKT local time, returns the start-of-that-day as real UTC
-function startOfDayUTC(pktDate) {
-  const midnight = Date.UTC(
-    pktDate.getUTCFullYear(),
-    pktDate.getUTCMonth(),
-    pktDate.getUTCDate(),
-    0, 0, 0, 0
-  );
-  return new Date(midnight - PKT_OFFSET_MS);
+// Real UTC Date for a store-local wall-clock time. Single offset lookup is
+// exact for day boundaries (00:00 / 23:59) — those never fall inside a DST gap
+// in the zones we support.
+function zonedToUTC(y, m, d, hh, mm, ss, ms, tz) {
+  const guess = Date.UTC(y, m - 1, d, hh, mm, ss, ms);
+  return new Date(guess - tzOffsetMs(new Date(guess), tz));
 }
 
-// Given a Date whose UTC fields = PKT local time, returns end-of-that-day as real UTC
-function endOfDayUTC(pktDate) {
-  const endOfDay = Date.UTC(
-    pktDate.getUTCFullYear(),
-    pktDate.getUTCMonth(),
-    pktDate.getUTCDate(),
-    23, 59, 59, 999
-  );
-  return new Date(endOfDay - PKT_OFFSET_MS);
+// { y, m (1-12), d } of "now" in tz.
+function todayParts(tz) {
+  const now = new Date();
+  const local = new Date(now.getTime() + tzOffsetMs(now, tz));
+  return { y: local.getUTCFullYear(), m: local.getUTCMonth() + 1, d: local.getUTCDate() };
 }
 
-// Shifts a PKT-offset Date back by N days (still in PKT-offset space)
-function subtractDaysPKT(pktDate, days) {
-  return new Date(Date.UTC(
-    pktDate.getUTCFullYear(),
-    pktDate.getUTCMonth(),
-    pktDate.getUTCDate() - days
-  ));
+// Calendar-shift parts by whole days (handles month/year rollover).
+function shiftDays({ y, m, d }, delta) {
+  const t = new Date(Date.UTC(y, m - 1, d));
+  t.setUTCDate(t.getUTCDate() + delta);
+  return { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() };
 }
 
-export function getTodayPKT() {
-  const pkt = nowPKT();
-  return { start: startOfDayUTC(pkt), end: endOfDayUTC(pkt) };
+function ymdOf(dateUTC) {
+  return { y: dateUTC.getUTCFullYear(), m: dateUTC.getUTCMonth() + 1, d: dateUTC.getUTCDate() };
 }
 
-export function getYesterdayPKT() {
-  const yesterday = subtractDaysPKT(nowPKT(), 1);
-  return { start: startOfDayUTC(yesterday), end: endOfDayUTC(yesterday) };
+function partsToYmd({ y, m, d }) {
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
-export function getMTDPKT() {
-  const pkt = nowPKT();
-  const firstOfMonth = new Date(Date.UTC(pkt.getUTCFullYear(), pkt.getUTCMonth(), 1));
-  return { start: startOfDayUTC(firstOfMonth), end: endOfDayUTC(pkt) };
+const startOfDayUTC = ({ y, m, d }, tz) => zonedToUTC(y, m, d, 0, 0, 0, 0, tz);
+const endOfDayUTC   = ({ y, m, d }, tz) => zonedToUTC(y, m, d, 23, 59, 59, 999, tz);
+
+export function getToday(tz = DEFAULT_TZ) {
+  const p = todayParts(tz);
+  return { start: startOfDayUTC(p, tz), end: endOfDayUTC(p, tz) };
 }
 
-export function getLastMonthPKT() {
-  const pkt = nowPKT();
-  const firstOfLastMonth = new Date(Date.UTC(pkt.getUTCFullYear(), pkt.getUTCMonth() - 1, 1));
-  // Day 0 of current month = last day of previous month
-  const lastOfLastMonth = new Date(Date.UTC(pkt.getUTCFullYear(), pkt.getUTCMonth(), 0));
-  return { start: startOfDayUTC(firstOfLastMonth), end: endOfDayUTC(lastOfLastMonth) };
+export function getYesterday(tz = DEFAULT_TZ) {
+  const p = shiftDays(todayParts(tz), -1);
+  return { start: startOfDayUTC(p, tz), end: endOfDayUTC(p, tz) };
+}
+
+export function getMTD(tz = DEFAULT_TZ) {
+  const today = todayParts(tz);
+  const first = { y: today.y, m: today.m, d: 1 };
+  return { start: startOfDayUTC(first, tz), end: endOfDayUTC(today, tz) };
+}
+
+export function getLastMonth(tz = DEFAULT_TZ) {
+  const { y, m } = todayParts(tz);
+  const first = ymdOf(new Date(Date.UTC(y, m - 2, 1)));   // first of previous month
+  const last  = ymdOf(new Date(Date.UTC(y, m - 1, 0)));   // day 0 of this month = last day prev
+  return { start: startOfDayUTC(first, tz), end: endOfDayUTC(last, tz) };
 }
 
 // For MTD % change: e.g. Apr 1-22 compared against Mar 1-22
-export function getMTDComparisonPKT() {
-  const pkt = nowPKT();
-  const todayDay = pkt.getUTCDate();
-
-  const firstOfLastMonth = new Date(Date.UTC(pkt.getUTCFullYear(), pkt.getUTCMonth() - 1, 1));
-  // Cap to last day of that month in case current month is longer
-  const lastDayOfLastMonth = new Date(Date.UTC(pkt.getUTCFullYear(), pkt.getUTCMonth(), 0)).getUTCDate();
-  const compDay = Math.min(todayDay, lastDayOfLastMonth);
-  const endOfComparison = new Date(Date.UTC(pkt.getUTCFullYear(), pkt.getUTCMonth() - 1, compDay));
-
-  return { start: startOfDayUTC(firstOfLastMonth), end: endOfDayUTC(endOfComparison) };
+export function getMTDComparison(tz = DEFAULT_TZ) {
+  const { y, m, d } = todayParts(tz);
+  const first = ymdOf(new Date(Date.UTC(y, m - 2, 1)));
+  const lastDayOfLastMonth = new Date(Date.UTC(y, m - 1, 0)).getUTCDate();
+  const compDay = Math.min(d, lastDayOfLastMonth);
+  const end = ymdOf(new Date(Date.UTC(y, m - 2, compDay)));
+  return { start: startOfDayUTC(first, tz), end: endOfDayUTC(end, tz) };
 }
 
 // Day before yesterday — prior comparison for the "Yesterday" card
-export function getDayBeforeYesterdayPKT() {
-  const dby = subtractDaysPKT(nowPKT(), 2);
-  return { start: startOfDayUTC(dby), end: endOfDayUTC(dby) };
+export function getDayBeforeYesterday(tz = DEFAULT_TZ) {
+  const p = shiftDays(todayParts(tz), -2);
+  return { start: startOfDayUTC(p, tz), end: endOfDayUTC(p, tz) };
 }
 
 // Full month before last month — prior comparison for the "Last month" card
-export function getMonthBeforeLastPKT() {
-  const pkt = nowPKT();
-  const firstOfMonthBefore = new Date(Date.UTC(pkt.getUTCFullYear(), pkt.getUTCMonth() - 2, 1));
-  // Day 0 of "last month" = last day of "month before last"
-  const lastOfMonthBefore  = new Date(Date.UTC(pkt.getUTCFullYear(), pkt.getUTCMonth() - 1, 0));
-  return { start: startOfDayUTC(firstOfMonthBefore), end: endOfDayUTC(lastOfMonthBefore) };
+export function getMonthBeforeLast(tz = DEFAULT_TZ) {
+  const { y, m } = todayParts(tz);
+  const first = ymdOf(new Date(Date.UTC(y, m - 3, 1)));
+  const last  = ymdOf(new Date(Date.UTC(y, m - 2, 0)));
+  return { start: startOfDayUTC(first, tz), end: endOfDayUTC(last, tz) };
 }
 
 // Equal-length range immediately preceding [fromYMD, toYMD]. Inputs and
-// outputs are 'YYYY-MM-DD' strings — used for custom-range comparisons.
+// outputs are 'YYYY-MM-DD' strings — pure calendar math, timezone-independent.
 //   length = (to - from) + 1 inclusive days
 //   prior  = [from - length, from - 1]
 export function getPriorEqualLengthRange(fromYMD, toYMD) {
@@ -112,30 +125,38 @@ export function getPriorEqualLengthRange(fromYMD, toYMD) {
   return { from: ymd(priorFrom), to: ymd(priorTo) };
 }
 
-// Returns 'YYYY-MM-DD' string in PKT — used for PostEx API calls and ad_spend date keys
-export function formatPKTDate(dateUTC) {
-  const pkt = new Date(new Date(dateUTC).getTime() + PKT_OFFSET_MS);
-  const y = pkt.getUTCFullYear();
-  const m = String(pkt.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(pkt.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+// UTC instant of the start (00:00) of a store-local calendar day given as a
+// 'YYYY-MM-DD' string — used to build precise created_at_min bounds for
+// Shopify API calls.
+export function dayStartUTC(ymd, tz = DEFAULT_TZ) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return zonedToUTC(y, m, d, 0, 0, 0, 0, tz);
 }
 
-// Returns { start, end } as 'YYYY-MM-DD' PKT strings for PostEx rolling 30-day sync window
-export function getLastNDaysPKT(n = 20) {
-  const pkt = nowPKT();
-  const nAgo = subtractDaysPKT(pkt, n);
+// Returns the 'YYYY-MM-DD' store-local calendar date of a UTC instant — used
+// for PostEx API calls and ad_spend date keys.
+export function formatDate(dateUTC, tz = DEFAULT_TZ) {
+  const dtf = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+  });
+  const p = Object.fromEntries(dtf.formatToParts(new Date(dateUTC)).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+// Returns { start, end } as 'YYYY-MM-DD' store-local strings for a rolling
+// N-day sync window (PostEx).
+export function getLastNDays(n = 20, tz = DEFAULT_TZ) {
+  const today = todayParts(tz);
   return {
-    start: formatPKTDate(startOfDayUTC(nAgo)),
-    end:   formatPKTDate(endOfDayUTC(pkt)),
+    start: partsToYmd(shiftDays(today, -n)),
+    end:   partsToYmd(today),
   };
 }
 
-// Returns array of { start, end } 'YYYY-MM-DD' PKT strings for each calendar month
-// from startDateStr ('YYYY-MM-DD') to today PKT — used by historical backfill
-export function getMonthlyChunks(startDateStr) {
-  const pkt = nowPKT();
-  const todayStr = formatPKTDate(endOfDayUTC(pkt));
+// Array of { start, end } 'YYYY-MM-DD' store-local strings for each calendar
+// month from startDateStr ('YYYY-MM-DD') to today — used by historical backfill.
+export function getMonthlyChunks(startDateStr, tz = DEFAULT_TZ) {
+  const todayStr = partsToYmd(todayParts(tz));
   const chunks = [];
 
   const [startYear, startMonth] = startDateStr.split('-').map(Number);
@@ -144,7 +165,6 @@ export function getMonthlyChunks(startDateStr) {
 
   while (true) {
     const chunkStart = `${year}-${String(month).padStart(2, '0')}-01`;
-    // Last day of this month
     const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
     const chunkEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 

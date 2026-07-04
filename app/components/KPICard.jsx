@@ -59,14 +59,29 @@ function fmtDateLabel(from, to) {
   return `${fd} ${MONTHS_LONG[fm - 1]} ${fy} – ${td} ${MONTHS_LONG[tm - 1]} ${ty}`;
 }
 
-// ── Preset date ranges (browser local time — user is in PKT) ─────────────────
-function computePresets() {
-  const now  = new Date();
-  const today = toDateStr(now);
-  const yest  = new Date(now); yest.setDate(yest.getDate() - 1);
+// Today's calendar Y/M/D in the store's timezone (falls back to browser-local
+// when no timezone is supplied). Month is 0-indexed to match Date.getMonth().
+function nowPartsInTz(tz) {
+  const now = new Date();
+  if (!tz) return { y: now.getFullYear(), m: now.getMonth(), d: now.getDate() };
+  try {
+    const p = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+      }).formatToParts(now).map((x) => [x.type, x.value])
+    );
+    return { y: +p.year, m: +p.month - 1, d: +p.day };
+  } catch {
+    return { y: now.getFullYear(), m: now.getMonth(), d: now.getDate() };
+  }
+}
 
-  const y = now.getFullYear();
-  const m = now.getMonth(); // 0-indexed
+// ── Preset date ranges — computed in the store's local timezone so a merchant
+//    viewing from anywhere still sees that store's calendar days. ─────────────
+function computePresets(tz) {
+  const { y, m, d } = nowPartsInTz(tz);
+  const today = `${y}-${padTwo(m + 1)}-${padTwo(d)}`;
+  const yest  = new Date(y, m, d - 1); // local-midnight date; rolls over correctly
 
   const firstDay = (yr, mo) => new Date(yr, mo, 1);
   const lastDay  = (yr, mo) => new Date(yr, mo + 1, 0);
@@ -183,6 +198,7 @@ export default function KPICard({
   unfulfilledPromise,
   onMore,
   currency = "PKR",
+  timezone,
   caps = { showPipelinePills: true, returnsLabel: "Returns", returnsUnit: "count" },
 }) {
   const fetcher = useFetcher();
@@ -216,7 +232,7 @@ export default function KPICard({
     ? fetcher.data?.expenseBreakdown ?? []
     : defaultExpenseBreakdown ?? [];
   const loading = fetcher.state === "loading";
-  const presets = computePresets();
+  const presets = computePresets(timezone);
 
   // Unfulfilled pill rendering rules:
   //   * Default range (no fetcher.data) → use the deferred Shopify promise

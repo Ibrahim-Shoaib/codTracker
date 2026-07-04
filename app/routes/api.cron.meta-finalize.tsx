@@ -2,7 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { createClient } from "@supabase/supabase-js";
 import { fetchSpendInStoreCurrency, isTokenExpired } from "../lib/meta.server.js";
-import { getYesterdayPKT, formatPKTDate } from "../lib/dates.server.js";
+import { getYesterday, formatDate } from "../lib/dates.server.js";
 
 // Railway cron: 0 21 * * * (UTC) = 2 AM PKT
 // Writes the authoritative final spend for yesterday after Meta closes the previous day.
@@ -18,7 +18,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const { data: stores } = await adminClient
     .from("stores")
-    .select("store_id, meta_access_token, meta_ad_account_id, meta_token_expires_at, currency, meta_ad_account_currency")
+    .select("store_id, meta_access_token, meta_ad_account_id, meta_token_expires_at, currency, meta_ad_account_currency, timezone")
     .not("meta_access_token", "is", null)
     // Demo stores: Meta is connected for the UX but ad_spend is fabricated.
     .neq("is_demo", true);
@@ -26,9 +26,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!stores?.length) {
     return json({ finalized: 0, skipped: 0, errors: 0 });
   }
-
-  const yesterday = getYesterdayPKT();
-  const yesterdayStr = formatPKTDate(yesterday.start);
 
   let finalized = 0;
   let skipped = 0;
@@ -44,6 +41,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       continue;
     }
     try {
+      // Yesterday in the store's own timezone (Meta closes the day in the ad
+      // account's local calendar, not PKT).
+      const tz = store.timezone ?? "Asia/Karachi";
+      const yesterdayStr = formatDate(getYesterday(tz).start, tz);
       const amount = await fetchSpendInStoreCurrency({
         accessToken: store.meta_access_token,
         adAccountId: store.meta_ad_account_id,

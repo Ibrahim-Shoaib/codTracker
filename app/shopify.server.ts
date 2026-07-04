@@ -59,18 +59,20 @@ const shopify = shopifyApp({
         { onConflict: "store_id", ignoreDuplicates: true }
       );
 
-      // Pull the shop's currency + money_format from Shopify shop.json
-      // and stash them on the stores row. Lets the dashboard render
-      // money in the merchant's actual currency instead of hardcoded
-      // PKR. Best-effort: a non-2xx response from Shopify just means
-      // we keep the existing values (or the migration default of PKR
-      // for legacy rows).
+      // Pull the shop's currency + money_format + timezone from Shopify
+      // shop.json and stash them on the stores row. Lets the dashboard
+      // render money in the merchant's actual currency and compute day
+      // boundaries in the store's local timezone instead of hardcoded
+      // PKR / PKT. Best-effort: a non-2xx response from Shopify just means
+      // we keep the existing values (or the migration defaults — PKR /
+      // Asia/Karachi — for legacy rows).
       try {
         const cur = await getShopCurrencySettings(session);
-        if (cur?.currency || cur?.money_format) {
+        if (cur?.currency || cur?.money_format || cur?.iana_timezone) {
           const updates: Record<string, string> = {};
           if (cur.currency) updates.currency = cur.currency;
           if (cur.money_format) updates.money_format = cur.money_format;
+          if (cur.iana_timezone) updates.timezone = cur.iana_timezone;
           await supabase.from("stores").update(updates).eq("store_id", shop);
         }
       } catch (err) {

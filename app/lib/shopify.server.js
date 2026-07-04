@@ -23,13 +23,13 @@ function parseNextUrl(linkHeader) {
 
 // ─── Shop settings ─────────────────────────────────────────────────────────────
 
-// Fetches the shop's currency + money_format from Shopify's shop.json.
-// Used by afterAuth to populate stores.currency on first install (and
-// to re-sync if the merchant ever changes their store currency).
+// Fetches the shop's currency + money_format + timezone from Shopify's
+// shop.json. Used by afterAuth to populate stores.currency / stores.timezone
+// on first install (and to re-sync if the merchant ever changes them).
 //
-// Returns { currency: 'PKR'|'USD'|..., money_format: 'Rs.{{amount}}'|... }
-// or null if the API errored — caller should default to PKR rather
-// than block install.
+// Returns { currency, money_format, iana_timezone } (any field null if
+// absent) or null if the API errored — caller should keep existing defaults
+// rather than block install.
 export async function getShopCurrencySettings(session) {
   const { shop, accessToken } = session;
   try {
@@ -41,6 +41,7 @@ export async function getShopCurrencySettings(session) {
     return {
       currency: data?.currency ?? null,
       money_format: data?.money_format ?? null,
+      iana_timezone: data?.iana_timezone ?? null,
     };
   } catch {
     return null;

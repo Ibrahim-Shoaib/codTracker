@@ -63,31 +63,39 @@ type AttributionRow = {
   capi_sent_at: string | null;
 };
 
-// Pakistan-default day boundary. Most merchants on this app are PK COD stores;
-// a non-PK store sees their day boundary off by a few hours, which is acceptable
-// noise for a top-level "today" counter (we'd swap to per-store timezone if a
-// non-PK merchant ever asks).
-const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
-function pktTodayWindowUtc(): { startIso: string; endIso: string } {
-  const nowUtcMs = Date.now();
-  const todayPkt = new Date(nowUtcMs + PKT_OFFSET_MS).toISOString().slice(0, 10);
-  const startUtcMs = new Date(`${todayPkt}T00:00:00Z`).getTime() - PKT_OFFSET_MS;
-  return {
-    startIso: new Date(startUtcMs).toISOString(),
-    endIso: new Date(startUtcMs + 24 * 3600 * 1000).toISOString(),
-  };
+// Per-store day boundaries, DST-correct. Self-contained (Intl only) rather
+// than imported from dates.server.js because bucketAttribution runs client-side
+// inside ChannelsCard — a `.server` import would break the browser bundle.
+function tzOffsetMsAt(atMs: number, tz: string): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  });
+  const p = Object.fromEntries(dtf.formatToParts(new Date(atMs)).map((x) => [x.type, x.value]));
+  const hh = p.hour === "24" ? 0 : Number(p.hour);
+  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, hh, +p.minute, +p.second);
+  return asUTC - (atMs - (atMs % 1000));
 }
-
-// Yesterday's full PKT calendar day as a closed [start, end) UTC range.
-// Anchored off today's window so the day boundary stays consistent with
-// the "today" tab (no double-counting at the rollover edge).
-function pktYesterdayWindowUtc(): { startIso: string; endIso: string } {
-  const { startIso: todayStartIso } = pktTodayWindowUtc();
-  const todayStartMs = new Date(todayStartIso).getTime();
-  return {
-    startIso: new Date(todayStartMs - 24 * 3600 * 1000).toISOString(),
-    endIso: todayStartIso,
-  };
+// UTC ms of local midnight of the local day containing atMs.
+function localDayStartMs(atMs: number, tz: string): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+  });
+  const p = Object.fromEntries(dtf.formatToParts(new Date(atMs)).map((x) => [x.type, x.value]));
+  const guess = Date.UTC(+p.year, +p.month - 1, +p.day, 0, 0, 0, 0);
+  return guess - tzOffsetMsAt(guess, tz);
+}
+function todayWindowUtc(tz: string): { startIso: string; endIso: string } {
+  const start = localDayStartMs(Date.now(), tz);
+  const nextStart = localDayStartMs(start + 26 * 3600 * 1000, tz); // +26h clears any DST gap
+  return { startIso: new Date(start).toISOString(), endIso: new Date(nextStart).toISOString() };
+}
+// Yesterday's full local calendar day as a closed [start, end) UTC range,
+// anchored off today's window so the rollover edge never double-counts.
+function yesterdayWindowUtc(tz: string): { startIso: string; endIso: string } {
+  const todayStart = localDayStartMs(Date.now(), tz);
+  const yStart = localDayStartMs(todayStart - 12 * 3600 * 1000, tz);
+  return { startIso: new Date(yStart).toISOString(), endIso: new Date(todayStart).toISOString() };
 }
 
 // ─── Theme app embed activation deep link ────────────────────────────────────
@@ -135,7 +143,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const supabase = await getSupabaseForStore(shop);
 
-  const { startIso, endIso } = pktTodayWindowUtc();
+  const { data: tzRow } = await supabase
+    .from("stores").select("timezone").eq("store_id", shop).maybeSingle();
+  const tz = tzRow?.timezone ?? "Asia/Karachi";
+
+  const { startIso, endIso } = todayWindowUtc(tz);
   // Pull the full 30 days of attribution rows once. The Today/7d/30d tabs
   // filter client-side from this single payload — saves a round-trip per
   // tab click and keeps the loader query count bounded.
@@ -267,6 +279,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return json({
     shop,
+    timezone: tz,
     // Passed through so buildThemeActivationUrlClient (which runs in the
     // browser) can build the correct activation URL for whichever app is
     // installed on this deployment. Hardcoding this used to break the
@@ -552,7 +565,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AdTracking() {
-  const { shop, shopifyApiKey, connection, pending, todayStats, purchaseEMQ, attribution } =
+  const { shop, timezone, shopifyApiKey, connection, pending, todayStats, purchaseEMQ, attribution } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
@@ -802,6 +815,7 @@ export default function AdTracking() {
               attribution={attribution}
               window={channelWindow}
               setWindow={setChannelWindow}
+              timezone={timezone}
             />
           </Layout.Section>
 
@@ -1942,15 +1956,16 @@ const WINDOW_OPTIONS: Array<{ value: ChannelWindow; label: string }> = [
 // the tab switch stays cheap (zero queries, just a recompute).
 function bucketAttribution(
   rows: AttributionRow[],
-  windowKey: ChannelWindow
+  windowKey: ChannelWindow,
+  tz: string
 ): { totals: Record<Channel, number>; total: number } {
   let lowerBoundMs: number;
   let upperBoundMs = Infinity;
   if (windowKey === "today") {
-    const { startIso } = pktTodayWindowUtc();
+    const { startIso } = todayWindowUtc(tz);
     lowerBoundMs = new Date(startIso).getTime();
   } else if (windowKey === "yesterday") {
-    const { startIso, endIso } = pktYesterdayWindowUtc();
+    const { startIso, endIso } = yesterdayWindowUtc(tz);
     lowerBoundMs = new Date(startIso).getTime();
     upperBoundMs = new Date(endIso).getTime();
   } else if (windowKey === "7d") {
@@ -1977,12 +1992,14 @@ function ChannelsCard({
   attribution,
   window,
   setWindow,
+  timezone,
 }: {
   attribution: AttributionRow[];
   window: ChannelWindow;
   setWindow: (w: ChannelWindow) => void;
+  timezone: string;
 }) {
-  const { totals, total } = bucketAttribution(attribution, window);
+  const { totals, total } = bucketAttribution(attribution, window, timezone);
 
   // Used to scale per-channel bars relative to the largest bucket so a 60/20/20
   // split renders as 100% / 33% / 33% width — easier to read at small counts

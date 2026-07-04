@@ -24,10 +24,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // demo store hit the merchant's own (empty) store_id and return zeros.
   const { data: storeRow } = await supabase
     .from("stores")
-    .select("is_demo, meta_access_token")
+    .select("is_demo, meta_access_token, timezone")
     .eq("store_id", shop)
     .single();
   const dataStoreId = effectiveStoreId(storeRow ?? null, shop);
+  const tz = storeRow?.timezone ?? "Asia/Karachi";
 
   // Equal-length immediately preceding range — same comparison rule the
   // dashboard's preset cards use, applied to whatever range the picker hands us.
@@ -39,7 +40,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   //     the requested range (matches the default-card "today only" rule).
   const unfulfilledPromise = storeRow?.is_demo
     ? fetchDemoUnfulfilledForRange(supabase, dataStoreId, from, to)
-    : fetchUnfulfilledForRange(session, from, to);
+    : fetchUnfulfilledForRange(session, from, to, tz);
 
   const [{ data }, { data: priorData }, { data: breakdownData }, unfulfilled] = await Promise.all([
     (supabase as any).rpc("get_dashboard_stats", {
