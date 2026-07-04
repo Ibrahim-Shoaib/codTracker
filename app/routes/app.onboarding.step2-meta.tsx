@@ -23,7 +23,7 @@ import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { getMetaAuthUrl } from "../lib/meta.server.js";
 import { metaOAuthSession } from "../lib/meta-session.server.js";
-import { runMetaHistoricalBackfill } from "../lib/backfill.server.js";
+import { bootstrapMetaConnection } from "../lib/backfill.server.js";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -117,20 +117,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       })
       .eq("store_id", shop);
 
-    // Demo stores: skip the 90-day Meta backfill — fabricated ad_spend will
-    // be populated when step 4 finishes. The real OAuth above is preserved
-    // so the connected-account UX in Settings still shows the Meta name.
-    const { data: storeFlag } = await supabase
-      .from("stores")
-      .select("is_demo")
-      .eq("store_id", shop)
-      .single();
-
-    if (!storeFlag?.is_demo) {
-      runMetaHistoricalBackfill({ store_id: shop, access_token: accessToken, ad_account_id: adAccountId }).catch(
-        (err) => console.error("Meta historical backfill failed:", err)
-      );
-    }
+    // Foolproof entry point: same call is fired from settings meta_save
+    // when a merchant connects Meta *after* skipping this step. The helper
+    // introspects existing ad_spend, syncs today synchronously, and
+    // fire-and-forgets the historical backfill. Demo stores are skipped
+    // inside the helper itself.
+    bootstrapMetaConnection({ store_id: shop, access_token: accessToken, ad_account_id: adAccountId })
+      .catch((err) => console.error("bootstrapMetaConnection failed:", err));
 
     const cookieHeader = request.headers.get("Cookie");
     const oauthSession = await metaOAuthSession.getSession(cookieHeader);

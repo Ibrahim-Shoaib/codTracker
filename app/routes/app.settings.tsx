@@ -29,6 +29,7 @@ import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { validateToken } from "../lib/postex.server.js";
 import { getMetaAuthUrl, isTokenExpired, isTokenExpiringSoon } from "../lib/meta.server.js";
 import { metaOAuthSession } from "../lib/meta-session.server.js";
+import { bootstrapMetaConnection } from "../lib/backfill.server.js";
 
 // ─── Loader ───────────────────────────────────────────────────────────────────
 
@@ -158,6 +159,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         meta_sync_error:      null,
       })
       .eq("store_id", shop);
+
+    // Same bootstrap as the onboarding path: introspect existing ad_spend,
+    // instant-sync today so KPI cards populate within seconds, and fire
+    // the historical backfill async. Without this, a merchant who skipped
+    // Meta during onboarding and connected here would see zero ad spend
+    // until the next 2-hour cron cycle.
+    bootstrapMetaConnection({ store_id: shop, access_token: accessToken, ad_account_id: adAccountId })
+      .catch((err) => console.error("bootstrapMetaConnection failed:", err));
 
     const cookieHeader = request.headers.get("Cookie");
     const oauthSession = await metaOAuthSession.getSession(cookieHeader);
