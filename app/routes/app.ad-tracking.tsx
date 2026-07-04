@@ -738,8 +738,19 @@ export default function AdTracking() {
                     tone="info"
                     action={{
                       content: "Open theme editor",
-                      url: buildThemeActivationUrl(shop, shopifyApiKey),
-                      external: true,
+                      // Explicit onAction + window.open so the browser opens a
+                      // real new tab at TOP context. Polaris's `url` + `external`
+                      // path routes through App Bridge's Link in embedded apps,
+                      // which navigated the iframe → admin.shopify.com set
+                      // X-Frame-Options and the browser rendered "admin.shopify.com
+                      // refused to connect."
+                      onAction: () => {
+                        window.open(
+                          buildThemeActivationUrl(shop, shopifyApiKey),
+                          "_blank",
+                          "noopener,noreferrer"
+                        );
+                      },
                     }}
                   >
                     <Text as="p" variant="bodyMd">
@@ -2237,7 +2248,16 @@ function StatusRow(props: {
         </BlockStack>
       </InlineStack>
       {props.actionUrl && props.actionLabel && (
-        <Button url={props.actionUrl} target="_blank" variant="primary">
+        <Button
+          onClick={() => {
+            // window.open in a real new tab — Polaris Button `url` + `target`
+            // gets routed through App Bridge Link in embedded apps and ends up
+            // navigating the iframe to admin.shopify.com, which is blocked
+            // by X-Frame-Options.
+            window.open(props.actionUrl, "_blank", "noopener,noreferrer");
+          }}
+          variant="primary"
+        >
           {props.actionLabel}
         </Button>
       )}
