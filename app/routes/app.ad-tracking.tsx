@@ -100,20 +100,22 @@ function pktYesterdayWindowUtc(): { startIso: string; endIso: string } {
 //
 // Format (per Shopify's official docs):
 //   activateAppId=<api_key>/<block_handle>
-// We use the App's API key (stable, identical across deployments) instead
-// of the extension UUID. An earlier hardcoded UUID happened to mismatch
-// what Shopify actually deployed for this app's extension version, which
-// caused "App embed does not exist" on first click — the API-key form
-// avoids that whole class of bug because the API key never changes.
-const SHOPIFY_API_KEY = "4e49263445787763216232655d181ef2";
-
+// The API key must match the app the merchant actually installed on this
+// store — this was previously hardcoded to the production Trendy app, which
+// broke the second Railway deployment ("app embed does not exist" because
+// the store had installed a *different* app). Read from process.env at
+// request time so the same code works across both deployments.
 function buildThemeActivationUrl(shop: string): string {
+  const apiKey = process.env.SHOPIFY_API_KEY;
+  if (!apiKey) {
+    throw new Error("SHOPIFY_API_KEY is not set — cannot build theme activation URL");
+  }
   // shop is "the-trendy-homes-pk.myshopify.com" → handle is the-trendy-homes-pk
   const shopHandle = shop.replace(/\.myshopify\.com$/, "");
   const params = new URLSearchParams({
     context: "apps",
     template: "index",
-    activateAppId: `${SHOPIFY_API_KEY}/meta-pixel`,
+    activateAppId: `${apiKey}/meta-pixel`,
   });
   return `https://admin.shopify.com/store/${shopHandle}/themes/current/editor?${params}`;
 }
@@ -266,6 +268,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return json({
     shop,
+    // Passed through so buildThemeActivationUrlClient (which runs in the
+    // browser) can build the correct activation URL for whichever app is
+    // installed on this deployment. Hardcoding this used to break the
+    // second Railway deployment ("app embed does not exist") because the
+    // key belonged to the wrong app.
+    shopifyApiKey: process.env.SHOPIFY_API_KEY ?? "",
     connection: conn,
     pending: pendingToken
       ? {
@@ -545,7 +553,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AdTracking() {
-  const { shop, connection, pending, todayStats, purchaseEMQ, attribution } =
+  const { shop, shopifyApiKey, connection, pending, todayStats, purchaseEMQ, attribution } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
@@ -602,7 +610,7 @@ export default function AdTracking() {
       if (event.data?.type === "meta_pixel_oauth_complete") {
         if (event.data?.auto) {
           window.open(
-            buildThemeActivationUrlClient(shop),
+            buildThemeActivationUrlClient(shop, shopifyApiKey),
             "_blank",
             "noopener,noreferrer"
           );
@@ -2240,13 +2248,13 @@ function StatusRow(props: {
 
 // Same activation-URL builder as the server side, but reachable from
 // useEffect handlers running in the browser (where `process.env` isn't
-// available and we don't want to round-trip through the loader).
-function buildThemeActivationUrlClient(shop: string): string {
+// available). The API key is passed in from the loader payload.
+function buildThemeActivationUrlClient(shop: string, apiKey: string): string {
   const shopHandle = shop.replace(/\.myshopify\.com$/, "");
   const params = new URLSearchParams({
     context: "apps",
     template: "index",
-    activateAppId: `${SHOPIFY_API_KEY}/meta-pixel`,
+    activateAppId: `${apiKey}/meta-pixel`,
   });
   return `https://admin.shopify.com/store/${shopHandle}/themes/current/editor?${params}`;
 }
