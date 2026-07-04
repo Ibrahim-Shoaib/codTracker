@@ -26,6 +26,7 @@
 
 import { getSupabaseForStore } from "./supabase.server.js";
 import { allocateExpenses } from "./expense-alloc.server.js";
+import { formatDate } from "./dates.server.js";
 
 // ─── Public dispatch ──────────────────────────────────────────────────────
 
@@ -227,7 +228,7 @@ class ShopifyDirectAdapter {
       }
       const { orders } = await res.json();
       for (const o of orders ?? []) {
-        out.push(normalizeOrder(o));
+        out.push(normalizeOrder(o, this.store.timezone ?? "Asia/Karachi"));
       }
       const link = res.headers.get("link") ?? "";
       const m = link.match(/<([^>]+)>;\s*rel="next"/);
@@ -283,23 +284,18 @@ class ShopifyDirectAdapter {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
-// Convert a Shopify order's raw timestamp to ISO date string (YYYY-MM-DD)
-// in PKT for filter comparisons. PKT is UTC+5; for non-PKR stores this
-// approximation slightly skews period boundaries (a 23:59 UTC order on
-// Jan 31 lands in Jan in their timezone but Feb in PKT). Acceptable for
-// dashboard buckets — exact PKT semantics matter for COD merchants who
-// the rest of this codebase serves; international merchants will accept
-// the same convention.
-function normalizeOrder(o) {
-  const createdAtMs = new Date(o.created_at).getTime();
-  const pktDate = new Date(createdAtMs + 5 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
+// Convert a Shopify order's raw timestamp to the store-local ISO date string
+// (YYYY-MM-DD) for period-bucket comparisons. The date is computed in the
+// store's own timezone (tz) so shopify_direct KPI cards bucket on the same
+// calendar day the RPC path uses — e.g. a UK (Europe/London) store's 22:00
+// London order lands on the London day, not PKT. Defaults to Asia/Karachi to
+// preserve the historical PKT behaviour for callers that don't pass a tz.
+function normalizeOrder(o, tz = "Asia/Karachi") {
   return {
     id: String(o.id),
     name: o.name,
     created_at: o.created_at,
-    created_at_iso: pktDate,
+    created_at_iso: formatDate(new Date(o.created_at), tz),
     processed_at: o.processed_at,
     financial_status: o.financial_status,
     fulfillment_status: o.fulfillment_status,
@@ -317,9 +313,7 @@ function normalizeOrder(o) {
       id: String(r.id),
       processed_at: r.processed_at ?? r.created_at,
       processed_at_iso: r.processed_at
-        ? new Date(new Date(r.processed_at).getTime() + 5 * 60 * 60 * 1000)
-            .toISOString()
-            .slice(0, 10)
+        ? formatDate(new Date(r.processed_at), tz)
         : null,
       // Sum refund_line_items + transactions for total refund value.
       // Shopify's refunds[].transactions[].amount is the actual money

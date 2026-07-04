@@ -59,7 +59,7 @@ test("normalizeOrder extracts refund.transaction_amount from successful refund t
   assert.equal(o.refunds[0].transaction_amount, 30);
 });
 
-test("normalizeOrder uses PKT for date bucketing (UTC+5)", () => {
+test("normalizeOrder defaults to PKT (Asia/Karachi) date bucketing when no tz", () => {
   // 22:30 UTC on May 5 = 03:30 PKT on May 6
   const o = normalizeOrder({
     id: 1,
@@ -69,6 +69,22 @@ test("normalizeOrder uses PKT for date bucketing (UTC+5)", () => {
     refunds: [],
   });
   assert.equal(o.created_at_iso, "2026-05-06");
+});
+
+test("normalizeOrder buckets in the store timezone when tz is passed", () => {
+  // 22:30 UTC on Jul 5 = 23:30 London (BST) on Jul 5, but 03:30 PKT on Jul 6.
+  const raw = {
+    id: 2,
+    created_at: "2026-07-05T22:30:00Z",
+    total_price: "100",
+    line_items: [],
+    refunds: [{ id: 9, processed_at: "2026-07-05T22:30:00Z", transactions: [] }],
+  };
+  const lon = normalizeOrder(raw, "Europe/London");
+  assert.equal(lon.created_at_iso, "2026-07-05");            // London day
+  assert.equal(lon.refunds[0].processed_at_iso, "2026-07-05");
+  const khi = normalizeOrder(raw, "Asia/Karachi");
+  assert.equal(khi.created_at_iso, "2026-07-06");            // PKT rolls to next day
 });
 
 // ─── countNonRefundedOrders ──────────────────────────────────────────────
