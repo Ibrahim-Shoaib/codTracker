@@ -71,6 +71,22 @@
   };
 </script>
 <script src="{{ 'meta-pixel.js' | asset_url }}" defer></script>
+{%- comment -%}
+  Identity relay piggybacks on this block so the merchant only needs to
+  enable one app embed to get full-quality tracking. Shopify's theme-editor
+  `activateAppId` deep link is single-block only — chaining a second block
+  in one URL is a documented no-op. Loading identity-relay.js here means
+  one Save click in the theme editor gets both:
+    - browser pixel (this block's own meta-pixel.js), and
+    - cart-attribute writes (identity-relay.js — reads _fbp/_fbc/_fbclid
+      and mirrors them onto the cart via /cart/update.js).
+
+  If a merchant ALSO has the standalone `Cart Relay` block enabled (e.g.
+  Trendy production, which was set up before this consolidation), the
+  script loads twice from browser cache and the IIFE runs twice — the
+  cart-update writes are idempotent so this is a no-op on the second pass.
+{%- endcomment -%}
+<script src="{{ 'identity-relay.js' | asset_url }}" defer></script>
 
 {% schema %}
 {

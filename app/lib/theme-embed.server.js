@@ -126,6 +126,14 @@ async function readSettingsData(shop, accessToken, themeId) {
 // active. A block is "active" when:
 //   - its `type` matches our embed path, AND
 //   - `disabled !== true`
+//
+// Consolidation note: the meta-pixel block also loads identity-relay.js
+// (see extensions/cart-identity-relay/blocks/meta-pixel.liquid), because
+// Shopify's `activateAppId` deep link can only pre-toggle a single block.
+// So if meta-pixel is on, cart-relay is implicitly active too. If the
+// merchant additionally has the standalone identity-relay block on (e.g.
+// Trendy, whose install predates the consolidation), we still count that
+// explicitly for backward compatibility.
 export function detectEmbedsInSettingsData(settings) {
   const result = { metaPixel: false, cartRelay: false };
   const blocks = settings?.current?.blocks ?? {};
@@ -137,6 +145,9 @@ export function detectEmbedsInSettingsData(settings) {
     if (META_PIXEL_BLOCK_TYPE_RE.test(type)) result.metaPixel = true;
     if (CART_RELAY_BLOCK_TYPE_RE.test(type)) result.cartRelay = true;
   }
+  // meta-pixel block ships identity-relay.js in the same <head> payload,
+  // so cart-relay is functionally active whenever meta-pixel is.
+  if (result.metaPixel) result.cartRelay = true;
   return result;
 }
 
