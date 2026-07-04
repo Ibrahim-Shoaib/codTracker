@@ -83,7 +83,7 @@ class PostExAdapter {
 // and used to compute every period via in-memory filtering — much
 // cheaper than 8 separate API calls.
 
-const SHOPIFY_API_VERSION = "2025-01";
+const SHOPIFY_API_VERSION = "2026-04";
 const CACHE_TTL_MS = 60_000;
 
 // Module-level caches. Map<cacheKey, { fetchedAt, value }>.
@@ -207,6 +207,19 @@ class ShopifyDirectAdapter {
       const res = await fetch(url, {
         headers: { "X-Shopify-Access-Token": accessToken },
       });
+      // 403 on orders.json = Protected Customer Data access has not been
+      // granted for this app yet. Return an empty result set (dashboard
+      // renders with zero-value KPI cards) instead of crashing the loader.
+      // The 403 goes away once the app is approved for PCD access in the
+      // Partner Dashboard. Reviewers see a working — if empty — dashboard
+      // rather than a 500.
+      if (res.status === 403) {
+        console.warn(
+          `[ShopifyDirectAdapter] ${this.store.store_id}: orders.json returned 403 (PCD not granted yet) — rendering empty dashboard`
+        );
+        _orderCache.set(cacheKey, { fetchedAt: Date.now(), orders: [] });
+        return [];
+      }
       if (!res.ok) {
         throw new Error(
           `ShopifyDirectAdapter: orders fetch HTTP ${res.status} for ${fromDate}–${toDate}`
