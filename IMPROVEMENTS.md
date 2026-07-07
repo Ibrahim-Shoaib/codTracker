@@ -8,7 +8,7 @@
 > (sync-status polling), §1.4 (webhook fast-ACK), §1.5 (timeouts everywhere),
 > §1.6 (meta-today parallelized), §2.1–2.4 & §3.1–3.2 (visitor upsert RPC,
 > connection cache, throttled stamp, detached beacon logs, trgm/ip indexes,
-> sampled trim trigger + nightly sweep — migration 027, applied to prod),
+> sampled trim trigger + nightly sweep — migration 029, applied to prod),
 > §4.2 (PKT presets), §4.5 (lang attr), §4.6/4.7 (dead route/loader data
 > removed), §5.1 (Node 20.19.6), §5.3 (comment fixed), §5.4 (token
 > auto-refresh), §5.5 (proxy verifier repeated params), §5.6 (timing-safe cron

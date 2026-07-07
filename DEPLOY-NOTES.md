@@ -7,7 +7,7 @@ currently running code; the token-encryption change reads both formats.
 
 ## Already done (no action needed)
 
-- ✅ **Migration 027 applied to production Supabase** (2026-07-07):
+- ✅ **Migration 029 (renamed from 027 after merging main, which owns 027/028 store-timezone) applied to production Supabase** (2026-07-07):
   - `pg_trgm` + `idx_visitors_fbc_trgm` + `idx_visitors_ip_seen` — verified
     via `EXPLAIN`: the fbclid purchase-webhook lookup now uses a Bitmap Index
     Scan instead of a seq scan over 24k visitor rows.

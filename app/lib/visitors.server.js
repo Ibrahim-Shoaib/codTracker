@@ -111,7 +111,7 @@ function preserveOrUpdate(newValue, oldValue) {
 // current event.
 //
 // Primary path: ONE round trip via the upsert_visitor_merge RPC
-// (migration 027) — the merge (COALESCE per column, history append/cap)
+// (migration 029) — the merge (COALESCE per column, history append/cap)
 // runs atomically in Postgres, which also closes the lost-update race
 // two concurrent beacons from the same visitor had with the old
 // SELECT → merge-in-JS → UPSERT sequence.

@@ -63,7 +63,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   // Full per-store sweep of capi_delivery_log down to its 500-row cap.
-  // The insert trigger now fires on ~2% of inserts (migration 027), so this
+  // The insert trigger now fires on ~2% of inserts (migration 029), so this
   // nightly pass is the backstop that keeps every shop's tail bounded.
   let capiLogDeleted = 0;
   try {
