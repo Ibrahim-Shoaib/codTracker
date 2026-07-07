@@ -250,16 +250,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // than truthy to distinguish a missing column from a NULL value.
   const hasCapiSentColumn =
     todayAttribution.length > 0
-      ? todayAttribution.some((a) => "capi_sent_at" in a)
+      ? todayAttribution.some((a: any) => "capi_sent_at" in a)
       : (attributionRes.data?.length ?? 0) > 0
-        ? (attributionRes.data ?? []).some((a) => "capi_sent_at" in a)
+        ? (attributionRes.data ?? []).some((a: any) => "capi_sent_at" in a)
         : true; // empty table — assume new schema, hero shows "armed"
 
   let trackedCount: number;
   let retryingCount: number;
   if (hasCapiSentColumn) {
-    trackedCount = todayAttribution.filter((a) => a.capi_sent_at != null).length;
-    retryingCount = todayAttribution.filter((a) => a.capi_sent_at == null).length;
+    trackedCount = todayAttribution.filter((a: any) => a.capi_sent_at != null).length;
+    retryingCount = todayAttribution.filter((a: any) => a.capi_sent_at == null).length;
   } else {
     // Pre-DDL: distinct Purchase event_ids today, at-least-one-sent → tracked,
     // only-failed → retrying. Identical to the pre-cf82eb7 loader.

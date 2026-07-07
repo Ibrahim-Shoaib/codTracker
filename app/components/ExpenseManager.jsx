@@ -370,6 +370,14 @@ function ExpenseRow({ e, currency, onEdit, onRemove }) {
 //   currency   string
 //   actionData last action result ({ intent, success?, error? })
 //   title / subtitle optional copy
+/**
+ * @param {Object} props
+ * @param {Array<any>} [props.expenses]
+ * @param {string} [props.currency]
+ * @param {any} [props.actionData]
+ * @param {string} [props.title]
+ * @param {string} [props.subtitle]
+ */
 export default function ExpenseManager({
   expenses = [],
   currency = "PKR",

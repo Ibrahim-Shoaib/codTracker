@@ -234,7 +234,7 @@ export async function bootstrapMetaConnection({ store_id, access_token, ad_accou
 
   const { data: storeRow } = await supabase
     .from('stores')
-    .select('is_demo, currency, meta_ad_account_currency')
+    .select('is_demo, currency, meta_ad_account_currency, timezone')
     .eq('store_id', store_id)
     .single();
 
@@ -262,7 +262,10 @@ export async function bootstrapMetaConnection({ store_id, access_token, ad_accou
   //    within seconds. Errors are swallowed — historical still fires.
   const storeCurrency = storeRow?.currency ?? 'PKR';
   const accountCurrency = storeRow?.meta_ad_account_currency ?? null;
-  const today = todayPKT();
+  // (Was `todayPKT()` — a leftover from before the per-store timezone
+  // refactor that threw ReferenceError and silently killed the instant
+  // today-sync in the catch below. Use the store's local day.)
+  const today = todayLocal(storeRow?.timezone ?? 'Asia/Karachi');
   let todayStatus = 'skipped';
   let todayAmount = null;
   try {
