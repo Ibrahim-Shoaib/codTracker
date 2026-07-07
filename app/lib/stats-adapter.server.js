@@ -57,6 +57,10 @@ class PostExAdapter {
     };
   }
 
+  /**
+   * @param {{ periods: Record<string, any>, expenseStoreId?: string, expenses?: any[] }} args
+   * @returns {Promise<Record<string, any>>}
+   */
   async getDashboardStats({ periods, expenseStoreId }) {
     const supabase = await getSupabaseForStore(this.store.store_id);
     const out = {};
@@ -83,7 +87,9 @@ class PostExAdapter {
 // and used to compute every period via in-memory filtering — much
 // cheaper than 8 separate API calls.
 
-const SHOPIFY_API_VERSION = "2025-01";
+// Keep aligned with app/lib/shopify.server.js and the app's config version
+// (October25). 2025-01 fell out of Shopify's 12-month support window in 2026.
+const SHOPIFY_API_VERSION = "2025-10";
 const CACHE_TTL_MS = 60_000;
 
 // Module-level caches. Map<cacheKey, { fetchedAt, value }>.
@@ -116,6 +122,10 @@ class ShopifyDirectAdapter {
     };
   }
 
+  /**
+   * @param {{ periods: Record<string, any>, expenses?: any[], expenseStoreId?: string }} args
+   * @returns {Promise<Record<string, any>>}
+   */
   async getDashboardStats({ periods, expenses: expenseRows = [] }) {
     const ranges = Object.values(periods);
     if (!ranges.length) return {};
@@ -206,6 +216,7 @@ class ShopifyDirectAdapter {
     for (let page = 0; page < 50 && url; page++) {
       const res = await fetch(url, {
         headers: { "X-Shopify-Access-Token": accessToken },
+        signal: AbortSignal.timeout(30_000),
       });
       if (!res.ok) {
         throw new Error(

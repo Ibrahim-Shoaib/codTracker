@@ -1,4 +1,5 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
+import { verifyCronSecret } from "../lib/cron-auth.server.js";
 import { json } from "@remix-run/node";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
@@ -10,7 +11,7 @@ const CONCURRENCY = 5;
 
 // Railway cron: 0 1,13 * * * (UTC) = 6 AM + 6 PM PKT
 export const action = async ({ request }: ActionFunctionArgs) => {
-  if (request.headers.get("x-cron-secret") !== process.env.CRON_SECRET) {
+  if (!verifyCronSecret(request)) {
     return new Response("Unauthorized", { status: 401 });
   }
 

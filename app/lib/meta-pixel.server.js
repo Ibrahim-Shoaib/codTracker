@@ -18,6 +18,13 @@ const GRAPH_VERSION = "v24.0";
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 const DIALOG_BASE = `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`;
 
+// Hard timeout on every Graph call — these are OAuth/setup-time requests,
+// but a hung socket should still never pin a request handler open.
+const GRAPH_TIMEOUT_MS = 15_000;
+function gfetch(url, init = {}) {
+  return fetch(url, { signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS), ...init });
+}
+
 // Configuration ID from Meta App Dashboard → Facebook Login for Business →
 // Configurations → "Pixel Tracking" (created from the Conversions API template).
 // Permissions baked in: ads_read, ads_management, business_management.
@@ -72,7 +79,7 @@ export async function exchangeCodeForBISU(code) {
     redirect_uri: getRedirectUri(),
     code,
   });
-  const res = await fetch(`${GRAPH_BASE}/oauth/access_token?${params}`);
+  const res = await gfetch(`${GRAPH_BASE}/oauth/access_token?${params}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(
@@ -97,7 +104,7 @@ export async function debugToken(accessToken) {
     input_token: accessToken,
     access_token: `${process.env.META_APP_ID}|${process.env.META_APP_SECRET}`,
   });
-  const res = await fetch(`${GRAPH_BASE}/debug_token?${params}`);
+  const res = await gfetch(`${GRAPH_BASE}/debug_token?${params}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(`Meta debug_token failed: ${err.error?.message ?? res.status}`);
@@ -111,7 +118,7 @@ export async function debugToken(accessToken) {
 // Fetch the granular permission grants on the BISU token. We use this to
 // confirm the merchant actually granted Pixel + ads_management before saving.
 export async function listGranularScopes(accessToken) {
-  const res = await fetch(
+  const res = await gfetch(
     `${GRAPH_BASE}/me/permissions?access_token=${encodeURIComponent(accessToken)}`
   );
   if (!res.ok) return [];
@@ -137,7 +144,7 @@ export async function resolveClientBusinessId(accessToken, systemUserId) {
         access_token: accessToken,
       });
       const url = `${GRAPH_BASE}/${encodeURIComponent(systemUserId)}?${params}`;
-      const res = await fetch(url);
+      const res = await gfetch(url);
       const data = await res.json().catch(() => ({}));
       console.log(`[meta-pixel] resolve path1 GET /${systemUserId}?fields=business`, JSON.stringify(data));
       if (data?.business?.id) return data.business.id;
@@ -152,7 +159,7 @@ export async function resolveClientBusinessId(accessToken, systemUserId) {
       fields: "id,name,business",
       access_token: accessToken,
     });
-    const res = await fetch(`${GRAPH_BASE}/me?${params}`);
+    const res = await gfetch(`${GRAPH_BASE}/me?${params}`);
     const data = await res.json().catch(() => ({}));
     console.log("[meta-pixel] resolve path2 GET /me?fields=business", JSON.stringify(data));
     if (data?.business?.id) return data.business.id;
@@ -170,7 +177,7 @@ export async function resolveClientBusinessId(accessToken, systemUserId) {
         access_token: appToken,
       });
       const url = `${GRAPH_BASE}/${encodeURIComponent(systemUserId)}?${params}`;
-      const res = await fetch(url);
+      const res = await gfetch(url);
       const data = await res.json().catch(() => ({}));
       console.log(`[meta-pixel] resolve path3 GET /${systemUserId} (app token)`, JSON.stringify(data));
       if (data?.business?.id) return data.business.id;
@@ -187,7 +194,7 @@ export async function resolveClientBusinessId(accessToken, systemUserId) {
         access_token: accessToken,
       });
       const url = `${GRAPH_BASE}/${encodeURIComponent(systemUserId)}/businesses?${params}`;
-      const res = await fetch(url);
+      const res = await gfetch(url);
       const data = await res.json().catch(() => ({}));
       console.log(`[meta-pixel] resolve path4 GET /${systemUserId}/businesses`, JSON.stringify(data));
       if (data?.data?.[0]?.id) return data.data[0].id;
@@ -284,7 +291,7 @@ export async function discoverPixelsFromBISU(accessToken, tokenInfo) {
           fields: "id,name,owner_business",
           access_token: accessToken,
         });
-        const res = await fetch(`${GRAPH_BASE}/${id}?${params}`);
+        const res = await gfetch(`${GRAPH_BASE}/${id}?${params}`);
         if (!res.ok) {
           // Optional verbose-debug hook — surface the actual rejection
           // shape so Railway logs let us spot future template changes.
@@ -350,7 +357,7 @@ export async function discoverPixelsViaAdAccounts(accessToken) {
   });
   let accountsBody;
   try {
-    const res = await fetch(`${GRAPH_BASE}/me/adaccounts?${accountsParams}`);
+    const res = await gfetch(`${GRAPH_BASE}/me/adaccounts?${accountsParams}`);
     accountsBody = await res.json().catch(() => null);
     console.log(
       `[meta-pixel] /me/adaccounts (status ${res.status}):`,
@@ -376,7 +383,7 @@ export async function discoverPixelsViaAdAccounts(accessToken) {
           access_token: accessToken,
           limit: "100",
         });
-        const res = await fetch(`${GRAPH_BASE}/${acc.id}/adspixels?${params}`);
+        const res = await gfetch(`${GRAPH_BASE}/${acc.id}/adspixels?${params}`);
         const body = await res.json().catch(() => null);
         console.log(
           `[meta-pixel] /${acc.id}/adspixels (status ${res.status}):`,
@@ -419,8 +426,8 @@ export async function listDatasets(accessToken, businessId) {
   });
   // Owned + client (shared-in) pixels — merge both lists.
   const [ownedRes, clientRes] = await Promise.all([
-    fetch(`${GRAPH_BASE}/${businessId}/owned_pixels?${params}`),
-    fetch(`${GRAPH_BASE}/${businessId}/client_pixels?${params}`),
+    gfetch(`${GRAPH_BASE}/${businessId}/owned_pixels?${params}`),
+    gfetch(`${GRAPH_BASE}/${businessId}/client_pixels?${params}`),
   ]);
 
   const owned = ownedRes.ok ? (await ownedRes.json()).data ?? [] : [];
@@ -452,7 +459,7 @@ export async function listAdAccounts(accessToken, businessId) {
     access_token: accessToken,
     limit: "100",
   });
-  const res = await fetch(`${GRAPH_BASE}/${businessId}/owned_ad_accounts?${params}`);
+  const res = await gfetch(`${GRAPH_BASE}/${businessId}/owned_ad_accounts?${params}`);
   if (!res.ok) return [];
   const data = await res.json().catch(() => ({}));
   return data.data ?? [];
@@ -464,7 +471,7 @@ export async function listAdAccounts(accessToken, businessId) {
 // Best-effort — even if this fails, we still clear the local DB row.
 export async function revokeBISU(accessToken) {
   try {
-    const res = await fetch(
+    const res = await gfetch(
       `${GRAPH_BASE}/me/permissions?access_token=${encodeURIComponent(accessToken)}`,
       { method: "DELETE" }
     );
@@ -497,7 +504,7 @@ export async function fetchEMQ(accessToken, datasetId) {
     access_token: accessToken,
     aggregation: "had_pii",
   });
-  const res = await fetch(`${GRAPH_BASE}/${datasetId}/stats?${params}`);
+  const res = await gfetch(`${GRAPH_BASE}/${datasetId}/stats?${params}`);
   if (!res.ok) return null;
   const data = await res.json().catch(() => null);
   const buckets = data?.data;

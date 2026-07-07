@@ -1,5 +1,9 @@
 const BASE_URL = 'https://api.postex.pk/services/integration/api/order';
 
+// PostEx can be slow on wide date ranges; 30s is generous but finite so a
+// hung socket can't stall the sync cron batch indefinitely.
+const POSTEX_TIMEOUT_MS = 30_000;
+
 const DELIVERED_CODES  = new Set(['0005']);
 const RETURNED_CODES   = new Set(['0002', '0006', '0007']);
 // Terminal-but-not-delivered statuses: customer cancellation, never booked,
@@ -49,7 +53,7 @@ function statusFlags(code) {
 // always receives a flat order object regardless of which envelope format the API returns.
 export async function fetchOrders(token, startDate, endDate) {
   const url = `${BASE_URL}/v1/get-all-order?orderStatusId=0&startDate=${startDate}&endDate=${endDate}`;
-  const res = await fetch(url, { headers: { token } });
+  const res = await fetch(url, { headers: { token }, signal: AbortSignal.timeout(POSTEX_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`PostEx fetchOrders failed: ${res.status} ${res.statusText}`);
   const data = await res.json();
   const dist = data.dist || [];
@@ -58,7 +62,10 @@ export async function fetchOrders(token, startDate, endDate) {
 
 // GET /v2/get-operational-city — 200 = valid token
 export async function validateToken(token) {
-  const res = await fetch(`${BASE_URL}/v2/get-operational-city`, { headers: { token } });
+  const res = await fetch(`${BASE_URL}/v2/get-operational-city`, {
+    headers: { token },
+    signal: AbortSignal.timeout(POSTEX_TIMEOUT_MS),
+  });
   return res.ok;
 }
 

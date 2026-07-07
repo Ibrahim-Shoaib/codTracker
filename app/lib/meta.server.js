@@ -1,6 +1,16 @@
-const GRAPH_VERSION = 'v21.0';
+// Keep in lockstep with meta-capi.server.js / meta-pixel.server.js (v24.0).
+// v21.0 (Oct 2024) is inside Meta's ~2-year sunset horizon; the insights and
+// OAuth endpoints used here are unchanged across v21→v24.
+const GRAPH_VERSION = 'v24.0';
 const GRAPH_BASE    = `https://graph.facebook.com/${GRAPH_VERSION}`;
 const DIALOG_BASE   = `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`;
+
+// Every Graph call gets a hard timeout — a hung Meta socket must never pin
+// a cron tick or a request handler open indefinitely.
+const GRAPH_TIMEOUT_MS = 15_000;
+function graphFetch(url, init = {}) {
+  return fetch(url, { signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS), ...init });
+}
 
 // ─── OAuth ────────────────────────────────────────────────────────────────────
 
@@ -26,7 +36,7 @@ export async function exchangeCodeForToken(code) {
     redirect_uri:  process.env.META_REDIRECT_URI,
     code,
   });
-  const shortRes = await fetch(`${GRAPH_BASE}/oauth/access_token?${shortParams}`);
+  const shortRes = await graphFetch(`${GRAPH_BASE}/oauth/access_token?${shortParams}`);
   if (!shortRes.ok) {
     const err = await shortRes.json().catch(() => ({}));
     throw new Error(`Meta token exchange failed: ${err.error?.message ?? shortRes.status}`);
@@ -40,7 +50,7 @@ export async function exchangeCodeForToken(code) {
     client_secret:       process.env.META_APP_SECRET,
     fb_exchange_token:   shortToken,
   });
-  const longRes = await fetch(`${GRAPH_BASE}/oauth/access_token?${longParams}`);
+  const longRes = await graphFetch(`${GRAPH_BASE}/oauth/access_token?${longParams}`);
   if (!longRes.ok) {
     const err = await longRes.json().catch(() => ({}));
     throw new Error(`Meta long-lived token exchange failed: ${err.error?.message ?? longRes.status}`);
@@ -55,7 +65,7 @@ export async function getAdAccounts(accessToken) {
     fields:       'id,name,currency,account_status',
     access_token: accessToken,
   });
-  const res = await fetch(`${GRAPH_BASE}/me/adaccounts?${params}`);
+  const res = await graphFetch(`${GRAPH_BASE}/me/adaccounts?${params}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(`Meta getAdAccounts failed: ${err.error?.message ?? res.status}`);
@@ -73,7 +83,7 @@ export async function getAdAccountCurrency(accessToken, adAccountId) {
     fields:       'currency',
     access_token: accessToken,
   });
-  const res = await fetch(`${GRAPH_BASE}/${adAccountId}?${params}`);
+  const res = await graphFetch(`${GRAPH_BASE}/${adAccountId}?${params}`);
   if (!res.ok) return null;
   const data = await res.json().catch(() => null);
   return data?.currency ?? null;
@@ -94,7 +104,7 @@ export async function fetchSpend(accessToken, adAccountId, sinceDate, untilDate)
     level:        'account',
     access_token: accessToken,
   });
-  const res = await fetch(`${GRAPH_BASE}/${adAccountId}/insights?${params}`);
+  const res = await graphFetch(`${GRAPH_BASE}/${adAccountId}/insights?${params}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(`Meta fetchSpend failed: ${err.error?.message ?? res.status}`);
@@ -156,7 +166,7 @@ export async function fetchDailySpend(accessToken, adAccountId, sinceDate, until
   const out = [];
   // Hard cap to prevent runaway pagination on a malformed cursor.
   for (let page = 0; page < 50 && url; page++) {
-    const res = await fetch(url);
+    const res = await graphFetch(url);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(`Meta fetchDailySpend failed: ${err.error?.message ?? res.status}`);
@@ -198,6 +208,27 @@ export async function fetchDailySpendInStoreCurrency({
     );
   }
   return daily.map((d) => ({ date: d.date, spend: d.spend * r.rate }));
+}
+
+// Re-exchange a still-valid long-lived token for a fresh ~60-day one.
+// Meta allows fb_exchange_token on long-lived tokens; calling this inside
+// the expiring-soon window (see isTokenExpiringSoon) keeps the connection
+// alive indefinitely without the merchant re-doing OAuth. Throws on any
+// Graph error — callers treat refresh as best-effort.
+export async function refreshLongLivedToken(currentToken) {
+  const params = new URLSearchParams({
+    grant_type:        'fb_exchange_token',
+    client_id:         process.env.META_APP_ID,
+    client_secret:     process.env.META_APP_SECRET,
+    fb_exchange_token: currentToken,
+  });
+  const res = await graphFetch(`${GRAPH_BASE}/oauth/access_token?${params}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Meta token refresh failed: ${err.error?.message ?? res.status}`);
+  }
+  const { access_token, expires_in } = await res.json();
+  return { access_token, expires_in };
 }
 
 // ─── Token expiry helpers ─────────────────────────────────────────────────────

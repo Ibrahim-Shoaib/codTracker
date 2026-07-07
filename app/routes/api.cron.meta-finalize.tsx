@@ -1,13 +1,15 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
+import { verifyCronSecret } from "../lib/cron-auth.server.js";
 import { json } from "@remix-run/node";
 import { createClient } from "@supabase/supabase-js";
 import { fetchSpendInStoreCurrency, isTokenExpired } from "../lib/meta.server.js";
 import { getYesterdayPKT, formatPKTDate } from "../lib/dates.server.js";
+import { decryptMaybe } from "../lib/crypto.server.js";
 
 // Railway cron: 0 21 * * * (UTC) = 2 AM PKT
 // Writes the authoritative final spend for yesterday after Meta closes the previous day.
 export const action = async ({ request }: ActionFunctionArgs) => {
-  if (request.headers.get("x-cron-secret") !== process.env.CRON_SECRET) {
+  if (!verifyCronSecret(request)) {
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -45,7 +47,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     try {
       const amount = await fetchSpendInStoreCurrency({
-        accessToken: store.meta_access_token,
+        accessToken: decryptMaybe(store.meta_access_token),
         adAccountId: store.meta_ad_account_id,
         sinceDate: yesterdayStr,
         untilDate: yesterdayStr,

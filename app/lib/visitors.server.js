@@ -10,7 +10,7 @@
 // what gets sent to Meta — no double-hashing, no normalization drift.
 
 import { randomUUID } from "node:crypto";
-import { createClient } from "@supabase/supabase-js";
+import { getAdminClient } from "./supabase.server.js";
 import {
   hashEmail,
   hashPhone,
@@ -28,10 +28,7 @@ import {
 const HISTORY_CAP = 5;
 
 function adminClient() {
-  return createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  return getAdminClient();
 }
 
 // Generate a fresh visitor id. crypto.randomUUID() — universally
@@ -111,8 +108,17 @@ function preserveOrUpdate(newValue, oldValue) {
 }
 
 // UPSERT a visitor row given whatever signals are available on the
-// current event. Single-round-trip: SELECT existing, merge in JS,
-// UPSERT merged result.
+// current event.
+//
+// Primary path: ONE round trip via the upsert_visitor_merge RPC
+// (migration 027) — the merge (COALESCE per column, history append/cap)
+// runs atomically in Postgres, which also closes the lost-update race
+// two concurrent beacons from the same visitor had with the old
+// SELECT → merge-in-JS → UPSERT sequence.
+//
+// Fallback path: the legacy two-round-trip JS merge, kept so a deploy
+// that lands before the migration (or an RPC failure of any kind)
+// degrades gracefully instead of dropping identity.
 //
 // `input` keys (all optional except storeId + visitorId):
 //   email, phone, firstName, lastName, city, state, zip, country, externalId,
@@ -140,6 +146,36 @@ export async function upsertVisitor({ storeId, visitorId, input = {} }) {
       ? hashExternalId(input.externalId)
       : null,
   };
+
+  try {
+    const { error: rpcError } = await supabase.rpc("upsert_visitor_merge", {
+      p_store_id: storeId,
+      p_visitor_id: visitorId,
+      p_em_hash: newHashes.em_hash,
+      p_ph_hash: newHashes.ph_hash,
+      p_fn_hash: newHashes.fn_hash,
+      p_ln_hash: newHashes.ln_hash,
+      p_ct_hash: newHashes.ct_hash,
+      p_st_hash: newHashes.st_hash,
+      p_zp_hash: newHashes.zp_hash,
+      p_country_hash: newHashes.country_hash,
+      p_external_id_hash: newHashes.external_id_hash,
+      p_fbp: input.fbp ?? null,
+      p_fbc: input.fbc ?? null,
+      p_fbclid: input.fbclid ?? null,
+      p_ip: input.ip ?? null,
+      p_ua: input.ua ?? null,
+      p_utm_source: input.utmSource ?? null,
+      p_utm_campaign: input.utmCampaign ?? null,
+      p_utm_content: input.utmContent ?? null,
+    });
+    if (!rpcError) return;
+    console.warn(
+      `[visitors] upsert_visitor_merge RPC failed (${rpcError.message}) — falling back to legacy merge`
+    );
+  } catch (err) {
+    console.warn(`[visitors] upsert_visitor_merge RPC threw — falling back:`, err?.message ?? err);
+  }
 
   try {
     // Read existing row (may be null on first event of a new visitor).

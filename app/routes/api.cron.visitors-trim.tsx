@@ -1,4 +1,5 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
+import { verifyCronSecret } from "../lib/cron-auth.server.js";
 import { json } from "@remix-run/node";
 import { createClient } from "@supabase/supabase-js";
 
@@ -22,7 +23,7 @@ import { createClient } from "@supabase/supabase-js";
 // Idempotent: re-running mid-day re-applies cutoffs harmlessly.
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  if (request.headers.get("x-cron-secret") !== process.env.CRON_SECRET) {
+  if (!verifyCronSecret(request)) {
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -61,6 +62,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 
+  // Full per-store sweep of capi_delivery_log down to its 500-row cap.
+  // The insert trigger now fires on ~2% of inserts (migration 027), so this
+  // nightly pass is the backstop that keeps every shop's tail bounded.
+  let capiLogDeleted = 0;
+  try {
+    const { data } = await supabase.rpc("trim_capi_delivery_log_all");
+    capiLogDeleted = typeof data === "number" ? data : 0;
+  } catch (err) {
+    console.warn(
+      `[cron visitors-trim] trim_capi_delivery_log_all failed: ${String(err)}`
+    );
+  }
+
   // Use the trim_order_attribution() function defined in migration 020.
   let orderAttributionDeleted = 0;
   try {
@@ -80,5 +94,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     visitors_deleted: visitorsDeleted ?? 0,
     emq_snapshots_deleted: emqDeleted,
     order_attribution_deleted: orderAttributionDeleted,
+    capi_delivery_log_deleted: capiLogDeleted,
   });
 };

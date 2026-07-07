@@ -20,13 +20,10 @@
 //   - Missing: live fetch from open.er-api; on failure fall back to
 //     stale cache; on full failure return null and let caller decide
 
-import { createClient } from "@supabase/supabase-js";
+import { getAdminClient } from "./supabase.server.js";
 
 function adminClient() {
-  return createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  return getAdminClient();
 }
 
 const FX_API = "https://open.er-api.com/v6/latest";

@@ -59,30 +59,41 @@ function fmtDateLabel(from, to) {
   return `${fd} ${MONTHS_LONG[fm - 1]} ${fy} – ${td} ${MONTHS_LONG[tm - 1]} ${ty}`;
 }
 
-// ── Preset date ranges (browser local time — user is in PKT) ─────────────────
+// ── Preset date ranges — computed in PKT (UTC+5) ─────────────────────────────
+// Every server-side period boundary is PKT; presets must match or a merchant
+// (or their VA) viewing from another timezone gets "Today" = the wrong
+// business day. Same fixed-offset trick as app/lib/dates.server.js — Pakistan
+// has no DST, so UTC+5 is always correct.
+const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+function toDateStrUTC(d) {
+  return `${d.getUTCFullYear()}-${padTwo(d.getUTCMonth() + 1)}-${padTwo(d.getUTCDate())}`;
+}
+
 function computePresets() {
-  const now  = new Date();
-  const today = toDateStr(now);
-  const yest  = new Date(now); yest.setDate(yest.getDate() - 1);
+  // A Date whose UTC fields read as PKT local time.
+  const now = new Date(Date.now() + PKT_OFFSET_MS);
+  const today = toDateStrUTC(now);
+  const yest  = new Date(now); yest.setUTCDate(yest.getUTCDate() - 1);
 
-  const y = now.getFullYear();
-  const m = now.getMonth(); // 0-indexed
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth(); // 0-indexed
 
-  const firstDay = (yr, mo) => new Date(yr, mo, 1);
-  const lastDay  = (yr, mo) => new Date(yr, mo + 1, 0);
+  const firstDay = (yr, mo) => new Date(Date.UTC(yr, mo, 1));
+  const lastDay  = (yr, mo) => new Date(Date.UTC(yr, mo + 1, 0));
 
-  const lmFrom = toDateStr(firstDay(y, m - 1));
-  const lmTo   = toDateStr(lastDay(y, m - 1));
-  const m2From = toDateStr(firstDay(y, m - 2));
-  const m2To   = toDateStr(lastDay(y, m - 2));
-  const m3From = toDateStr(firstDay(y, m - 3));
-  const m3To   = toDateStr(lastDay(y, m - 3));
+  const lmFrom = toDateStrUTC(firstDay(y, m - 1));
+  const lmTo   = toDateStrUTC(lastDay(y, m - 1));
+  const m2From = toDateStrUTC(firstDay(y, m - 2));
+  const m2To   = toDateStrUTC(lastDay(y, m - 2));
+  const m3From = toDateStrUTC(firstDay(y, m - 3));
+  const m3To   = toDateStrUTC(lastDay(y, m - 3));
 
-  const mtdFrom = toDateStr(firstDay(y, m));
+  const mtdFrom = toDateStrUTC(firstDay(y, m));
 
   return [
     { label: "Today",           from: today,           to: today           },
-    { label: "Yesterday",       from: toDateStr(yest), to: toDateStr(yest) },
+    { label: "Yesterday",       from: toDateStrUTC(yest), to: toDateStrUTC(yest) },
     { label: "Last month",      from: lmFrom,          to: lmTo            },
     { label: "2 months ago",    from: m2From,          to: m2To            },
     { label: "3 months ago",    from: m3From,          to: m3To            },

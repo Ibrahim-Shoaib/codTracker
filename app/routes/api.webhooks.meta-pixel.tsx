@@ -35,45 +35,51 @@ function deterministicEventId(eventName: string, shop: string, resourceId: strin
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { topic, shop, payload } = await authenticate.webhook(request);
 
-  // Always 200 fast — Shopify retries if it doesn't get 200 within 5s, and
-  // CAPI relay should be best-effort, never blocking webhook ack.
-  // We do the work synchronously but with strict timeouts inside.
-  try {
-    switch (topic) {
-      case "ORDERS_CREATE":
-      case "ORDERS_PAID":
-        // Both topics route to the same Purchase handler; the deterministic
-        // event_id (purchase:<shop>:<order_id>) ensures Meta dedupes when
-        // both fire (which happens for traditional-payment stores —
-        // orders/create + orders/paid land seconds apart). For COD stores,
-        // only ORDERS_CREATE fires at conversion time; ORDERS_PAID may
-        // fire days later when the merchant marks payment received, by
-        // which point Meta's 7-day attribution window has often closed,
-        // so ORDERS_CREATE is what actually drives optimization.
-        await handleOrderPaid(shop, payload as ShopifyOrder);
-        break;
-      case "ORDERS_EDITED":
-        // We could re-fire Purchase with corrected value, but most edits are
-        // address fixes that don't move CAPI numbers. Skipping in v1.
-        break;
-      case "REFUNDS_CREATE":
-        await handleRefund(shop, payload as ShopifyRefund);
-        break;
-      case "CHECKOUTS_CREATE":
-      case "CHECKOUTS_UPDATE":
-        await handleCheckout(shop, topic, payload as ShopifyCheckout);
-        break;
-      default:
-        // Topic we don't handle (e.g. APP_UNINSTALLED routes elsewhere)
-        break;
-    }
-  } catch (err) {
-    // Logged but never re-thrown — failing to fire CAPI shouldn't NACK the webhook.
+  // Fast-ACK: Shopify retries any webhook not 200'd within ~5s, and a slow
+  // Meta call (or DB hiccup) inside the handler used to burn most of that
+  // budget. HMAC verification is done (authenticate.webhook above), so we
+  // ACK immediately and process detached. Safety nets for the detached work:
+  //   - Purchase events: deterministic event_id + the hourly capi-reconcile
+  //     cron re-fires anything that never produced a `sent` log row.
+  //   - Checkout/refund events: best-effort by design (many are skipped for
+  //     empty identity anyway).
+  void processWebhook(topic, shop, payload).catch((err) => {
     console.error(`[meta-pixel webhook ${topic} ${shop}]`, err);
-  }
+  });
 
   return new Response(null, { status: 200 });
 };
+
+async function processWebhook(topic: string, shop: string, payload: unknown) {
+  switch (topic) {
+    case "ORDERS_CREATE":
+    case "ORDERS_PAID":
+      // Both topics route to the same Purchase handler; the deterministic
+      // event_id (purchase:<shop>:<order_id>) ensures Meta dedupes when
+      // both fire (which happens for traditional-payment stores —
+      // orders/create + orders/paid land seconds apart). For COD stores,
+      // only ORDERS_CREATE fires at conversion time; ORDERS_PAID may
+      // fire days later when the merchant marks payment received, by
+      // which point Meta's 7-day attribution window has often closed,
+      // so ORDERS_CREATE is what actually drives optimization.
+      await handleOrderPaid(shop, payload as ShopifyOrder);
+      break;
+    case "ORDERS_EDITED":
+      // We could re-fire Purchase with corrected value, but most edits are
+      // address fixes that don't move CAPI numbers. Skipping in v1.
+      break;
+    case "REFUNDS_CREATE":
+      await handleRefund(shop, payload as ShopifyRefund);
+      break;
+    case "CHECKOUTS_CREATE":
+    case "CHECKOUTS_UPDATE":
+      await handleCheckout(shop, topic, payload as ShopifyCheckout);
+      break;
+    default:
+      // Topic we don't handle (e.g. APP_UNINSTALLED routes elsewhere)
+      break;
+  }
+}
 
 // ─── Order paid → CAPI Purchase ───────────────────────────────────────────────
 
@@ -280,8 +286,11 @@ async function handleRefund(shop: string, refund: ShopifyRefund) {
   if (refundedTotal === 0) return;
 
   // Without an enriched order payload here, we can't supply customer hashes.
-  // We fire a minimal event — Meta's algorithm will still subtract conversion
-  // value from the matched original Purchase based on event_id linkage.
+  // We fire a minimal custom "Refund" event. NOTE: Meta does NOT net custom
+  // Refund events against Purchase conversion value — real refund adjustment
+  // requires the (allowlisted) Refund API. This event exists purely as a
+  // signal the merchant can see/segment in Events Manager; Purchase metrics
+  // on Meta's side remain gross.
   const event = buildCAPIEvent({
     eventName: "Refund",
     // Deterministic — webhook retries for the same refund.id reuse this id.

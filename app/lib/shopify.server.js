@@ -3,8 +3,17 @@
 
 const API_VERSION = '2025-10';
 
+// Per-request timeout for Admin REST calls. Pagination loops below also carry
+// hard page caps so a malformed cursor can't spin forever.
+const SHOPIFY_TIMEOUT_MS = 30_000;
+const MAX_PAGES = 400; // 400 × 250 = 100k records — far above any current store
+
 function adminUrl(shop, path) {
   return `https://${shop}/admin/api/${API_VERSION}/${path}`;
+}
+
+function shopifyFetch(url, init = {}) {
+  return fetch(url, { signal: AbortSignal.timeout(SHOPIFY_TIMEOUT_MS), ...init });
 }
 
 function adminHeaders(accessToken) {
@@ -33,7 +42,7 @@ function parseNextUrl(linkHeader) {
 export async function getShopCurrencySettings(session) {
   const { shop, accessToken } = session;
   try {
-    const res = await fetch(adminUrl(shop, 'shop.json'), {
+    const res = await shopifyFetch(adminUrl(shop, 'shop.json'), {
       headers: adminHeaders(accessToken),
     });
     if (!res.ok) return null;
@@ -72,8 +81,8 @@ export async function getProductsForCOGS(session) {
   async function fetchProducts() {
     const list = [];
     let url = adminUrl(shop, `products.json?status=active&limit=250&fields=id,title,variants,images`);
-    while (url) {
-      const res = await fetch(url, { headers });
+    for (let page = 0; page < MAX_PAGES && url; page++) {
+      const res = await shopifyFetch(url, { headers });
       if (res.status === 401) throw new Error('SHOPIFY_401');
       if (!res.ok) throw new Error(`Shopify products fetch failed: ${res.status}`);
       const data = await res.json();
@@ -87,8 +96,8 @@ export async function getProductsForCOGS(session) {
     const sales = {}; // product_id (number) → total quantity sold
     const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
     let url = adminUrl(shop, `orders.json?status=any&created_at_min=${since}&limit=250&fields=line_items`);
-    while (url) {
-      const res = await fetch(url, { headers });
+    for (let page = 0; page < MAX_PAGES && url; page++) {
+      const res = await shopifyFetch(url, { headers });
       if (!res.ok) break; // non-fatal — fall back to unsorted
       const data = await res.json();
       for (const order of data.orders ?? []) {
@@ -124,7 +133,7 @@ export async function getProductsForCOGS(session) {
   }
   const batchResults = await Promise.all(
     batches.map(batch =>
-      fetch(
+      shopifyFetch(
         adminUrl(shop, `inventory_items.json?ids=${batch.join(',')}&fields=id,cost`),
         { headers }
       ).then(r => r.ok ? r.json() : { inventory_items: [] })
@@ -159,7 +168,7 @@ export async function getProductsForCOGS(session) {
 // orderRefNumber must already have # stripped.
 export async function getOrderByName(session, orderRefNumber) {
   const { shop, accessToken } = session;
-  const res = await fetch(
+  const res = await shopifyFetch(
     adminUrl(shop, `orders.json?name=${encodeURIComponent('#' + orderRefNumber)}&status=any`),
     { headers: adminHeaders(accessToken) }
   );
@@ -194,10 +203,16 @@ export async function getOrdersLineItemMap(session, createdAtMin) {
     `orders.json?status=any&limit=250&fields=name,line_items,created_at${dateParam}`
   );
 
-  while (url) {
+  for (let page = 0; url; page++) {
+    if (page >= MAX_PAGES) {
+      // Full-history backfill on a giant store — return what we have rather
+      // than spinning; the rolling window keeps future orders enriched.
+      console.warn(`[shopify ${shop}] getOrdersLineItemMap hit ${MAX_PAGES}-page cap, returning partial map (${map.size} orders)`);
+      break;
+    }
     let res;
     for (let attempt = 0; attempt < 5; attempt++) {
-      res = await fetch(url, { headers });
+      res = await shopifyFetch(url, { headers });
       if (res.status !== 429) break;
       const retryAfter = parseFloat(res.headers.get('retry-after') ?? '2');
       await new Promise(r => setTimeout(r, retryAfter * 1000));
@@ -226,7 +241,7 @@ export async function getOrdersLineItemMap(session, createdAtMin) {
 // Registers app/uninstalled webhook. Safe to call on every install — 422 means already registered.
 export async function registerUninstallWebhook(session) {
   const { shop, accessToken } = session;
-  const res = await fetch(adminUrl(shop, 'webhooks.json'), {
+  const res = await shopifyFetch(adminUrl(shop, 'webhooks.json'), {
     method: 'POST',
     headers: adminHeaders(accessToken),
     body: JSON.stringify({
@@ -268,7 +283,7 @@ export async function registerMetaPixelWebhooks(session) {
   ];
   for (const topic of topics) {
     try {
-      const res = await fetch(adminUrl(shop, 'webhooks.json'), {
+      const res = await shopifyFetch(adminUrl(shop, 'webhooks.json'), {
         method: 'POST',
         headers: adminHeaders(accessToken),
         body: JSON.stringify({

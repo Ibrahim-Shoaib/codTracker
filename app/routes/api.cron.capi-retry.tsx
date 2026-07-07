@@ -1,4 +1,5 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
+import { verifyCronSecret } from "../lib/cron-auth.server.js";
 import { json } from "@remix-run/node";
 import { drainRetries } from "../lib/meta-capi.server.js";
 
@@ -11,7 +12,7 @@ import { drainRetries } from "../lib/meta-capi.server.js";
 // Auth: x-cron-secret header (matches existing api.cron.* pattern).
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  if (request.headers.get("x-cron-secret") !== process.env.CRON_SECRET) {
+  if (!verifyCronSecret(request)) {
     return new Response("Unauthorized", { status: 401 });
   }
 

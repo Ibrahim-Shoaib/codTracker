@@ -13,10 +13,18 @@ export function verifyAppProxySignature(url) {
   const signature = params.get("signature");
   if (!signature) return false;
 
-  const sorted = Array.from(params.entries())
-    .filter(([key]) => key !== "signature")
+  // Per Shopify's spec, repeated query params are joined into a single
+  // `key=a,b` entry before sorting — a URL that legitimately repeats a
+  // param (array-style filters) must not break verification.
+  const grouped = new Map();
+  for (const [key, value] of params.entries()) {
+    if (key === "signature") continue;
+    if (grouped.has(key)) grouped.get(key).push(value);
+    else grouped.set(key, [value]);
+  }
+  const sorted = Array.from(grouped.entries())
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${v}`)
+    .map(([k, vs]) => `${k}=${vs.join(",")}`)
     .join("");
 
   const expected = createHmac("sha256", process.env.SHOPIFY_API_SECRET ?? "")

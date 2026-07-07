@@ -1,3 +1,16 @@
 .cache
 build
 node_modules
+.git
+.github
+.vscode
+docs
+imgs
+scripts
+tests
+supabase
+extensions
+*.md
+.env
+.env.*
+example.env

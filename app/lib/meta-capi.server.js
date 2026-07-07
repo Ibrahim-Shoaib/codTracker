@@ -12,7 +12,7 @@
 // per request; the beacon endpoint accumulates them by shop in memory and
 // flushes every 30s or 100 events, whichever comes first.
 
-import { createClient } from "@supabase/supabase-js";
+import { getAdminClient } from "./supabase.server.js";
 import { decryptSecret } from "./crypto.server.js";
 
 const GRAPH_VERSION = "v24.0";
@@ -23,13 +23,44 @@ const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 const BACKOFF_MINUTES = [5, 30, 120, 360, 480]; // 5m → 30m → 2h → 6h → 8h
 
 function adminClient() {
-  return createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  return getAdminClient();
 }
 
+// Hard timeout for the Graph POST — a hung Meta socket must never pin a
+// webhook or beacon handler open. Failures land in the retry queue.
+const CAPI_TIMEOUT_MS = 8_000;
+
 // ─── Connection lookup ────────────────────────────────────────────────────────
+
+// In-memory cache for connection rows. dataset_id + token change only when
+// the merchant connects/disconnects, so a short TTL removes one SELECT and
+// one AES decrypt from EVERY storefront beacon. The connect/disconnect
+// actions call invalidateCAPIConnectionCache() so changes apply instantly
+// on the instance that handled them; other instances converge within TTL.
+const CONN_CACHE_TTL_MS = 60_000;
+const _connCache = new Map(); // storeId → { lookup, fetchedAt, lastStampAt }
+
+export function invalidateCAPIConnectionCache(storeId) {
+  if (storeId) _connCache.delete(storeId);
+  else _connCache.clear();
+}
+
+async function lookupConnectionCached(storeId) {
+  const hit = _connCache.get(storeId);
+  if (hit && Date.now() - hit.fetchedAt < CONN_CACHE_TTL_MS) {
+    return hit;
+  }
+  const lookup = await lookupConnection(storeId);
+  const entry = { lookup, fetchedAt: Date.now(), lastStampAt: hit?.lastStampAt ?? 0 };
+  // Only cache DEFINITIVE states: an active connection, a genuinely absent
+  // row, or an explicitly inactive row. A lookup that failed on a transient
+  // DB error (exists:true, status:null) must NOT be pinned for the TTL —
+  // that would turn a one-query blip into 60 seconds of dropped events.
+  const definitive =
+    lookup.status === "active" || lookup.exists === false || lookup.status != null;
+  if (definitive) _connCache.set(storeId, entry);
+  return entry;
+}
 
 // Internal — returns the row state so callers can distinguish "no connection
 // row" (merchant disconnected, expected drop) from "row exists but inactive"
@@ -165,6 +196,7 @@ export async function postCAPIEvents({ accessToken, datasetId, events, testEvent
       Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(CAPI_TIMEOUT_MS),
   });
 
   let parsed = null;
@@ -190,7 +222,15 @@ export async function postCAPIEvents({ accessToken, datasetId, events, testEvent
  * @param {string} [args.testEventCode]
  */
 export async function sendCAPIEventsForShop({ storeId, events, testEventCode } = {}) {
-  const lookup = await lookupConnection(storeId);
+  const cacheEntry = await lookupConnectionCached(storeId);
+  const lookup = cacheEntry.lookup;
+  // Purchase/Refund events are money-path: their logging stays awaited so the
+  // recon cron's "was it sent?" check can trust the log. High-volume browse
+  // beacons (PageView/ViewContent/…) detach their log writes instead of
+  // adding a blocking round trip to every storefront event.
+  const isMoneyPath = (events ?? []).some(
+    (e) => e.event_name === "Purchase" || e.event_name === "Refund"
+  );
   if (!lookup.conn) {
     // Silent-drop guard: the original bug was that a drop here left no DB
     // trace at all (no log row, no retry row). When the connection row
@@ -233,11 +273,26 @@ export async function sendCAPIEventsForShop({ storeId, events, testEventCode } =
   }
 
   if (result.ok) {
-    await logDeliveries(supabase, storeId, events, result, "sent");
-    await supabase
-      .from("meta_pixel_connections")
-      .update({ last_event_sent_at: new Date().toISOString() })
-      .eq("store_id", storeId);
+    const logPromise = logDeliveries(supabase, storeId, events, result, "sent");
+    if (isMoneyPath) {
+      await logPromise;
+    } else {
+      logPromise.catch((err) =>
+        console.warn(`[meta-capi logDeliveries ${storeId}] detached insert failed:`, err?.message ?? err)
+      );
+    }
+    // last_event_sent_at powers a "recently active" hint in the UI — minute
+    // resolution is plenty. Throttling avoids a hot-row UPDATE per beacon.
+    if (Date.now() - cacheEntry.lastStampAt > 60_000) {
+      cacheEntry.lastStampAt = Date.now();
+      supabase
+        .from("meta_pixel_connections")
+        .update({ last_event_sent_at: new Date().toISOString() })
+        .eq("store_id", storeId)
+        .then(({ error }) => {
+          if (error) console.warn(`[meta-capi ${storeId}] last_event_sent_at update failed:`, error.message);
+        });
+    }
     return { ok: true, eventsReceived: result.eventsReceived, traceId: result.traceId };
   }
 
@@ -265,6 +320,9 @@ export async function sendCAPIEventsForShop({ storeId, events, testEventCode } =
           status_reason: result.body?.error?.message ?? `HTTP ${result.status}`,
         })
         .eq("store_id", storeId);
+      // Drop the cached (now-broken) connection so the next event sees the
+      // error state immediately instead of hammering Meta for another TTL.
+      invalidateCAPIConnectionCache(storeId);
     }
   }
 

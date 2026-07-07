@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
+import { verifyCronSecret } from "../lib/cron-auth.server.js";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import {
@@ -46,7 +47,7 @@ async function activeDemoStoresExist() {
 // Both POST and GET handlers so it can be triggered manually.
 
 async function tick(request: Request) {
-  if (request.headers.get("x-cron-secret") !== process.env.CRON_SECRET) {
+  if (!verifyCronSecret(request)) {
     return new Response("Unauthorized", { status: 401 });
   }
 

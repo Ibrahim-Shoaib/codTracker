@@ -1,4 +1,5 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
+import { verifyCronSecret } from "../lib/cron-auth.server.js";
 import { json } from "@remix-run/node";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
@@ -58,7 +59,7 @@ function scoreForKeys(keys: string[] | null): number {
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  if (request.headers.get("x-cron-secret") !== process.env.CRON_SECRET) {
+  if (!verifyCronSecret(request)) {
     return new Response("Unauthorized", { status: 401 });
   }
 

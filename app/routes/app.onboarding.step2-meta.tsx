@@ -22,6 +22,7 @@ import {
 import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { getMetaAuthUrl } from "../lib/meta.server.js";
+import { encryptSecret } from "../lib/crypto.server.js";
 import { metaOAuthSession } from "../lib/meta-session.server.js";
 import { runMetaHistoricalBackfill } from "../lib/backfill.server.js";
 
@@ -107,7 +108,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await supabase
       .from("stores")
       .update({
-        meta_access_token: accessToken,
+        // Encrypted at rest (AES-256-GCM); readers use decryptMaybe().
+        meta_access_token: encryptSecret(accessToken),
         meta_ad_account_id: adAccountId,
         meta_ad_account_name: adAccountName,
         meta_ad_account_currency: adAccountCurrency,

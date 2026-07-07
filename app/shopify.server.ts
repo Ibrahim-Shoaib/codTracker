@@ -49,7 +49,14 @@ const shopify = shopifyApp({
   scopes,
   appUrl: process.env.SHOPIFY_APP_URL || "",
   authPathPrefix: "/auth",
-  sessionStorage: new PostgreSQLSessionStorage(process.env.SUPABASE_DATABASE_URL as string),
+  // Cast: the postgres session-storage package pins an older @shopify/shopify-api
+  // than shopify-app-remix, so the two Session types are nominally different.
+  // Runtime shape is identical (verified in production); the real fix is a
+  // storage-package major bump, tracked in IMPROVEMENTS.md.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sessionStorage: new PostgreSQLSessionStorage(
+    process.env.SUPABASE_DATABASE_URL as string
+  ) as any,
   distribution: AppDistribution.AppStore,
   hooks: {
     afterAuth: async ({ session }) => {

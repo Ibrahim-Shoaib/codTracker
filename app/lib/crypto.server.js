@@ -49,6 +49,24 @@ export function encryptSecret(plaintext) {
   return `${b64u(iv)}:${b64u(tag)}:${b64u(ct)}`;
 }
 
+// Tolerant decrypt for values that may predate encryption-at-rest.
+// Our ciphertext format is exactly three base64url segments joined by ':';
+// raw Meta/PostEx tokens never contain ':', so the check is unambiguous.
+// Returns the input unchanged when it isn't in our ciphertext format —
+// this is what makes the encrypt-existing-rows backfill safe to run
+// AFTER the code deploy (old plaintext rows keep working meanwhile).
+const CIPHERTEXT_RE = /^[A-Za-z0-9_-]+:[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$/;
+
+export function isEncryptedSecret(value) {
+  return typeof value === "string" && CIPHERTEXT_RE.test(value);
+}
+
+export function decryptMaybe(value) {
+  if (!value) return null;
+  if (!isEncryptedSecret(value)) return value;
+  return decryptSecret(value);
+}
+
 export function decryptSecret(payload) {
   if (!payload) return null;
   const parts = String(payload).split(":");

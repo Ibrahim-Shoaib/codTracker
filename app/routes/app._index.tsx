@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { defer, json } from "@remix-run/node";
-import { Navigate, useLoaderData, useRevalidator } from "@remix-run/react";
-import { useEffect, useState } from "react";
+import { Await, Navigate, useFetcher, useLoaderData, useRevalidator } from "@remix-run/react";
+import { Suspense, useEffect, useState } from "react";
 import {
   Page,
   BlockStack,
@@ -38,6 +38,11 @@ import CityLossPanel from "../components/CityLossPanel.jsx";
 import BreakEvenSection from "../components/BreakEvenSection.jsx";
 import TrendPanel from "../components/TrendPanel.jsx";
 import SyncingLoader from "../components/SyncingLoader.jsx";
+import {
+  KPIGridSkeleton,
+  PanelSkeleton,
+  PanelError,
+} from "../components/Skeletons.jsx";
 
 const STEP_ROUTES: Record<number, string> = {
   1: "/app/onboarding/step1-postex",
@@ -46,12 +51,32 @@ const STEP_ROUTES: Record<number, string> = {
   4: "/app/onboarding/step4-expenses",
 };
 
+type PeriodStats = Record<string, any> | null;
+type PeriodPayload = {
+  stats: PeriodStats;
+  priorStats: PeriodStats;
+  dateRange: { from: string; to: string };
+  expenseBreakdown: any[];
+};
+type BreakEvenPayload = {
+  breakEvenRoas: number | null;
+  breakEvenCac: number | null;
+  actualRoas: number | null;
+  actualCac: number | null;
+  deliverySuccessPct: number | null;
+  costPerReturn: number | null;
+  windowDays: number;
+  from: string;
+  to: string;
+  contribAfterFixed: number;
+  isFallback?: boolean;
+} | null;
 
-// Expenses are now read inside the RPC from store_expenses. For demo stores
+// Expenses are read inside the RPC from store_expenses. For demo stores
 // orders come from the pool (dataStoreId) but expenses stay the merchant's
 // own (expenseStoreId = session.shop); p_expense_store_id keeps them apart.
-function statsRpc(supabase: ReturnType<typeof getSupabaseForStore> extends Promise<infer T> ? T : never, dataStoreId: string, from: string, to: string, expenseStoreId: string) {
-  return (supabase as any).rpc("get_dashboard_stats", {
+function statsRpc(supabase: any, dataStoreId: string, from: string, to: string, expenseStoreId: string) {
+  return supabase.rpc("get_dashboard_stats", {
     p_store_id:         dataStoreId,
     p_from_date:        from,
     p_to_date:          to,
@@ -68,12 +93,87 @@ function breakdownRpc(supabase: any, dataStoreId: string, from: string, to: stri
   });
 }
 
+// Derive the break-even card numbers.
+//
+// Two corrections vs the v1 formula:
+//  1. STRICT — subtract fixed expenses from gross profit so the threshold
+//     reflects everything ads have to cover, not just delivery + COGS.
+//  2. META-COMPARABLE — translate everything into the units Meta Ads
+//     Manager uses (booked value / ad spend, ad spend / booking) so the
+//     merchant can read the card and compare 1:1 with their reporting.
+//
+// Conversion: Meta counts every purchase event (delivered + returned),
+// we count only delivered. delivery_success = delivered / orders is the
+// bridge:
+//   booked_value ≈ sales / delivery_success
+//   meta_ROAS    = booked_value / ad_spend = our_ROAS / delivery_success
+//   meta_CPA     = ad_spend / orders        = our_CAC × delivery_success
+function deriveBreakEvenPostex(stats: PeriodStats, windowFrom: string, windowTo: string, days: number): BreakEvenPayload {
+  if (!stats) return null;
+  const sales        = Number(stats.sales        ?? 0);
+  const grossProfit  = Number(stats.gross_profit ?? 0);
+  const periodExp    = Number(stats.expenses     ?? 0);
+  const ordersTotal  = Number(stats.orders       ?? 0);
+  const returns      = Number(stats.returns      ?? 0);
+  const returnLoss   = Number(stats.return_loss  ?? 0);
+  const adSpend      = Number(stats.ad_spend     ?? 0);
+  const refundPct    = stats.refund_pct == null ? null : Number(stats.refund_pct);
+  const delivered    = Math.max(0, ordersTotal - returns);
+
+  const contribAfterFixed = grossProfit - periodExp;
+  const deliverySuccess   = ordersTotal > 0 ? delivered / ordersTotal : null;
+  const bookedValue       = deliverySuccess != null && deliverySuccess > 0
+    ? sales / deliverySuccess
+    : null;
+
+  return {
+    breakEvenRoas:
+      contribAfterFixed > 0 && bookedValue != null
+        ? bookedValue / contribAfterFixed
+        : null,
+    breakEvenCac:
+      contribAfterFixed > 0 && ordersTotal > 0
+        ? contribAfterFixed / ordersTotal
+        : null,
+    actualRoas:
+      adSpend > 0 && bookedValue != null ? bookedValue / adSpend : null,
+    actualCac:
+      adSpend > 0 && ordersTotal > 0 ? adSpend / ordersTotal : null,
+    deliverySuccessPct: refundPct == null ? null : 100 - refundPct,
+    costPerReturn: returns > 0 ? returnLoss / returns : null,
+    windowDays: days,
+    from: windowFrom,
+    to:   windowTo,
+    contribAfterFixed,
+  };
+}
+
+// Window selection shared by both ingest modes: prefer the strict 30-day
+// window; fall back to 60/90 only when 30 days can't clear fixed expenses.
+// `isFallback` lets the section explain which window is on screen and why.
+function pickBreakEvenWindow(candidates: BreakEvenPayload[]): BreakEvenPayload {
+  const present = candidates.filter(Boolean) as NonNullable<BreakEvenPayload>[];
+  const win30 = present.find((c) => c.windowDays === 30);
+  const longerOK = present.find(
+    (c) => c.windowDays > 30 && c.contribAfterFixed > 0
+  );
+  const selected =
+    win30 != null && win30.contribAfterFixed > 0
+      ? win30
+      : longerOK ?? win30 ?? present[0] ?? null;
+  return selected
+    ? { ...selected, isFallback: selected.windowDays !== 30 }
+    : null;
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
-  const supabase = await getSupabaseForStore(shop);
+  const supabase: any = await getSupabaseForStore(shop);
 
-  // 1. Store row + expenses list (parallel)
+  // 1. Store row + expenses list (parallel). These stay awaited — the store
+  // row drives onboarding redirects and the warning banner, both of which
+  // must render with the first byte.
   const [{ data: store }, { data: expensesList }] = await Promise.all([
     supabase
       .from("stores")
@@ -103,12 +203,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return json({ redirectTo: "/app/settings" });
   }
 
-  const expenses = expensesList ?? [];
+  const expenses: any[] = expensesList ?? [];
 
   // For demo stores, all orders/ad_spend reads target the shared pool
-  // store_id; expenses + COGS lookups continue to use the merchant's
-  // own shop. This single switch is what makes "every demo store sees
-  // the same data" work without changing the rest of the dashboard.
+  // store_id; expenses + COGS lookups continue to use the merchant's own shop.
   const dataStoreId = effectiveStoreId(store, shop);
 
   // 2. Period boundaries
@@ -118,10 +216,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const lastMonth = getLastMonthPKT();
 
   // ── ShopifyDirect ingest mode ────────────────────────────────────────
-  // Merchants who skipped the courier integration (no PostEx). Dashboard
-  // hits Shopify Admin API directly via stats-adapter, no orders table
-  // population, no city / trend / pipeline panels. KPI cards still
-  // render — same shape from the adapter as from the RPC.
   if (store.ingest_mode === "shopify_direct") {
     return buildShopifyDirectResponse({
       session, store, expenses,
@@ -129,9 +223,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
   }
 
-  // Prior periods (Option A: equal-length immediately preceding for the daily
-  // and monthly cards, days-elapsed mirror for MTD). Today's prior = Yesterday,
-  // so we reuse the existing `yesterdayRes` and don't issue a 5th call.
   const dayBeforeYest   = getDayBeforeYesterdayPKT();
   const mtdComp         = getMTDComparisonPKT();
   const monthBeforeLast = getMonthBeforeLastPKT();
@@ -157,10 +248,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const cityToDate   = todayTo;
   const cityFromDate = "2010-01-01";
 
-  // Break-even card section uses a rolling window. We try 30 days first
-  // (freshest signal) and fall back to 60 then 90 days when the shorter
-  // window has too little gross profit to clear fixed expenses. All three
-  // windows are computed in parallel to keep dashboard latency unchanged.
+  // Break-even card windows (30/60/90 days, computed in parallel).
   function rollingFromUTC(days: number) {
     const s = new Date(today.start);
     s.setUTCDate(s.getUTCDate() - (days - 1));
@@ -171,204 +259,125 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const window90From = rollingFromUTC(90);
   const windowTo     = todayTo;
 
-  // 3. Parallel RPC calls — 4 KPI stats + 3 prior-period stats (Today reuses
-  // Yesterday) + 3 break-even windows + 1 banner count + 1 city breakdown
-  // + 1 daily trend series (initial 30 days; the chart fetcher swaps this
-  // window client-side via /app/api/trend without reloading the dashboard).
-  const [
-    todayRes,
-    yesterdayRes,
-    mtdRes,
-    lastMonthRes,
-    dbyRes,
-    mtdCompRes,
-    mblRes,
-    win30Res,
-    win60Res,
-    win90Res,
-    { count: unmatchedCount },
-    cityRes,
-    trendRes,
-    bdTodayRes,
-    bdYestRes,
-    bdMtdRes,
-    bdLmRes,
-  ] = await Promise.all([
-    statsRpc(supabase, dataStoreId, todayFrom, todayTo, shop),
-    statsRpc(supabase, dataStoreId, yestFrom,  yestTo,  shop),
-    statsRpc(supabase, dataStoreId, mtdFrom,   mtdTo,   shop),
-    statsRpc(supabase, dataStoreId, lmFrom,    lmTo,    shop),
-    statsRpc(supabase, dataStoreId, dbyFrom,     dbyTo,     shop),
-    statsRpc(supabase, dataStoreId, mtdCompFrom, mtdCompTo, shop),
-    statsRpc(supabase, dataStoreId, mblFrom,     mblTo,     shop),
-    statsRpc(supabase, dataStoreId, window30From, windowTo, shop),
-    statsRpc(supabase, dataStoreId, window60From, windowTo, shop),
-    statsRpc(supabase, dataStoreId, window90From, windowTo, shop),
-    supabase
-      .from("orders")
-      .select("id", { count: "exact", head: true })
-      .eq("store_id", dataStoreId)
-      .eq("cogs_match_source", "none"),
-    (supabase as any).rpc("get_city_breakdown", {
+  // 3. Deferred payloads. Everything below streams in AFTER the first byte —
+  // the shell (page chrome, banner, skeletons) renders immediately and each
+  // panel pops in when its data lands. Grouping:
+  //   statsPromise      → 7 stats RPCs + 4 expense breakdowns (KPI cards)
+  //   breakEvenPromise  → 3 rolling-window stats RPCs
+  //   trendPromise      → 2 trend-series RPCs
+  //   cityPromise       → all-time city breakdown (slowest query on the page)
+  //   unfulfilledPipeline → live Shopify / demo-pool pipeline pills
+
+  const statsPromise = (async () => {
+    const [
+      todayRes, yesterdayRes, mtdRes, lastMonthRes,
+      dbyRes, mtdCompRes, mblRes,
+      bdTodayRes, bdYestRes, bdMtdRes, bdLmRes,
+    ] = await Promise.all([
+      statsRpc(supabase, dataStoreId, todayFrom, todayTo, shop),
+      statsRpc(supabase, dataStoreId, yestFrom,  yestTo,  shop),
+      statsRpc(supabase, dataStoreId, mtdFrom,   mtdTo,   shop),
+      statsRpc(supabase, dataStoreId, lmFrom,    lmTo,    shop),
+      statsRpc(supabase, dataStoreId, dbyFrom,     dbyTo,     shop),
+      statsRpc(supabase, dataStoreId, mtdCompFrom, mtdCompTo, shop),
+      statsRpc(supabase, dataStoreId, mblFrom,     mblTo,     shop),
+      breakdownRpc(supabase, dataStoreId, todayFrom, todayTo, shop),
+      breakdownRpc(supabase, dataStoreId, yestFrom,  yestTo,  shop),
+      breakdownRpc(supabase, dataStoreId, mtdFrom,   mtdTo,   shop),
+      breakdownRpc(supabase, dataStoreId, lmFrom,    lmTo,    shop),
+    ]);
+
+    // Demo stores without a connected Meta Ads account: zero ad_spend (and
+    // recompute derived metrics) so the dashboard doesn't surface synthetic
+    // pool spend the merchant never ran. No-op for real stores.
+    const todayStat     = maskDemoAdSpend(todayRes.data?.[0]     ?? null, store);
+    const yesterdayStat = maskDemoAdSpend(yesterdayRes.data?.[0] ?? null, store);
+    const mtdStat       = maskDemoAdSpend(mtdRes.data?.[0]       ?? null, store);
+    const lastMonthStat = maskDemoAdSpend(lastMonthRes.data?.[0] ?? null, store);
+    const dbyStat       = maskDemoAdSpend(dbyRes.data?.[0]       ?? null, store);
+    const mtdCompStat   = maskDemoAdSpend(mtdCompRes.data?.[0]   ?? null, store);
+    const mblStat       = maskDemoAdSpend(mblRes.data?.[0]       ?? null, store);
+
+    // Prior-period stats: Today's prior = Yesterday's current, so we reuse
+    // `yesterdayStat` rather than issuing a duplicate RPC.
+    const periods: Record<string, PeriodPayload> = {
+      today:     { stats: todayStat,     priorStats: yesterdayStat, dateRange: { from: todayFrom, to: todayTo }, expenseBreakdown: bdTodayRes.data ?? [] },
+      yesterday: { stats: yesterdayStat, priorStats: dbyStat,       dateRange: { from: yestFrom,  to: yestTo  }, expenseBreakdown: bdYestRes.data ?? [] },
+      mtd:       { stats: mtdStat,       priorStats: mtdCompStat,   dateRange: { from: mtdFrom,   to: mtdTo   }, expenseBreakdown: bdMtdRes.data ?? [] },
+      lastMonth: { stats: lastMonthStat, priorStats: mblStat,       dateRange: { from: lmFrom,    to: lmTo    }, expenseBreakdown: bdLmRes.data ?? [] },
+    };
+    return { periods };
+  })();
+
+  const breakEvenPromise = (async () => {
+    const [win30Res, win60Res, win90Res] = await Promise.all([
+      statsRpc(supabase, dataStoreId, window30From, windowTo, shop),
+      statsRpc(supabase, dataStoreId, window60From, windowTo, shop),
+      statsRpc(supabase, dataStoreId, window90From, windowTo, shop),
+    ]);
+    const win30Stat = maskDemoAdSpend(win30Res.data?.[0] ?? null, store);
+    const win60Stat = maskDemoAdSpend(win60Res.data?.[0] ?? null, store);
+    const win90Stat = maskDemoAdSpend(win90Res.data?.[0] ?? null, store);
+    return pickBreakEvenWindow([
+      deriveBreakEvenPostex(win30Stat, window30From, windowTo, 30),
+      deriveBreakEvenPostex(win60Stat, window60From, windowTo, 60),
+      deriveBreakEvenPostex(win90Stat, window90From, windowTo, 90),
+    ]);
+  })();
+
+  const trendPromise = (async () => {
+    // Initial trend payload — current 30d + prior 30d, day buckets. The
+    // chart fetcher swaps windows client-side via /app/api/trend afterwards.
+    const prior = getPriorEqualLengthRange(window30From, windowTo);
+    const [cur, pri] = await Promise.all([
+      supabase.rpc("get_trend_series", {
+        p_store_id:         dataStoreId,
+        p_from_date:        window30From,
+        p_to_date:          windowTo,
+        p_granularity:      "day",
+        p_expense_store_id: shop,
+      }),
+      supabase.rpc("get_trend_series", {
+        p_store_id:         dataStoreId,
+        p_from_date:        prior.from,
+        p_to_date:          prior.to,
+        p_granularity:      "day",
+        p_expense_store_id: shop,
+      }),
+    ]);
+    const curPoints = (cur.data ?? []).map((p: any) => maskDemoAdSpendForTrendPoint(p, store));
+    const priPoints = (pri.data ?? []).map((p: any) => maskDemoAdSpendForTrendPoint(p, store));
+    return {
+      granularity: "day" as const,
+      current: { from: window30From, to: windowTo, points: curPoints },
+      prior:   { from: prior.from,   to: prior.to, points: priPoints },
+    };
+  })();
+
+  const cityPromise = (async () => {
+    const cityRes = await supabase.rpc("get_city_breakdown", {
       p_store_id:  dataStoreId,
       p_from_date: cityFromDate,
       p_to_date:   cityToDate,
-    }),
-    // Initial trend payload — current 30d + prior 30d, day buckets.
-    // Comparison fetched inline so the chart renders fully on first paint
-    // without waiting for a client fetcher.
-    (async () => {
-      const prior = getPriorEqualLengthRange(window30From, windowTo);
-      const [cur, pri] = await Promise.all([
-        (supabase as any).rpc("get_trend_series", {
-          p_store_id:         dataStoreId,
-          p_from_date:        window30From,
-          p_to_date:          windowTo,
-          p_granularity:      "day",
-          p_expense_store_id: shop,
-        }),
-        (supabase as any).rpc("get_trend_series", {
-          p_store_id:         dataStoreId,
-          p_from_date:        prior.from,
-          p_to_date:          prior.to,
-          p_granularity:      "day",
-          p_expense_store_id: shop,
-        }),
-      ]);
-      const curPoints = (cur.data ?? []).map((p: any) => maskDemoAdSpendForTrendPoint(p, store));
-      const priPoints = (pri.data ?? []).map((p: any) => maskDemoAdSpendForTrendPoint(p, store));
-      return {
-        granularity: "day" as const,
-        current: { from: window30From, to: windowTo,    points: curPoints },
-        prior:   { from: prior.from,   to: prior.to,    points: priPoints },
-      };
-    })(),
-    breakdownRpc(supabase, dataStoreId, todayFrom, todayTo, shop),
-    breakdownRpc(supabase, dataStoreId, yestFrom,  yestTo,  shop),
-    breakdownRpc(supabase, dataStoreId, mtdFrom,   mtdTo,   shop),
-    breakdownRpc(supabase, dataStoreId, lmFrom,    lmTo,    shop),
-  ]);
-
-  // Demo stores without a connected Meta Ads account: zero ad_spend (and
-  // recompute net_profit / margin / ROI / ROAS / POAS / CAC) so the
-  // dashboard doesn't surface synthetic pool spend the merchant never ran.
-  // No-op for real stores and for demo stores that have connected Meta.
-  const todayStat     = maskDemoAdSpend(todayRes.data?.[0]     ?? null, store);
-  const yesterdayStat = maskDemoAdSpend(yesterdayRes.data?.[0] ?? null, store);
-  const mtdStat       = maskDemoAdSpend(mtdRes.data?.[0]       ?? null, store);
-  const lastMonthStat = maskDemoAdSpend(lastMonthRes.data?.[0] ?? null, store);
-  const dbyStat       = maskDemoAdSpend(dbyRes.data?.[0]       ?? null, store);
-  const mtdCompStat   = maskDemoAdSpend(mtdCompRes.data?.[0]   ?? null, store);
-  const mblStat       = maskDemoAdSpend(mblRes.data?.[0]       ?? null, store);
-  const win30Stat     = maskDemoAdSpend(win30Res.data?.[0]     ?? null, store);
-  const win60Stat     = maskDemoAdSpend(win60Res.data?.[0]     ?? null, store);
-  const win90Stat     = maskDemoAdSpend(win90Res.data?.[0]     ?? null, store);
-
-  const s = {
-    today:     todayStat,
-    yesterday: yesterdayStat,
-    mtd:       mtdStat,
-    lastMonth: lastMonthStat,
-  };
-
-  // Prior-period stats. Today's prior = Yesterday's current, so we reuse
-  // `yesterdayRes` rather than issuing a duplicate RPC.
-  const prior = {
-    today:     yesterdayStat,
-    yesterday: dbyStat,
-    mtd:       mtdCompStat,
-    lastMonth: mblStat,
-  };
-
-  // Derive the break-even card numbers.
-  //
-  // Two corrections vs the v1 formula:
-  //  1. STRICT — subtract fixed expenses from gross profit so the threshold
-  //     reflects everything ads have to cover, not just delivery + COGS. The
-  //     marketing-only formula was generous enough to hide a real loss in a
-  //     period where ROAS was above 4× but net profit was negative.
-  //  2. META-COMPARABLE — translate everything into the units Meta Ads
-  //     Manager uses (booked value / ad spend, ad spend / booking) so the
-  //     merchant can read the card and compare 1:1 with their reporting.
-  //
-  // Conversion: Meta counts every purchase event (delivered + returned),
-  // we count only delivered. delivery_success = delivered / orders is the
-  // bridge:
-  //   booked_value ≈ sales / delivery_success
-  //   meta_ROAS    = booked_value / ad_spend = our_ROAS / delivery_success
-  //   meta_CPA     = ad_spend / orders        = our_CAC × delivery_success
-  //
-  // Window selection: try 30 → 60 → 90 days. Skip a window if its
-  // contribution_after_fixed is ≤ 0 (a window with too few delivered orders
-  // to clear fixed expenses gives a meaningless N/A). If all three are
-  // bad, surface the 30-day window with N/A — that is itself an honest
-  // signal ("nothing cleared expenses yet").
-  function deriveBreakEven(stats: any, windowFrom: string, days: number) {
-    if (!stats) return null;
-    const sales        = Number(stats.sales        ?? 0);
-    const grossProfit  = Number(stats.gross_profit ?? 0);
-    const periodExp    = Number(stats.expenses     ?? 0);
-    const ordersTotal  = Number(stats.orders       ?? 0);
-    const returns      = Number(stats.returns      ?? 0);
-    const returnLoss   = Number(stats.return_loss  ?? 0);
-    const adSpend      = Number(stats.ad_spend     ?? 0);
-    const refundPct    = stats.refund_pct == null ? null : Number(stats.refund_pct);
-    const delivered    = Math.max(0, ordersTotal - returns);
-
-    const contribAfterFixed = grossProfit - periodExp;
-    const deliverySuccess   = ordersTotal > 0 ? delivered / ordersTotal : null;
-    const bookedValue       = deliverySuccess != null && deliverySuccess > 0
-      ? sales / deliverySuccess
-      : null;
-
+    });
     return {
-      breakEvenRoas:
-        contribAfterFixed > 0 && bookedValue != null
-          ? bookedValue / contribAfterFixed
-          : null,
-      breakEvenCac:
-        contribAfterFixed > 0 && ordersTotal > 0
-          ? contribAfterFixed / ordersTotal
-          : null,
-      actualRoas:
-        adSpend > 0 && bookedValue != null ? bookedValue / adSpend : null,
-      actualCac:
-        adSpend > 0 && ordersTotal > 0 ? adSpend / ordersTotal : null,
-      deliverySuccessPct: refundPct == null ? null : 100 - refundPct,
-      costPerReturn: returns > 0 ? returnLoss / returns : null,
-      windowDays: days,
-      from: windowFrom,
-      to:   windowTo,
-      contribAfterFixed,
+      cities: cityRes.data ?? [],
+      from:   cityFromDate,
+      to:     cityToDate,
     };
-  }
+  })();
 
-  const candidates = [
-    deriveBreakEven(win30Stat, window30From, 30),
-    deriveBreakEven(win60Stat, window60From, 60),
-    deriveBreakEven(win90Stat, window90From, 90),
-  ].filter(Boolean) as Array<NonNullable<ReturnType<typeof deriveBreakEven>>>;
-
-  // Hybrid window: prefer the strict 30-day window. Only fall back to a
-  // longer window when 30 days can't clear fixed expenses, and surface
-  // `isFallback` so the section can show a small footer note explaining
-  // which window is on screen and why.
-  const win30 = candidates.find((c) => c.windowDays === 30);
-  const longerOK = candidates.find(
-    (c) => c.windowDays > 30 && c.contribAfterFixed > 0
-  );
-  const selected =
-    win30 != null && win30.contribAfterFixed > 0
-      ? win30
-      : longerOK ?? win30 ?? candidates[0] ?? null;
-  const breakEven = selected
-    ? { ...selected, isFallback: selected.windowDays !== 30 }
-    : null;
+  // COGS-warning count is cheap (partial index) and drives the banner, which
+  // renders in the awaited shell — keep it awaited.
+  const { count: unmatchedCount } = await supabase
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("store_id", dataStoreId)
+    .eq("cogs_match_source", "none");
 
   // Pipeline value for the dashboard pills. Real stores hit Shopify Admin
   // for live unfulfilled orders; demo stores read in-transit fabricated
-  // orders out of the DB so the pills stay internally consistent and we
-  // never make a Shopify call for a demo merchant.
+  // orders out of the DB.
   const pipelineRanges = {
     today:     { from: todayFrom, to: todayTo },
     yesterday: { from: yestFrom,  to: yestTo  },
@@ -379,13 +388,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     store.is_demo
       ? fetchDemoPipeline(supabase, dataStoreId, pipelineRanges)
       : fetchUnfulfilledPipeline(session, pipelineRanges)
-  ).catch((err) => {
+  ).catch((err: unknown) => {
     console.error("Pipeline fetch failed:", err);
     return null;
   });
 
   return defer({
-    expensesList: expenses,
     metaConnected:      !!store.meta_access_token,
     isMetaExpired:      isTokenExpired(store.meta_token_expires_at),
     isMetaExpiringSoon: isTokenExpiringSoon(store.meta_token_expires_at),
@@ -402,35 +410,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       returnsLabel: "Returns",
       returnsUnit: "count",
     },
-    periods: {
-      today:     { stats: s.today,     priorStats: prior.today,     dateRange: { from: todayFrom, to: todayTo }, expenseBreakdown: bdTodayRes.data ?? [] },
-      yesterday: { stats: s.yesterday, priorStats: prior.yesterday, dateRange: { from: yestFrom,  to: yestTo  }, expenseBreakdown: bdYestRes.data ?? [] },
-      mtd:       { stats: s.mtd,       priorStats: prior.mtd,       dateRange: { from: mtdFrom,   to: mtdTo   }, expenseBreakdown: bdMtdRes.data ?? [] },
-      lastMonth: { stats: s.lastMonth, priorStats: prior.lastMonth, dateRange: { from: lmFrom,    to: lmTo    }, expenseBreakdown: bdLmRes.data ?? [] },
-    },
-    breakEven,
-    cityBreakdown: {
-      cities: cityRes.data ?? [],
-      from:   cityFromDate,
-      to:     cityToDate,
-    },
-    trend: trendRes,
+    stats: statsPromise,
+    breakEven: breakEvenPromise,
+    trend: trendPromise,
+    cityBreakdown: cityPromise,
     unfulfilledPipeline,
   });
 };
 
 // ─── ShopifyDirect path ──────────────────────────────────────────────────
 //
-// Builds the same `defer({...})` shape as the PostEx loader path above,
-// but populated from a live Shopify Admin API fetch via the adapter
-// instead of from get_dashboard_stats RPC against the orders table.
-//
-// Panels that don't apply to direct mode (city loss, trend chart,
-// unfulfilled pipeline) return empty/null structures so the
-// component-side `caps` flags can hide them without crashing on
-// `null.cities`. Break-even still computes — uses refund-derived
-// success-rate instead of delivery-success.
-
+// Same deferred shape as the PostEx path above, populated from a live
+// Shopify Admin API fetch via the stats adapter instead of the RPCs.
+// Panels that don't apply (city loss, trend, pipeline) resolve to
+// empty/null so the `caps` flags hide them without crashing.
 async function buildShopifyDirectResponse({
   session, store, expenses,
   today, yesterday, mtd, lastMonth,
@@ -453,9 +446,6 @@ async function buildShopifyDirectResponse({
   const mblFrom   = formatPKTDate(getMonthBeforeLastPKT().start);
   const mblTo     = formatPKTDate(getMonthBeforeLastPKT().end);
 
-  // Adapter ranges use [from, toExclusive) semantics so comparisons line
-  // up with date math elsewhere; PKT 'to' comes back as same day already
-  // (start of next), but we name it explicitly here for clarity.
   const periodsCurrent = {
     today:     { from: todayFrom, toExclusive: todayTo, to: todayTo },
     yesterday: { from: yestFrom,  toExclusive: yestTo,  to: yestTo  },
@@ -471,17 +461,6 @@ async function buildShopifyDirectResponse({
 
   const adapter = await getStatsAdapter(store, session);
 
-  // Single broad-range fetch under the hood — both calls share the
-  // 60s cache, so the second is a memory hit.
-  const [s, prior] = await Promise.all([
-    adapter.getDashboardStats({ periods: periodsCurrent, expenses }),
-    adapter.getDashboardStats({ periods: periodsPrior,   expenses }),
-  ]);
-
-  // Break-even windows (30/60/90 days). For shopify_direct these use
-  // refunds-as-loss instead of returns-as-loss, but the formula is
-  // unchanged because the adapter populates `returns` and
-  // `return_loss` with refund-derived values.
   function rollingFromUTC(days: number) {
     const startMs = today.start.getTime() - (days - 1) * 24 * 60 * 60 * 1000;
     return formatPKTDate(new Date(startMs));
@@ -491,66 +470,78 @@ async function buildShopifyDirectResponse({
   const window90From = rollingFromUTC(90);
   const windowTo = todayTo;
 
-  const breakEvenStats = await adapter.getDashboardStats({
-    periods: {
-      w30: { from: window30From, toExclusive: windowTo, to: windowTo },
-      w60: { from: window60From, toExclusive: windowTo, to: windowTo },
-      w90: { from: window90From, toExclusive: windowTo, to: windowTo },
-    },
-    expenses,
+  const statsPromise = (async () => {
+    // Single broad-range fetch under the hood — both calls share the
+    // adapter's 60s cache, so the second is a memory hit.
+    const [s, prior]: [Record<string, any>, Record<string, any>] = await Promise.all([
+      adapter.getDashboardStats({ periods: periodsCurrent, expenses }),
+      adapter.getDashboardStats({ periods: periodsPrior,   expenses }),
+    ]);
+    const periods: Record<string, PeriodPayload> = {
+      today:     { stats: s.today,     priorStats: prior.today,     dateRange: { from: todayFrom, to: todayTo }, expenseBreakdown: s.today?._expenseBreakdown     ?? [] },
+      yesterday: { stats: s.yesterday, priorStats: prior.yesterday, dateRange: { from: yestFrom,  to: yestTo  }, expenseBreakdown: s.yesterday?._expenseBreakdown ?? [] },
+      mtd:       { stats: s.mtd,       priorStats: prior.mtd,       dateRange: { from: mtdFrom,   to: mtdTo   }, expenseBreakdown: s.mtd?._expenseBreakdown       ?? [] },
+      lastMonth: { stats: s.lastMonth, priorStats: prior.lastMonth, dateRange: { from: lmFrom,    to: lmTo    }, expenseBreakdown: s.lastMonth?._expenseBreakdown ?? [] },
+    };
+    return { periods };
+  })();
+
+  // Chained after statsPromise so the adapter's order cache is warm — firing
+  // both at once would double-fetch the same Shopify order range.
+  const breakEvenPromise = statsPromise.then(async () => {
+    const breakEvenStats: Record<string, any> = await adapter.getDashboardStats({
+      periods: {
+        w30: { from: window30From, toExclusive: windowTo, to: windowTo },
+        w60: { from: window60From, toExclusive: windowTo, to: windowTo },
+        w90: { from: window90From, toExclusive: windowTo, to: windowTo },
+      },
+      expenses,
+    });
+
+    // Direct mode uses refunds-as-loss instead of returns-as-loss; the
+    // adapter populates `returns`/`return_loss` with refund-derived values
+    // and there's no delivery-success adjustment (bookedValue = sales).
+    function deriveBreakEvenDirect(stats: PeriodStats, windowFrom: string, days: number): BreakEvenPayload {
+      if (!stats) return null;
+      const sales       = Number(stats.sales        ?? 0);
+      const grossProfit = Number(stats.gross_profit ?? 0);
+      const periodExp   = Number(stats.expenses     ?? 0);
+      const ordersTotal = Number(stats.orders       ?? 0);
+      const adSpend     = Number(stats.ad_spend     ?? 0);
+      const refundPct   = stats.refund_pct == null ? null : Number(stats.refund_pct) * 100;
+      const returnLoss  = Number(stats.return_loss  ?? 0);
+      const returns     = Number(stats.returns      ?? 0);
+
+      const contribAfterFixed = grossProfit - periodExp;
+      const successPct =
+        refundPct == null ? null : Math.max(0, 100 - refundPct);
+      const bookedValue = sales;
+      return {
+        breakEvenRoas:
+          contribAfterFixed > 0 ? sales / contribAfterFixed : null,
+        breakEvenCac:
+          contribAfterFixed > 0 && ordersTotal > 0
+            ? contribAfterFixed / ordersTotal
+            : null,
+        actualRoas: adSpend > 0 ? bookedValue / adSpend : null,
+        actualCac: adSpend > 0 && ordersTotal > 0 ? adSpend / ordersTotal : null,
+        deliverySuccessPct: successPct,
+        costPerReturn: returns > 0 ? returnLoss / returns : null,
+        windowDays: days,
+        from: windowFrom,
+        to: windowTo,
+        contribAfterFixed,
+      };
+    }
+
+    return pickBreakEvenWindow([
+      deriveBreakEvenDirect(breakEvenStats.w30, window30From, 30),
+      deriveBreakEvenDirect(breakEvenStats.w60, window60From, 60),
+      deriveBreakEvenDirect(breakEvenStats.w90, window90From, 90),
+    ]);
   });
 
-  function deriveBreakEven(stats: any, windowFrom: string, days: number) {
-    if (!stats) return null;
-    const sales       = Number(stats.sales        ?? 0);
-    const grossProfit = Number(stats.gross_profit ?? 0);
-    const periodExp   = Number(stats.expenses     ?? 0);
-    const ordersTotal = Number(stats.orders       ?? 0);
-    const adSpend     = Number(stats.ad_spend     ?? 0);
-    const refundPct   = stats.refund_pct == null ? null : Number(stats.refund_pct) * 100;
-    const returnLoss  = Number(stats.return_loss  ?? 0);
-    const returns     = Number(stats.returns      ?? 0);
-
-    const contribAfterFixed = grossProfit - periodExp;
-    const successPct =
-      refundPct == null ? null : Math.max(0, 100 - refundPct);
-    const bookedValue = sales;  // no delivery-success adjustment in direct mode
-    return {
-      breakEvenRoas:
-        contribAfterFixed > 0 ? sales / contribAfterFixed : null,
-      breakEvenCac:
-        contribAfterFixed > 0 && ordersTotal > 0
-          ? contribAfterFixed / ordersTotal
-          : null,
-      actualRoas: adSpend > 0 ? bookedValue / adSpend : null,
-      actualCac: adSpend > 0 && ordersTotal > 0 ? adSpend / ordersTotal : null,
-      deliverySuccessPct: successPct,
-      costPerReturn: returns > 0 ? returnLoss / returns : null,
-      windowDays: days,
-      from: windowFrom,
-      to: windowTo,
-      contribAfterFixed,
-    };
-  }
-  const beCandidates = [
-    deriveBreakEven(breakEvenStats.w30, window30From, 30),
-    deriveBreakEven(breakEvenStats.w60, window60From, 60),
-    deriveBreakEven(breakEvenStats.w90, window90From, 90),
-  ].filter(Boolean) as Array<NonNullable<ReturnType<typeof deriveBreakEven>>>;
-  const w30 = beCandidates.find((c) => c.windowDays === 30);
-  const longerOK = beCandidates.find(
-    (c) => c.windowDays > 30 && c.contribAfterFixed > 0
-  );
-  const beSelected =
-    w30 != null && w30.contribAfterFixed > 0
-      ? w30
-      : longerOK ?? w30 ?? beCandidates[0] ?? null;
-  const breakEven = beSelected
-    ? { ...beSelected, isFallback: beSelected.windowDays !== 30 }
-    : null;
-
   return defer({
-    expensesList: expenses,
     metaConnected:      !!store.meta_access_token,
     isMetaExpired:      isTokenExpired(store.meta_token_expires_at),
     isMetaExpiringSoon: isTokenExpiringSoon(store.meta_token_expires_at),
@@ -561,15 +552,10 @@ async function buildShopifyDirectResponse({
     currency:           store.currency ?? "PKR",
     metaAdAccountCurrency: store.meta_ad_account_currency ?? null,
     caps: adapter.capabilities(),
-    periods: {
-      today:     { stats: s.today,     priorStats: prior.today,     dateRange: { from: todayFrom, to: todayTo }, expenseBreakdown: s.today?._expenseBreakdown     ?? [] },
-      yesterday: { stats: s.yesterday, priorStats: prior.yesterday, dateRange: { from: yestFrom,  to: yestTo  }, expenseBreakdown: s.yesterday?._expenseBreakdown ?? [] },
-      mtd:       { stats: s.mtd,       priorStats: prior.mtd,       dateRange: { from: mtdFrom,   to: mtdTo   }, expenseBreakdown: s.mtd?._expenseBreakdown       ?? [] },
-      lastMonth: { stats: s.lastMonth, priorStats: prior.lastMonth, dateRange: { from: lmFrom,    to: lmTo    }, expenseBreakdown: s.lastMonth?._expenseBreakdown ?? [] },
-    },
-    breakEven,
-    cityBreakdown: { cities: [], from: window30From, to: windowTo },
-    trend: null,                 // TrendPanel hides chart when null
+    stats: statsPromise,
+    breakEven: breakEvenPromise,
+    trend: Promise.resolve(null),                 // TrendPanel hides when null
+    cityBreakdown: Promise.resolve({ cities: [], from: window30From, to: windowTo }),
     unfulfilledPipeline: Promise.resolve(null),
   });
 }
@@ -583,28 +569,43 @@ export default function Dashboard() {
     expenseBreakdown: any[];
   } | null>(null);
 
+  // Backfill polling must be set up before any conditional return — hooks
+  // can't be skipped between renders. `active` is false for the redirect case.
+  const backfillInProgress =
+    "backfillInProgress" in data ? (data as any).backfillInProgress : false;
+  const revalidator = useRevalidator();
+  const statusFetcher = useFetcher<{ done: boolean }>();
+
+  // While the first PostEx sync runs, poll the one-row status endpoint
+  // (NOT the full 17-RPC dashboard loader) and revalidate exactly once
+  // when the sync lands.
+  useEffect(() => {
+    if (!backfillInProgress) return;
+    const id = setInterval(() => {
+      if (statusFetcher.state === "idle") statusFetcher.load("/app/api/sync-status");
+    }, 4000);
+    return () => clearInterval(id);
+    // statusFetcher identity changes per render; the interval only needs mount/unmount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backfillInProgress]);
+
+  useEffect(() => {
+    if (backfillInProgress && statusFetcher.data?.done && revalidator.state === "idle") {
+      revalidator.revalidate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFetcher.data, backfillInProgress]);
+
   if ("redirectTo" in data) {
     return <Navigate to={(data as { redirectTo: string }).redirectTo} replace />;
   }
 
-  const { periods, unmatchedCOGSCount,
+  const { stats, breakEven, trend, cityBreakdown, unfulfilledPipeline,
+          unmatchedCOGSCount,
           metaConnected, isMetaExpired, isMetaExpiringSoon, metaExpiresAt,
           metaSyncError,
-          backfillInProgress, cityBreakdown, breakEven, trend,
-          unfulfilledPipeline,
           currency,
-          caps = { showPipelinePills: true, showCityLoss: true, returnsLabel: "Returns", returnsUnit: "count" } } = data;
-
-  // Auto-revalidate while data is being populated (real-store PostEx
-  // backfill or demo-store fabrication). Polls every 4 seconds so cards
-  // fill in without the merchant having to refresh. Stops as soon as
-  // last_postex_sync_at flips, which makes backfillInProgress false.
-  const revalidator = useRevalidator();
-  useEffect(() => {
-    if (!backfillInProgress) return;
-    const id = setInterval(() => revalidator.revalidate(), 4000);
-    return () => clearInterval(id);
-  }, [backfillInProgress, revalidator]);
+          caps = { mode: "postex", showPipelinePills: true, showCityLoss: true, returnsLabel: "Returns", returnsUnit: "count" } } = data as any;
 
   return (
     <Page>
@@ -631,46 +632,68 @@ export default function Dashboard() {
           />
         )}
 
-        <>
-            <InlineGrid columns={{ xs: 1, sm: 2, lg: 4 }} gap="400">
-              {PERIOD_KEYS.map((key) => (
-                <KPICard
-                  key={key}
-                  period={key}
-                  stats={periods[key].stats}
-                  priorStats={periods[key].priorStats}
-                  dateRange={periods[key].dateRange}
-                  expenseBreakdown={periods[key].expenseBreakdown}
-                  unfulfilledPromise={unfulfilledPipeline}
+        <Suspense fallback={<KPIGridSkeleton />}>
+          <Await resolve={stats} errorElement={<PanelError title="Your sales stats couldn't load" />}>
+            {(resolved: { periods: Record<string, PeriodPayload> }) => (
+              <InlineGrid columns={{ xs: 1, sm: 2, lg: 4 }} gap="400">
+                {PERIOD_KEYS.map((key) => (
+                  <KPICard
+                    key={key}
+                    period={key}
+                    stats={resolved.periods[key].stats}
+                    priorStats={resolved.periods[key].priorStats}
+                    dateRange={resolved.periods[key].dateRange}
+                    expenseBreakdown={resolved.periods[key].expenseBreakdown}
+                    unfulfilledPromise={unfulfilledPipeline}
+                    currency={currency}
+                    caps={caps}
+                    onMore={(stats: any, dateRange: any, title: string, expenseBreakdown: any[]) =>
+                      setDetail({ stats, dateRange, title, expenseBreakdown })
+                    }
+                  />
+                ))}
+              </InlineGrid>
+            )}
+          </Await>
+        </Suspense>
+
+        <Suspense fallback={<PanelSkeleton lines={4} />}>
+          <Await resolve={breakEven} errorElement={<PanelError title="Break-even targets couldn't load" />}>
+            {(be: BreakEvenPayload) =>
+              be ? <BreakEvenSection {...be} currency={currency} caps={caps} /> : null
+            }
+          </Await>
+        </Suspense>
+
+        <Suspense fallback={<PanelSkeleton lines={8} />}>
+          <Await resolve={trend} errorElement={<PanelError title="The trend chart couldn't load" />}>
+            {(t: any) =>
+              t ? (
+                <TrendPanel
+                  initialPayload={t}
+                  backfillInProgress={backfillInProgress}
                   currency={currency}
-                  caps={caps}
-                  onMore={(stats, dateRange, title, expenseBreakdown) =>
-                    setDetail({ stats, dateRange, title, expenseBreakdown })
-                  }
                 />
-              ))}
-            </InlineGrid>
+              ) : null
+            }
+          </Await>
+        </Suspense>
 
-            {breakEven && <BreakEvenSection {...breakEven} currency={currency} caps={caps} />}
-
-            {trend && (
-              <TrendPanel
-                initialPayload={trend}
-                backfillInProgress={backfillInProgress}
-                currency={currency}
-              />
-            )}
-
-            {caps.showCityLoss && (
-              <CityLossPanel
-                initialCities={cityBreakdown.cities}
-                initialFrom={cityBreakdown.from}
-                initialTo={cityBreakdown.to}
-                initialLabel="Maximum"
-                currency={currency}
-              />
-            )}
-          </>
+        {caps.showCityLoss && (
+          <Suspense fallback={<PanelSkeleton lines={6} />}>
+            <Await resolve={cityBreakdown} errorElement={<PanelError title="City analysis couldn't load" />}>
+              {(cb: { cities: any[]; from: string; to: string }) => (
+                <CityLossPanel
+                  initialCities={cb.cities}
+                  initialFrom={cb.from}
+                  initialTo={cb.to}
+                  initialLabel="Maximum"
+                  currency={currency}
+                />
+              )}
+            </Await>
+          </Suspense>
+        )}
       </BlockStack>
 
       {detail && (

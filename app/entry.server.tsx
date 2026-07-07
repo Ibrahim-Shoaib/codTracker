@@ -8,7 +8,10 @@ import {
 import { isbot } from "isbot";
 import { addDocumentResponseHeaders } from "./shopify.server";
 
-export const streamTimeout = 5000;
+// The dashboard now streams deferred panels (KPI stats, trend, city
+// breakdown) after the shell; the abort below must outlast the slowest
+// deferred query or the panel's <Await> rejects into its errorElement.
+export const streamTimeout = 15000;
 
 export default async function handleRequest(
   request: Request,

@@ -1,5 +1,4 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
 import { createClient } from "@supabase/supabase-js";
 import { verifyAppProxySignature } from "../lib/app-proxy-verify.server.js";
 import {

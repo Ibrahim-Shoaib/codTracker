@@ -41,6 +41,7 @@ import {
 import {
   buildCAPIEvent,
   sendCAPIEventsForShop,
+  invalidateCAPIConnectionCache,
 } from "../lib/meta-capi.server.js";
 import { buildUserData } from "../lib/meta-hash.server.js";
 
@@ -105,6 +106,11 @@ function pktYesterdayWindowUtc(): { startIso: string; endIso: string } {
 // what Shopify actually deployed for this app's extension version, which
 // caused "App embed does not exist" on first click — the API-key form
 // avoids that whole class of bug because the API key never changes.
+// NOTE: intentionally a literal, not process.env — this constant is also
+// referenced from component (browser) code below, where `process` doesn't
+// exist. The API key is a public app identifier (it appears in every admin
+// URL), not a secret. If the app is ever re-created under a new key, update
+// this constant alongside SHOPIFY_API_KEY in the environment.
 const SHOPIFY_API_KEY = "4e49263445787763216232655d181ef2";
 
 function buildThemeActivationUrl(shop: string): string {
@@ -236,16 +242,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // than truthy to distinguish a missing column from a NULL value.
   const hasCapiSentColumn =
     todayAttribution.length > 0
-      ? todayAttribution.some((a) => "capi_sent_at" in a)
+      ? todayAttribution.some((a: any) => "capi_sent_at" in a)
       : (attributionRes.data?.length ?? 0) > 0
-        ? (attributionRes.data ?? []).some((a) => "capi_sent_at" in a)
+        ? (attributionRes.data ?? []).some((a: any) => "capi_sent_at" in a)
         : true; // empty table — assume new schema, hero shows "armed"
 
   let trackedCount: number;
   let retryingCount: number;
   if (hasCapiSentColumn) {
-    trackedCount = todayAttribution.filter((a) => a.capi_sent_at != null).length;
-    retryingCount = todayAttribution.filter((a) => a.capi_sent_at == null).length;
+    trackedCount = todayAttribution.filter((a: any) => a.capi_sent_at != null).length;
+    retryingCount = todayAttribution.filter((a: any) => a.capi_sent_at == null).length;
   } else {
     // Pre-DDL: distinct Purchase event_ids today, at-least-one-sent → tracked,
     // only-failed → retrying. Identical to the pre-cf82eb7 loader.
@@ -382,6 +388,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       console.error(`meta_pixel_connections upsert failed for ${shop}:`, upsertErr);
       return json({ intent, error: "Couldn't save your connection." });
     }
+    // Drop the in-memory connection cache so events on this instance pick up
+    // the new dataset/token immediately instead of after the 60s TTL.
+    invalidateCAPIConnectionCache(shop);
 
     const destroy = await metaPixelOAuthSession.destroySession(oauthSession);
     return json(
@@ -536,6 +545,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
     }
     await supabase.from("meta_pixel_connections").delete().eq("store_id", shop);
+    invalidateCAPIConnectionCache(shop);
     return json({ intent, success: true });
   }
 

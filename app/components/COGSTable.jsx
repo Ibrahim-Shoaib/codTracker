@@ -27,6 +27,7 @@ import {
  * @param {Array<any>} props.products
  * @param {Record<string, number>} props.costsMap
  * @param {(count: number) => void} [props.onDirtyCountChange]
+ * @param {string} [props.currency]
  */
 export default function COGSTable({ products, costsMap, onDirtyCountChange, currency = "PKR" }) {
   // Per-variant cost state. Priority: saved DB cost → Shopify cost field → empty.
