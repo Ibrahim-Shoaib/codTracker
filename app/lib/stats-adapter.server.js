@@ -26,6 +26,7 @@
 
 import { getSupabaseForStore } from "./supabase.server.js";
 import { allocateExpenses } from "./expense-alloc.server.js";
+import { formatDate, dayStartUTC } from "./dates.server.js";
 
 // ─── Public dispatch ──────────────────────────────────────────────────────
 
@@ -87,9 +88,7 @@ class PostExAdapter {
 // and used to compute every period via in-memory filtering — much
 // cheaper than 8 separate API calls.
 
-// Keep aligned with app/lib/shopify.server.js and the app's config version
-// (October25). 2025-01 fell out of Shopify's 12-month support window in 2026.
-const SHOPIFY_API_VERSION = "2025-10";
+const SHOPIFY_API_VERSION = "2026-04";
 const CACHE_TTL_MS = 60_000;
 
 // Module-level caches. Map<cacheKey, { fetchedAt, value }>.
@@ -132,12 +131,22 @@ class ShopifyDirectAdapter {
 
     // Span the widest covered range so a single fetch + filter covers
     // all four periods. This is the key efficiency win.
-    const widest = {
-      from: ranges.reduce((a, r) => (r.from < a ? r.from : a), ranges[0].from),
-      to:   ranges.reduce((a, r) => (r.to   > a ? r.to   : a), ranges[0].to),
-    };
+    const tz = this.store.timezone ?? "Asia/Karachi";
+    const widestFrom = ranges.reduce((a, r) => (r.from < a ? r.from : a), ranges[0].from);
+    const widestTo   = ranges.reduce((a, r) => (r.to   > a ? r.to   : a), ranges[0].to);
 
-    const orders = await this._fetchOrders(widest.from, widest.to);
+    // Fetch through the day AFTER the latest period day, as precise UTC
+    // instants derived from the store's timezone. A bare created_at_max date
+    // is treated by Shopify as that day's midnight, which would clip every
+    // order placed later today (and on any last day) — so "today" read 0 for
+    // non-UTC stores. Fetching an exclusive upper bound of (widestTo + 1 day)
+    // start-of-day guarantees the full last day is covered; the per-period
+    // created_at_iso filter below still buckets each order exactly.
+    const fetchToExclusive = addDaysIso(widestTo, 1);
+    const orders = await this._fetchOrders(
+      dayStartUTC(widestFrom, tz).toISOString(),
+      dayStartUTC(fetchToExclusive, tz).toISOString(),
+    );
 
     // Pre-compute COGS map once: variant_id → unit_cost. Same source
     // as the PostEx mode (product_costs table written from the COGS
@@ -145,8 +154,9 @@ class ShopifyDirectAdapter {
     const costsMap = await this._loadCostsMap();
 
     // Pre-fetch ad_spend rows for the full window (Meta cron writes
-    // them regardless of ingest_mode, in store currency).
-    const adSpendByDay = await this._loadAdSpend(widest.from, widest.to);
+    // them regardless of ingest_mode, in store currency). Upper bound is the
+    // same exclusive next-day so the last day's spend isn't dropped.
+    const adSpendByDay = await this._loadAdSpend(widestFrom, fetchToExclusive);
 
     const out = {};
     for (const [key, range] of Object.entries(periods)) {
@@ -218,6 +228,19 @@ class ShopifyDirectAdapter {
         headers: { "X-Shopify-Access-Token": accessToken },
         signal: AbortSignal.timeout(30_000),
       });
+      // 403 on orders.json = Protected Customer Data access has not been
+      // granted for this app yet. Return an empty result set (dashboard
+      // renders with zero-value KPI cards) instead of crashing the loader.
+      // The 403 goes away once the app is approved for PCD access in the
+      // Partner Dashboard. Reviewers see a working — if empty — dashboard
+      // rather than a 500.
+      if (res.status === 403) {
+        console.warn(
+          `[ShopifyDirectAdapter] ${this.store.store_id}: orders.json returned 403 (PCD not granted yet) — rendering empty dashboard`
+        );
+        _orderCache.set(cacheKey, { fetchedAt: Date.now(), orders: [] });
+        return [];
+      }
       if (!res.ok) {
         throw new Error(
           `ShopifyDirectAdapter: orders fetch HTTP ${res.status} for ${fromDate}–${toDate}`
@@ -225,7 +248,7 @@ class ShopifyDirectAdapter {
       }
       const { orders } = await res.json();
       for (const o of orders ?? []) {
-        out.push(normalizeOrder(o));
+        out.push(normalizeOrder(o, this.store.timezone ?? "Asia/Karachi"));
       }
       const link = res.headers.get("link") ?? "";
       const m = link.match(/<([^>]+)>;\s*rel="next"/);
@@ -281,23 +304,26 @@ class ShopifyDirectAdapter {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
-// Convert a Shopify order's raw timestamp to ISO date string (YYYY-MM-DD)
-// in PKT for filter comparisons. PKT is UTC+5; for non-PKR stores this
-// approximation slightly skews period boundaries (a 23:59 UTC order on
-// Jan 31 lands in Jan in their timezone but Feb in PKT). Acceptable for
-// dashboard buckets — exact PKT semantics matter for COD merchants who
-// the rest of this codebase serves; international merchants will accept
-// the same convention.
-function normalizeOrder(o) {
-  const createdAtMs = new Date(o.created_at).getTime();
-  const pktDate = new Date(createdAtMs + 5 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
+// 'YYYY-MM-DD' + n calendar days → 'YYYY-MM-DD' (UTC arithmetic; the value is
+// a pure calendar date, timezone-independent).
+function addDaysIso(ymd, n) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + n));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
+
+// Convert a Shopify order's raw timestamp to the store-local ISO date string
+// (YYYY-MM-DD) for period-bucket comparisons. The date is computed in the
+// store's own timezone (tz) so shopify_direct KPI cards bucket on the same
+// calendar day the RPC path uses — e.g. a UK (Europe/London) store's 22:00
+// London order lands on the London day, not PKT. Defaults to Asia/Karachi to
+// preserve the historical PKT behaviour for callers that don't pass a tz.
+function normalizeOrder(o, tz = "Asia/Karachi") {
   return {
     id: String(o.id),
     name: o.name,
     created_at: o.created_at,
-    created_at_iso: pktDate,
+    created_at_iso: formatDate(new Date(o.created_at), tz),
     processed_at: o.processed_at,
     financial_status: o.financial_status,
     fulfillment_status: o.fulfillment_status,
@@ -315,9 +341,7 @@ function normalizeOrder(o) {
       id: String(r.id),
       processed_at: r.processed_at ?? r.created_at,
       processed_at_iso: r.processed_at
-        ? new Date(new Date(r.processed_at).getTime() + 5 * 60 * 60 * 1000)
-            .toISOString()
-            .slice(0, 10)
+        ? formatDate(new Date(r.processed_at), tz)
         : null,
       // Sum refund_line_items + transactions for total refund value.
       // Shopify's refunds[].transactions[].amount is the actual money
@@ -475,4 +499,5 @@ export const __test__ = {
   countNonRefundedOrders,
   sumAdSpend,
   daysBetween,
+  addDaysIso,
 };

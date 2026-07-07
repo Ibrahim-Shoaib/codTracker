@@ -1,0 +1,40 @@
+# Config for the review / approval-submission app.
+# Managed by `shopify app config use codprofit`.
+# Twin of shopify.app.toml (production Trendy app), with URLs + client_id
+# pointing at the second Railway deployment.
+
+client_id = "5eae3b44db7a05267b9eee332d261644"
+name = "CODProfit"
+application_url = "https://codprofit.up.railway.app"
+embedded = true
+
+[webhooks]
+api_version = "2026-04"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/api/webhooks/uninstall"
+
+  [[webhooks.subscriptions]]
+  topics = [
+    "orders/create",
+    "orders/paid",
+    "orders/edited",
+    "refunds/create",
+    "checkouts/create",
+    "checkouts/update",
+  ]
+  uri = "/api/webhooks/meta-pixel"
+
+[access_scopes]
+scopes = "read_orders,read_products,read_inventory,read_customers,read_checkouts,write_pixels,read_pixels,read_customer_events,read_themes"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [ "https://codprofit.up.railway.app/auth/callback" ]
+
+[app_proxy]
+url = "https://codprofit.up.railway.app/proxy/tracking"
+subpath = "tracking"
+prefix = "apps"

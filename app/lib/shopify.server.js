@@ -1,19 +1,19 @@
 // Shopify Admin API client — uses REST with session accessToken.
 // This file is the Admin API helper, distinct from app/shopify.server.ts (app config).
 
-const API_VERSION = '2025-10';
+const API_VERSION = '2026-04';
 
 // Per-request timeout for Admin REST calls. Pagination loops below also carry
 // hard page caps so a malformed cursor can't spin forever.
 const SHOPIFY_TIMEOUT_MS = 30_000;
-const MAX_PAGES = 400; // 400 × 250 = 100k records — far above any current store
-
-function adminUrl(shop, path) {
-  return `https://${shop}/admin/api/${API_VERSION}/${path}`;
-}
+const MAX_PAGES = 400; // 400 x 250 = 100k records — far above any current store
 
 function shopifyFetch(url, init = {}) {
   return fetch(url, { signal: AbortSignal.timeout(SHOPIFY_TIMEOUT_MS), ...init });
+}
+
+function adminUrl(shop, path) {
+  return `https://${shop}/admin/api/${API_VERSION}/${path}`;
 }
 
 function adminHeaders(accessToken) {
@@ -32,13 +32,13 @@ function parseNextUrl(linkHeader) {
 
 // ─── Shop settings ─────────────────────────────────────────────────────────────
 
-// Fetches the shop's currency + money_format from Shopify's shop.json.
-// Used by afterAuth to populate stores.currency on first install (and
-// to re-sync if the merchant ever changes their store currency).
+// Fetches the shop's currency + money_format + timezone from Shopify's
+// shop.json. Used by afterAuth to populate stores.currency / stores.timezone
+// on first install (and to re-sync if the merchant ever changes them).
 //
-// Returns { currency: 'PKR'|'USD'|..., money_format: 'Rs.{{amount}}'|... }
-// or null if the API errored — caller should default to PKR rather
-// than block install.
+// Returns { currency, money_format, iana_timezone } (any field null if
+// absent) or null if the API errored — caller should keep existing defaults
+// rather than block install.
 export async function getShopCurrencySettings(session) {
   const { shop, accessToken } = session;
   try {
@@ -50,6 +50,7 @@ export async function getShopCurrencySettings(session) {
     return {
       currency: data?.currency ?? null,
       money_format: data?.money_format ?? null,
+      iana_timezone: data?.iana_timezone ?? null,
     };
   } catch {
     return null;

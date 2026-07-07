@@ -17,7 +17,7 @@ import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import { handleExpenseAction, summarizeExpenses } from "../lib/expense-actions.server.js";
 import { summarizeImpact } from "../lib/expense-impact.server.js";
-import { getMTDPKT, formatPKTDate } from "../lib/dates.server.js";
+import { getMTD, formatDate } from "../lib/dates.server.js";
 import { effectiveStoreId } from "../lib/demo-pool.server.js";
 import { getStatsAdapter } from "../lib/stats-adapter.server.js";
 import { formatMoney } from "../lib/format.js";
@@ -45,7 +45,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const [{ data: store }, { data: rawExpenses }] = await Promise.all([
     supabase
       .from("stores")
-      .select("currency, is_demo, ingest_mode")
+      .select("currency, is_demo, ingest_mode, timezone")
       .eq("store_id", shop)
       .single(),
     supabase
@@ -66,9 +66,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   if (expenseRows.length > 0) {
     try {
-      const mtd = getMTDPKT();
-      const from = formatPKTDate(mtd.start);
-      const to = formatPKTDate(mtd.end);
+      const tz = store?.timezone ?? "Asia/Karachi";
+      const mtd = getMTD(tz);
+      const from = formatDate(mtd.start, tz);
+      const to = formatDate(mtd.end, tz);
       const dataStoreId = effectiveStoreId(store, shop);
 
       let breakdown: any[] = [];

@@ -64,31 +64,39 @@ type AttributionRow = {
   capi_sent_at: string | null;
 };
 
-// Pakistan-default day boundary. Most merchants on this app are PK COD stores;
-// a non-PK store sees their day boundary off by a few hours, which is acceptable
-// noise for a top-level "today" counter (we'd swap to per-store timezone if a
-// non-PK merchant ever asks).
-const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
-function pktTodayWindowUtc(): { startIso: string; endIso: string } {
-  const nowUtcMs = Date.now();
-  const todayPkt = new Date(nowUtcMs + PKT_OFFSET_MS).toISOString().slice(0, 10);
-  const startUtcMs = new Date(`${todayPkt}T00:00:00Z`).getTime() - PKT_OFFSET_MS;
-  return {
-    startIso: new Date(startUtcMs).toISOString(),
-    endIso: new Date(startUtcMs + 24 * 3600 * 1000).toISOString(),
-  };
+// Per-store day boundaries, DST-correct. Self-contained (Intl only) rather
+// than imported from dates.server.js because bucketAttribution runs client-side
+// inside ChannelsCard — a `.server` import would break the browser bundle.
+function tzOffsetMsAt(atMs: number, tz: string): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  });
+  const p = Object.fromEntries(dtf.formatToParts(new Date(atMs)).map((x) => [x.type, x.value]));
+  const hh = p.hour === "24" ? 0 : Number(p.hour);
+  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, hh, +p.minute, +p.second);
+  return asUTC - (atMs - (atMs % 1000));
 }
-
-// Yesterday's full PKT calendar day as a closed [start, end) UTC range.
-// Anchored off today's window so the day boundary stays consistent with
-// the "today" tab (no double-counting at the rollover edge).
-function pktYesterdayWindowUtc(): { startIso: string; endIso: string } {
-  const { startIso: todayStartIso } = pktTodayWindowUtc();
-  const todayStartMs = new Date(todayStartIso).getTime();
-  return {
-    startIso: new Date(todayStartMs - 24 * 3600 * 1000).toISOString(),
-    endIso: todayStartIso,
-  };
+// UTC ms of local midnight of the local day containing atMs.
+function localDayStartMs(atMs: number, tz: string): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+  });
+  const p = Object.fromEntries(dtf.formatToParts(new Date(atMs)).map((x) => [x.type, x.value]));
+  const guess = Date.UTC(+p.year, +p.month - 1, +p.day, 0, 0, 0, 0);
+  return guess - tzOffsetMsAt(guess, tz);
+}
+function todayWindowUtc(tz: string): { startIso: string; endIso: string } {
+  const start = localDayStartMs(Date.now(), tz);
+  const nextStart = localDayStartMs(start + 26 * 3600 * 1000, tz); // +26h clears any DST gap
+  return { startIso: new Date(start).toISOString(), endIso: new Date(nextStart).toISOString() };
+}
+// Yesterday's full local calendar day as a closed [start, end) UTC range,
+// anchored off today's window so the rollover edge never double-counts.
+function yesterdayWindowUtc(tz: string): { startIso: string; endIso: string } {
+  const todayStart = localDayStartMs(Date.now(), tz);
+  const yStart = localDayStartMs(todayStart - 12 * 3600 * 1000, tz);
+  return { startIso: new Date(yStart).toISOString(), endIso: new Date(todayStart).toISOString() };
 }
 
 // ─── Theme app embed activation deep link ────────────────────────────────────
@@ -101,25 +109,21 @@ function pktYesterdayWindowUtc(): { startIso: string; endIso: string } {
 //
 // Format (per Shopify's official docs):
 //   activateAppId=<api_key>/<block_handle>
-// We use the App's API key (stable, identical across deployments) instead
-// of the extension UUID. An earlier hardcoded UUID happened to mismatch
-// what Shopify actually deployed for this app's extension version, which
-// caused "App embed does not exist" on first click — the API-key form
-// avoids that whole class of bug because the API key never changes.
-// NOTE: intentionally a literal, not process.env — this constant is also
-// referenced from component (browser) code below, where `process` doesn't
-// exist. The API key is a public app identifier (it appears in every admin
-// URL), not a secret. If the app is ever re-created under a new key, update
-// this constant alongside SHOPIFY_API_KEY in the environment.
-const SHOPIFY_API_KEY = "4e49263445787763216232655d181ef2";
-
-function buildThemeActivationUrl(shop: string): string {
+// The API key must match the app the merchant actually installed on this
+// store — hardcoding it broke the second Railway deployment (activation
+// URL pointed at a different app → "app embed does not exist"). Now taken
+// as a parameter so the same helper works on server (loader/action pass
+// process.env.SHOPIFY_API_KEY) and on the client-hydrated JSX (passes
+// shopifyApiKey from the loader payload). Never reads process.env
+// directly — this file's JSX runs in the browser during hydration, where
+// process.env is undefined.
+function buildThemeActivationUrl(shop: string, apiKey: string): string {
   // shop is "the-trendy-homes-pk.myshopify.com" → handle is the-trendy-homes-pk
   const shopHandle = shop.replace(/\.myshopify\.com$/, "");
   const params = new URLSearchParams({
     context: "apps",
     template: "index",
-    activateAppId: `${SHOPIFY_API_KEY}/meta-pixel`,
+    activateAppId: `${apiKey}/meta-pixel`,
   });
   return `https://admin.shopify.com/store/${shopHandle}/themes/current/editor?${params}`;
 }
@@ -140,7 +144,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const supabase = await getSupabaseForStore(shop);
 
-  const { startIso, endIso } = pktTodayWindowUtc();
+  const { data: tzRow } = await supabase
+    .from("stores").select("timezone").eq("store_id", shop).maybeSingle();
+  const tz = tzRow?.timezone ?? "Asia/Karachi";
+
+  const { startIso, endIso } = todayWindowUtc(tz);
   // Pull the full 30 days of attribution rows once. The Today/7d/30d tabs
   // filter client-side from this single payload — saves a round-trip per
   // tab click and keeps the loader query count bounded.
@@ -242,16 +250,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // than truthy to distinguish a missing column from a NULL value.
   const hasCapiSentColumn =
     todayAttribution.length > 0
-      ? todayAttribution.some((a: any) => "capi_sent_at" in a)
+      ? todayAttribution.some((a) => "capi_sent_at" in a)
       : (attributionRes.data?.length ?? 0) > 0
-        ? (attributionRes.data ?? []).some((a: any) => "capi_sent_at" in a)
+        ? (attributionRes.data ?? []).some((a) => "capi_sent_at" in a)
         : true; // empty table — assume new schema, hero shows "armed"
 
   let trackedCount: number;
   let retryingCount: number;
   if (hasCapiSentColumn) {
-    trackedCount = todayAttribution.filter((a: any) => a.capi_sent_at != null).length;
-    retryingCount = todayAttribution.filter((a: any) => a.capi_sent_at == null).length;
+    trackedCount = todayAttribution.filter((a) => a.capi_sent_at != null).length;
+    retryingCount = todayAttribution.filter((a) => a.capi_sent_at == null).length;
   } else {
     // Pre-DDL: distinct Purchase event_ids today, at-least-one-sent → tracked,
     // only-failed → retrying. Identical to the pre-cf82eb7 loader.
@@ -272,6 +280,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return json({
     shop,
+    timezone: tz,
+    // Passed through so buildThemeActivationUrlClient (which runs in the
+    // browser) can build the correct activation URL for whichever app is
+    // installed on this deployment. Hardcoding this used to break the
+    // second Railway deployment ("app embed does not exist") because the
+    // key belonged to the wrong app.
+    shopifyApiKey: process.env.SHOPIFY_API_KEY ?? "",
     connection: conn,
     pending: pendingToken
       ? {
@@ -397,7 +412,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       {
         intent,
         success: true,
-        themeActivationUrl: buildThemeActivationUrl(shop),
+        themeActivationUrl: buildThemeActivationUrl(shop, process.env.SHOPIFY_API_KEY ?? ""),
       },
       { headers: { "Set-Cookie": destroy } }
     );
@@ -555,7 +570,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AdTracking() {
-  const { shop, connection, pending, todayStats, purchaseEMQ, attribution } =
+  const { shop, timezone, shopifyApiKey, connection, pending, todayStats, purchaseEMQ, attribution } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
@@ -612,7 +627,7 @@ export default function AdTracking() {
       if (event.data?.type === "meta_pixel_oauth_complete") {
         if (event.data?.auto) {
           window.open(
-            buildThemeActivationUrlClient(shop),
+            buildThemeActivationUrl(shop, shopifyApiKey),
             "_blank",
             "noopener,noreferrer"
           );
@@ -741,8 +756,19 @@ export default function AdTracking() {
                     tone="info"
                     action={{
                       content: "Open theme editor",
-                      url: buildThemeActivationUrl(shop),
-                      external: true,
+                      // Explicit onAction + window.open so the browser opens a
+                      // real new tab at TOP context. Polaris's `url` + `external`
+                      // path routes through App Bridge's Link in embedded apps,
+                      // which navigated the iframe → admin.shopify.com set
+                      // X-Frame-Options and the browser rendered "admin.shopify.com
+                      // refused to connect."
+                      onAction: () => {
+                        window.open(
+                          buildThemeActivationUrl(shop, shopifyApiKey),
+                          "_blank",
+                          "noopener,noreferrer"
+                        );
+                      },
                     }}
                   >
                     <Text as="p" variant="bodyMd">
@@ -794,6 +820,7 @@ export default function AdTracking() {
               attribution={attribution}
               window={channelWindow}
               setWindow={setChannelWindow}
+              timezone={timezone}
             />
           </Layout.Section>
 
@@ -891,7 +918,7 @@ export default function AdTracking() {
                           metaPixelActive ? undefined : "Open theme editor"
                         }
                         actionUrl={
-                          metaPixelActive ? undefined : buildThemeActivationUrl(shop)
+                          metaPixelActive ? undefined : buildThemeActivationUrl(shop, shopifyApiKey)
                         }
                       />
                       <StatusRow
@@ -1934,15 +1961,16 @@ const WINDOW_OPTIONS: Array<{ value: ChannelWindow; label: string }> = [
 // the tab switch stays cheap (zero queries, just a recompute).
 function bucketAttribution(
   rows: AttributionRow[],
-  windowKey: ChannelWindow
+  windowKey: ChannelWindow,
+  tz: string
 ): { totals: Record<Channel, number>; total: number } {
   let lowerBoundMs: number;
   let upperBoundMs = Infinity;
   if (windowKey === "today") {
-    const { startIso } = pktTodayWindowUtc();
+    const { startIso } = todayWindowUtc(tz);
     lowerBoundMs = new Date(startIso).getTime();
   } else if (windowKey === "yesterday") {
-    const { startIso, endIso } = pktYesterdayWindowUtc();
+    const { startIso, endIso } = yesterdayWindowUtc(tz);
     lowerBoundMs = new Date(startIso).getTime();
     upperBoundMs = new Date(endIso).getTime();
   } else if (windowKey === "7d") {
@@ -1969,12 +1997,14 @@ function ChannelsCard({
   attribution,
   window,
   setWindow,
+  timezone,
 }: {
   attribution: AttributionRow[];
   window: ChannelWindow;
   setWindow: (w: ChannelWindow) => void;
+  timezone: string;
 }) {
-  const { totals, total } = bucketAttribution(attribution, window);
+  const { totals, total } = bucketAttribution(attribution, window, timezone);
 
   // Used to scale per-channel bars relative to the largest bucket so a 60/20/20
   // split renders as 100% / 33% / 33% width — easier to read at small counts
@@ -2240,25 +2270,21 @@ function StatusRow(props: {
         </BlockStack>
       </InlineStack>
       {props.actionUrl && props.actionLabel && (
-        <Button url={props.actionUrl} target="_blank" variant="primary">
+        <Button
+          onClick={() => {
+            // window.open in a real new tab — Polaris Button `url` + `target`
+            // gets routed through App Bridge Link in embedded apps and ends up
+            // navigating the iframe to admin.shopify.com, which is blocked
+            // by X-Frame-Options.
+            window.open(props.actionUrl, "_blank", "noopener,noreferrer");
+          }}
+          variant="primary"
+        >
           {props.actionLabel}
         </Button>
       )}
     </InlineStack>
   );
-}
-
-// Same activation-URL builder as the server side, but reachable from
-// useEffect handlers running in the browser (where `process.env` isn't
-// available and we don't want to round-trip through the loader).
-function buildThemeActivationUrlClient(shop: string): string {
-  const shopHandle = shop.replace(/\.myshopify\.com$/, "");
-  const params = new URLSearchParams({
-    context: "apps",
-    template: "index",
-    activateAppId: `${SHOPIFY_API_KEY}/meta-pixel`,
-  });
-  return `https://admin.shopify.com/store/${shopHandle}/themes/current/editor?${params}`;
 }
 
 function formatRelative(isoString: string): string {

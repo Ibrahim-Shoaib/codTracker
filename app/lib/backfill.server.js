@@ -1,18 +1,17 @@
 import { fetchOrders, mapOrder } from './postex.server.js';
-import { fetchDailySpendInStoreCurrency } from './meta.server.js';
+import { fetchDailySpendInStoreCurrency, fetchSpendInStoreCurrency } from './meta.server.js';
 import { getSupabaseForStore } from './supabase.server.js';
 import { enrichOrdersWithShopify, loadOfflineSession } from './enrich.server.js';
 import { cancelStaleBooked } from './stale-orders.server.js';
 
+import { formatDate } from './dates.server.js';
+
 const CHUNK_DAYS = 60;
 const STOP_AFTER_EMPTY = 2;
 
-function todayPKT() {
-  const pkt = new Date(Date.now() + 5 * 60 * 60 * 1000);
-  const y = pkt.getUTCFullYear();
-  const m = String(pkt.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(pkt.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+// Today's 'YYYY-MM-DD' in the store's local timezone.
+function todayLocal(tz = 'Asia/Karachi') {
+  return formatDate(new Date(), tz);
 }
 
 function subtractDays(dateStr, days) {
@@ -27,7 +26,11 @@ function subtractDays(dateStr, days) {
 export async function runHistoricalBackfill({ store_id, postex_token }) {
   const supabase = await getSupabaseForStore(store_id);
 
-  let end = todayPKT();
+  const { data: tzRow } = await supabase
+    .from('stores').select('timezone').eq('store_id', store_id).single();
+  const tz = tzRow?.timezone ?? 'Asia/Karachi';
+
+  let end = todayLocal(tz);
   let start = subtractDays(end, CHUNK_DAYS - 1);
   let consecutiveEmpty = 0;
   let totalOrders = 0;
@@ -122,13 +125,14 @@ export async function runMetaHistoricalBackfill({ store_id, access_token, ad_acc
   // to convert when account currency differs from store currency.
   const { data: storeRow } = await supabase
     .from('stores')
-    .select('currency, meta_ad_account_currency')
+    .select('currency, meta_ad_account_currency, timezone')
     .eq('store_id', store_id)
     .single();
   const storeCurrency = storeRow?.currency ?? 'PKR';
   const accountCurrency = storeRow?.meta_ad_account_currency ?? null;
+  const tz = storeRow?.timezone ?? 'Asia/Karachi';
 
-  let end = todayPKT();
+  let end = todayLocal(tz);
   let start = subtractDays(end, CHUNK_DAYS - 1);
   let consecutiveEmpty = 0;
   let totalDays = 0;
@@ -200,4 +204,108 @@ export async function runMetaHistoricalBackfill({ store_id, access_token, ad_acc
   }
 
   console.log(`Meta backfill ${aborted ? 'aborted' : 'done'} for ${store_id}: ${totalDays} days across ${totalChunks} chunks`);
+}
+
+// ─── Foolproof entry point ───────────────────────────────────────────────
+//
+// Call this on ANY save of a Meta connection — onboarding step 2, settings
+// meta_save, future paths. It:
+//
+//   1. Introspects existing ad_spend for the store (row count + latest
+//      spend_date). Logs it so ops can see what state a store was in when
+//      the merchant reconnected.
+//   2. Fetches TODAY's spend synchronously (~1 s, one Meta API call) and
+//      upserts it, so the dashboard KPI card shows the number seconds after
+//      the merchant clicks Save. Without this, they'd wait up to 2 hours
+//      for the meta-today cron.
+//   3. Fires the full 90-day historical backfill fire-and-forget. Backfill
+//      is idempotent (upsert on store_id,spend_date), so calling this on
+//      an already-populated store just fills any gaps left by earlier
+//      cron failures / disconnect windows.
+//
+// Demo stores are skipped — their ad_spend is fabricated separately.
+//
+// Errors never propagate: today-sync failure is logged and the historical
+// still runs; historical-fire failure is caught by the outer .catch(). The
+// idea is that the merchant's Save click never fails because of a Meta API
+// hiccup.
+export async function bootstrapMetaConnection({ store_id, access_token, ad_account_id }) {
+  const supabase = await getSupabaseForStore(store_id);
+
+  const { data: storeRow } = await supabase
+    .from('stores')
+    .select('is_demo, currency, meta_ad_account_currency')
+    .eq('store_id', store_id)
+    .single();
+
+  if (storeRow?.is_demo) {
+    console.log(`[bootstrapMeta] ${store_id}: skip — demo store (fabricated ad_spend)`);
+    return { skipped: 'demo' };
+  }
+
+  // 1. Introspect. Gives log + return-value visibility into what was
+  //    already in storage vs what this call is about to add.
+  const [{ count }, { data: latest }] = await Promise.all([
+    supabase.from('ad_spend').select('id', { count: 'exact', head: true }).eq('store_id', store_id),
+    supabase.from('ad_spend').select('spend_date').eq('store_id', store_id)
+      .order('spend_date', { ascending: false }).limit(1),
+  ]);
+  const rowsBefore = count ?? 0;
+  const latestExisting = latest?.[0]?.spend_date ?? null;
+
+  console.log(
+    `[bootstrapMeta] ${store_id}: existing ad_spend rows=${rowsBefore}, ` +
+    `latest existing spend_date=${latestExisting ?? 'none'}`
+  );
+
+  // 2. Instant today sync. Blocking so the merchant sees a real KPI number
+  //    within seconds. Errors are swallowed — historical still fires.
+  const storeCurrency = storeRow?.currency ?? 'PKR';
+  const accountCurrency = storeRow?.meta_ad_account_currency ?? null;
+  const today = todayPKT();
+  let todayStatus = 'skipped';
+  let todayAmount = null;
+  try {
+    todayAmount = await fetchSpendInStoreCurrency({
+      accessToken: access_token,
+      adAccountId: ad_account_id,
+      sinceDate: today,
+      untilDate: today,
+      accountCurrency,
+      storeCurrency,
+    });
+    await supabase.from('ad_spend').upsert(
+      {
+        store_id,
+        spend_date: today,
+        amount: todayAmount,
+        source: 'meta',
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'store_id,spend_date' }
+    );
+    await supabase.from('stores').update({
+      last_meta_sync_at: new Date().toISOString(),
+      meta_sync_error: null,
+    }).eq('store_id', store_id);
+    todayStatus = 'synced';
+    console.log(`[bootstrapMeta] ${store_id}: today (${today}) = ${todayAmount} ${storeCurrency}`);
+  } catch (err) {
+    console.error(`[bootstrapMeta] ${store_id}: today sync failed:`, err?.message ?? err);
+    todayStatus = 'error';
+  }
+
+  // 3. Full 90-day historical backfill, fire-and-forget. Idempotent via
+  //    (store_id, spend_date) upsert — safe on first connect, reconnect,
+  //    or account switch.
+  runMetaHistoricalBackfill({ store_id, access_token, ad_account_id })
+    .catch(err => console.error(`[bootstrapMeta] ${store_id}: historical backfill failed:`, err));
+
+  return {
+    rows_before: rowsBefore,
+    latest_existing: latestExisting,
+    today: todayStatus,
+    today_amount: todayAmount,
+    historical: 'started',
+  };
 }

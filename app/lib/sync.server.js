@@ -1,5 +1,5 @@
 import { fetchOrders, mapOrder } from './postex.server.js';
-import { getLastNDaysPKT } from './dates.server.js';
+import { getLastNDays } from './dates.server.js';
 import {
   buildCostIndex,
   buildCostsByVariantId,
@@ -19,7 +19,7 @@ const ROLLING_ENRICH_DAYS = 30;
 // 20-day rolling sync from PostEx + line-items enrichment.
 // ------------------------------------------------------------
 export async function syncStore(storeRow, supabase) {
-  const { start, end } = getLastNDaysPKT(20);
+  const { start, end } = getLastNDays(20, storeRow.timezone ?? 'Asia/Karachi');
   const rawOrders = await fetchOrders(storeRow.postex_token, start, end);
   const mapped = rawOrders.map(o => mapOrder(o, storeRow.store_id));
 

@@ -16,13 +16,14 @@ if (!process.env.SUPABASE_DATABASE_URL) {
   throw new Error("SUPABASE_DATABASE_URL is not set. Add it to Railway environment variables.");
 }
 
-// Canonical scope list — must stay in sync with shopify.app.toml. Hardcoded
-// (rather than read from process.env.SHOPIFY_SCOPES) so a stale Railway env
-// var can't silently leave the app requesting fewer scopes than the code
-// requires. When the toml changes, update this list — both must match
-// exactly or shopify-app-remix's scope-diff detection won't trigger re-auth
-// for existing merchants on the Ad Tracking page.
-const CANONICAL_SCOPES = [
+// Canonical scope list — must stay in sync with shopify.app.toml. The env
+// override we used to allow (SHOPIFY_SCOPES) turned out to be pure footgun:
+// stale Railway values quietly narrowed the scope-diff detection to a
+// subset of what the toml actually grants, which triggered spurious re-auth
+// prompts and made log audits misleading. Managed install reads scopes from
+// the toml on grant, so runtime overrides never affected what merchants
+// actually gave us — only what we *thought* they gave us. Hardcode.
+const scopes = [
   "read_orders",
   "read_products",
   "read_inventory",
@@ -34,29 +35,14 @@ const CANONICAL_SCOPES = [
   "read_themes",
 ];
 
-// Allow env override for dev/staging where you might want to test with fewer
-// scopes — but never silently fall back to "no scopes" if the env var is
-// unset, which is what the previous `process.env.SHOPIFY_SCOPES?.split(",")`
-// pattern did.
-const scopes = process.env.SHOPIFY_SCOPES
-  ? process.env.SHOPIFY_SCOPES.split(",").map((s) => s.trim()).filter(Boolean)
-  : CANONICAL_SCOPES;
-
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
   apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
-  apiVersion: ApiVersion.October25,
+  apiVersion: ApiVersion.April26,
   scopes,
   appUrl: process.env.SHOPIFY_APP_URL || "",
   authPathPrefix: "/auth",
-  // Cast: the postgres session-storage package pins an older @shopify/shopify-api
-  // than shopify-app-remix, so the two Session types are nominally different.
-  // Runtime shape is identical (verified in production); the real fix is a
-  // storage-package major bump, tracked in IMPROVEMENTS.md.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sessionStorage: new PostgreSQLSessionStorage(
-    process.env.SUPABASE_DATABASE_URL as string
-  ) as any,
+  sessionStorage: new PostgreSQLSessionStorage(process.env.SUPABASE_DATABASE_URL as string),
   distribution: AppDistribution.AppStore,
   hooks: {
     afterAuth: async ({ session }) => {
@@ -73,18 +59,20 @@ const shopify = shopifyApp({
         { onConflict: "store_id", ignoreDuplicates: true }
       );
 
-      // Pull the shop's currency + money_format from Shopify shop.json
-      // and stash them on the stores row. Lets the dashboard render
-      // money in the merchant's actual currency instead of hardcoded
-      // PKR. Best-effort: a non-2xx response from Shopify just means
-      // we keep the existing values (or the migration default of PKR
-      // for legacy rows).
+      // Pull the shop's currency + money_format + timezone from Shopify
+      // shop.json and stash them on the stores row. Lets the dashboard
+      // render money in the merchant's actual currency and compute day
+      // boundaries in the store's local timezone instead of hardcoded
+      // PKR / PKT. Best-effort: a non-2xx response from Shopify just means
+      // we keep the existing values (or the migration defaults — PKR /
+      // Asia/Karachi — for legacy rows).
       try {
         const cur = await getShopCurrencySettings(session);
-        if (cur?.currency || cur?.money_format) {
+        if (cur?.currency || cur?.money_format || cur?.iana_timezone) {
           const updates: Record<string, string> = {};
           if (cur.currency) updates.currency = cur.currency;
           if (cur.money_format) updates.money_format = cur.money_format;
+          if (cur.iana_timezone) updates.timezone = cur.iana_timezone;
           await supabase.from("stores").update(updates).eq("store_id", shop);
         }
       } catch (err) {
@@ -110,15 +98,21 @@ const shopify = shopifyApp({
     },
   },
   future: {
+    // Token Exchange strategy for embedded admin — no OAuth redirect dance.
     unstable_newEmbeddedAuthStrategy: true,
+    // Expiring offline tokens (60-min TTL + refresh token). Required for new
+    // public apps as of 2026-04-01; existing apps must migrate by 2027-01-01.
+    // When on, token exchange requests include `expiring=1` and the library
+    // auto-refreshes near expiry inside authenticate.admin / authenticate.webhook
+    // / unauthenticated.admin. Background jobs MUST use unauthenticated.admin(shop);
+    // reading session.accessToken from sessionStorage directly bypasses the
+    // refresh path and will start hitting 401s.
+    expiringOfflineAccessTokens: true,
   },
-  ...(process.env.SHOP_CUSTOM_DOMAIN
-    ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
-    : {}),
 });
 
 export default shopify;
-export const apiVersion = ApiVersion.October25;
+export const apiVersion = ApiVersion.April26;
 export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
 export const authenticate = shopify.authenticate;
 export const unauthenticated = shopify.unauthenticated;

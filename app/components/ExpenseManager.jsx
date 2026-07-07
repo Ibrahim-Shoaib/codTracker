@@ -147,19 +147,25 @@ function ExpenseFields({ currency }) {
 }
 
 function AddModal({ currency, onClose, submitting, error }) {
+  const nav = useNavigation();
+  const adding = submitting && nav.formData?.get("intent") === "expense_add";
   return (
     <Modal
       open
       onClose={onClose}
       title="Add an expense"
-      primaryAction={{ content: "Add expense", submit: true, formId: "add-expense-form", loading: submitting }}
-      secondaryActions={[{ content: "Cancel", onAction: onClose }]}
     >
       <Modal.Section>
-        <Form method="post" id="add-expense-form">
+        <Form method="post">
           <input type="hidden" name="intent" value="expense_add" />
-          {error && <Box paddingBlockEnd="300"><Banner tone="critical">{error}</Banner></Box>}
-          <ExpenseFields currency={currency} />
+          <BlockStack gap="400">
+            {error && <Banner tone="critical">{error}</Banner>}
+            <ExpenseFields currency={currency} />
+            <InlineStack gap="200" align="end">
+              <Button onClick={onClose}>Cancel</Button>
+              <Button variant="primary" submit loading={adding}>Add expense</Button>
+            </InlineStack>
+          </BlockStack>
         </Form>
       </Modal.Section>
     </Modal>
@@ -170,16 +176,16 @@ function AddModal({ currency, onClose, submitting, error }) {
 function EditModal({ expense, currency, onClose, submitting, error }) {
   const [amount, setAmount] = useState(String(expense.amount));
   const [mode, setMode] = useState(["forward"]);
+  const nav = useNavigation();
+  const saving = submitting && nav.formData?.get("intent") === "expense_edit_amount";
   return (
     <Modal
       open
       onClose={onClose}
-      title={`Edit “${expense.name}”`}
-      primaryAction={{ content: "Save", loading: submitting, submit: true, formId: "edit-expense-form" }}
-      secondaryActions={[{ content: "Cancel", onAction: onClose }]}
+      title={`Edit "${expense.name}"`}
     >
       <Modal.Section>
-        <Form method="post" id="edit-expense-form">
+        <Form method="post">
           <input type="hidden" name="intent" value="expense_edit_amount" />
           <input type="hidden" name="series_id" value={expense.seriesId} />
           <input type="hidden" name="mode" value={mode[0]} />
@@ -208,6 +214,10 @@ function EditModal({ expense, currency, onClose, submitting, error }) {
                 ]}
               />
             )}
+            <InlineStack gap="200" align="end">
+              <Button onClick={onClose}>Cancel</Button>
+              <Button variant="primary" submit loading={saving}>Save</Button>
+            </InlineStack>
           </BlockStack>
         </Form>
       </Modal.Section>
@@ -221,22 +231,16 @@ function RemoveModal({ expense, onClose, submitting, error }) {
   const opts = stopMonthOptions();
   const [stopMonth, setStopMonth] = useState(opts[0].value);
   const isStop = choice[0] === "stop";
+  const nav = useNavigation();
+  const deleting = submitting && nav.formData?.get("intent") === (isStop ? "expense_stop" : "expense_delete");
   return (
     <Modal
       open
       onClose={onClose}
-      title={`Remove “${expense.name}”`}
-      primaryAction={{
-        content: isStop ? "Stop expense" : "Delete permanently",
-        destructive: !isStop,
-        loading: submitting,
-        submit: true,
-        formId: "remove-expense-form",
-      }}
-      secondaryActions={[{ content: "Cancel", onAction: onClose }]}
+      title={`Remove "${expense.name}"`}
     >
       <Modal.Section>
-        <Form method="post" id="remove-expense-form">
+        <Form method="post">
           <input
             type="hidden"
             name="intent"
@@ -266,6 +270,12 @@ function RemoveModal({ expense, onClose, submitting, error }) {
                 onChange={setStopMonth}
               />
             )}
+            <InlineStack gap="200" align="end">
+              <Button onClick={onClose}>Cancel</Button>
+              <Button variant="primary" tone={isStop ? undefined : "critical"} submit loading={deleting}>
+                {isStop ? "Stop expense" : "Delete permanently"}
+              </Button>
+            </InlineStack>
           </BlockStack>
         </Form>
       </Modal.Section>
@@ -360,14 +370,6 @@ function ExpenseRow({ e, currency, onEdit, onRemove }) {
 //   currency   string
 //   actionData last action result ({ intent, success?, error? })
 //   title / subtitle optional copy
-/**
- * @param {Object} props
- * @param {Array<any>} [props.expenses]
- * @param {string} [props.currency]
- * @param {any} [props.actionData]
- * @param {string} [props.title]
- * @param {string} [props.subtitle]
- */
 export default function ExpenseManager({
   expenses = [],
   currency = "PKR",

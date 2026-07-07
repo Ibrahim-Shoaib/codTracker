@@ -1,0 +1,44 @@
+{
+  "2025-11": {
+    "orderCount": 214,
+    "cogsTotal": 561650,
+    "unmatchedItems": [],
+    "matchedItems": 287,
+    "unmatchedCount": 0
+  },
+  "2025-12": {
+    "orderCount": 266,
+    "cogsTotal": 617510,
+    "unmatchedItems": [],
+    "matchedItems": 324,
+    "unmatchedCount": 0
+  },
+  "2026-01": {
+    "orderCount": 160,
+    "cogsTotal": 454210,
+    "unmatchedItems": [],
+    "matchedItems": 209,
+    "unmatchedCount": 0
+  },
+  "2026-02": {
+    "orderCount": 304,
+    "cogsTotal": 839320,
+    "unmatchedItems": [],
+    "matchedItems": 399,
+    "unmatchedCount": 0
+  },
+  "2026-03": {
+    "orderCount": 298,
+    "cogsTotal": 793750,
+    "unmatchedItems": [],
+    "matchedItems": 380,
+    "unmatchedCount": 0
+  },
+  "2026-04": {
+    "orderCount": 6,
+    "cogsTotal": 13210,
+    "unmatchedItems": [],
+    "matchedItems": 7,
+    "unmatchedCount": 0
+  }
+}

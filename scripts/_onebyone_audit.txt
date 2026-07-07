@@ -1,0 +1,235 @@
+# One-by-one match audit
+# Total decisions: 230
+
+cost   | line item                                                                  | picked from product_costs                | note
+-------|----------------------------------------------------------------------------|------------------------------------------|------
+ 14860 | one navy blue bedsheet set  one navy blue duvet cover set  one maroon beds | 8-item composite                         | = 14860
+  9710 | (Embroidered set Grey bedset with duvet Mr mrs towel)                      | Crystal+Grey6PCS+GreyDuvet+Towel         | composite freeform = 9710
+  7920 | - Offwhite bedspread and duvet set Maroon bedspread with bedsheet White be | off-white bedspread + off-white duvet +  | composite = 7920
+  7000 | Beige Duvet Cover Set - Bed in bag (with filling)                          | Beige Duvet Cover Set | Bed in bag (with | exact 1.00
+  7000 | Grey Duvet Cover Set - Bed in bag (with filling)                           | Grey Duvet Cover Set | Bed in bag (with  | exact 1.00
+  5710 | off white bundle (a)                                                       | Off-white Bundle (a) | Default Title     | lowercase variant
+  5580 | Bedspread Bundle (b) - Navy / Beige / Maroon                               | (no exact, but family uniform 5580)      | all (b) rows = 5580
+  5580 | Bedspread Bundle (b) - Offwhite / Maroon / Navy                            | Bedspread Bundle (b) | Offwhite / Maroon | exact 1.00
+  5580 | Bedspread Bundle (b) - Offwhite / Navy / Teal                              | Bedspread Bundle (b) | Offwhite / Navy / | exact 1.00
+  5580 | Bedspread Bundle (b) - Offwhite / Off white / Grey                         | Bedspread Bundle (b) | Offwhite / Off wh | exact 1.00
+  5400 | Duvet Bundle (b) - Beige / Maroon / Black                                  | Duvet Bundle (b) family                  | family uniform 5400
+  4920 | 1 - off white bedspread set x flat bedsheet set - 6pcs                     | Off-white quilted + 6PCS                 | composite = 4920
+  4920 | off white bedspread set x flat bedsheet set - 6pcs                         | Off-white quilted + 6PCS                 | composite = 4920
+  4860 | Beige Bundle (b)                                                           | Beige Bundle (b) | Default Title         | exact
+  4860 | Maroon Bundle (b)                                                          | Maroon Bundle (b) | Default Title        | exact
+  4500 | navy pink black pajama set in medium size                                  | 3×pajama @1500                           | composite of 3 pajamas
+  4000 | crystal embroidered set                                                    | Crystal Embroidered Set | Default Title  | lowercase; 4000
+  4000 | Crystal Embroidered Set                                                    | Crystal Embroidered Set | Default Title  | exact
+  4000 | Off-White Bundle (b)                                                       | Off-White Bundle (b) | Default Title     | exact (note: off-white (b) = 4000, others = 4860)
+  3720 | Bedspread Bundle - Beige / Navy                                            | Bedspread Bundle (a) | Beige / Navy      | implicit (a)
+  3720 | Bedspread Bundle - Beige / Off white                                       | Bedspread Bundle (a) | Beige / Off white | implicit (a)
+  3720 | Bedspread Bundle - Beige / Teal                                            | Bedspread Bundle (a) | Beige / Teal      | implicit (a)
+  3720 | Bedspread Bundle - Black / Off white                                       | Bedspread Bundle (a) | Black / Off white | implicit (a)
+  3720 | Bedspread Bundle - Maroon / Maroon                                         | Bedspread Bundle (a) | Maroon / Maroon   | implicit (a)
+  3720 | Bedspread Bundle - Maroon / Off white                                      | Bedspread Bundle (a) | Maroon / Off whit | implicit (a)
+  3720 | Bedspread Bundle - Maroon / Plum                                           | Bedspread Bundle (a) family              | implicit (a)
+  3720 | Bedspread Bundle - Maroon / Teal                                           | Bedspread Bundle (a) | Maroon / Teal     | implicit (a)
+  3720 | Bedspread Bundle - Offwhite / Beige                                        | Bedspread Bundle (a) | Offwhite / Beige  | implicit (a)
+  3720 | Bedspread Bundle - Offwhite / Off white                                    | Bedspread Bundle (a) | Offwhite / Off wh | implicit (a)
+  3720 | Bedspread Bundle - Plum / Maroon                                           | Bedspread Bundle (a) family              | 2 colors → (a); family 3720
+  3720 | Bedspread Bundle - Plum / Teal                                             | Bedspread Bundle (a) family              | 2 colors → (a); family 3720
+  3720 | Bedspread Bundle (a) - Beige / Maroon                                      | Bedspread Bundle (a) | Beige / Maroon    | exact 1.00
+  3720 | Bedspread Bundle (a) - Beige / Navy                                        | Bedspread Bundle (a) | Beige / Navy      | exact 1.00
+  3720 | Bedspread Bundle (a) - Beige / Off white                                   | Bedspread Bundle (a) | Beige / Off white | exact 1.00
+  3720 | Bedspread Bundle (a) - Beige / Plum                                        | (no Plum variant)                        | family uniform 3720
+  3720 | Bedspread Bundle (a) - Beige / Teal                                        | Bedspread Bundle (a) | Beige / Teal      | exact 1.00
+  3720 | Bedspread Bundle (a) - Black / Off white                                   | Bedspread Bundle (a) | Black / Off white | exact 1.00
+  3720 | Bedspread Bundle (a) - Black / Teal                                        | Bedspread Bundle (a) | Black / Teal      | exact 1.00
+  3720 | Bedspread Bundle (a) - Maroon / Beige                                      | Bedspread Bundle (a) | Maroon / Beige    | exact 1.00
+  3720 | Bedspread Bundle (a) - Maroon / Navy                                       | Bedspread Bundle (a) | Maroon / Navy     | exact 1.00
+  3720 | Bedspread Bundle (a) - Maroon / Off white                                  | Bedspread Bundle (a) | Maroon / Off whit | exact 1.00
+  3720 | Bedspread Bundle (a) - Maroon / Plum                                       | (no Plum variant)                        | family uniform 3720
+  3720 | Bedspread Bundle (a) - Maroon / Red                                        | Bedspread Bundle (a) | Maroon / Red      | exact 1.00
+  3720 | Bedspread Bundle (a) - Maroon / Teal                                       | Bedspread Bundle (a) | Maroon / Teal     | exact 1.00
+  3720 | Bedspread Bundle (a) - Navy / Off white                                    | Bedspread Bundle (a) | Navy / Off white  | exact 1.00
+  3720 | Bedspread Bundle (a) - Offwhite / Beige                                    | Bedspread Bundle (a) | Offwhite / Beige  | exact 1.00
+  3720 | Bedspread Bundle (a) - Offwhite / Maroon                                   | Bedspread Bundle (a) | Offwhite / Maroon | exact 1.00
+  3720 | Bedspread Bundle (a) - Offwhite / Off white                                | Bedspread Bundle (a) | Offwhite / Off wh | exact 1.00
+  3720 | Bedspread Bundle (a) - Offwhite / Plum                                     | (no Plum variant)                        | no Plum (a) variant in catalog; family uniform 3720
+  3720 | Bedspread Bundle (a) - Teal / Black                                        | Bedspread Bundle (a) | Teal / Black      | exact 1.00
+  3720 | Bedspread Bundle (a) - Teal / Maroon                                       | Bedspread Bundle (a) | Teal / Maroon     | exact 1.00
+  3720 | Bedspread Bundle (a) - Teal / Off white                                    | Bedspread Bundle (a) | Teal / Off white  | exact 1.00
+  3720 | Teal bedspread set and grey bedspread set                                  | 2× quilted bedspread                     | composite = 3720
+  3660 | off white bedspread set x off white duvet cover set                        | Off-white quilted + duvet                | composite = 3660
+  3600 | Bedsheet Bundle (b) - Beige / Grey / Navy                                  | Bedsheet Bundle (b) family               | family uniform 3600
+  3600 | Bedsheet Bundle (b) - Beige / Maroon / Black                               | Bedsheet Bundle (b) family               | family uniform 3600
+  3600 | Bedsheet Bundle (b) - Beige / Navy / Maroon                                | Bedsheet Bundle (b) family               | family uniform 3600
+  3600 | Bedsheet Bundle (b) - Beige / Offwhite / Offwhite                          | Bedsheet Bundle (b) family               | family uniform 3600
+  3600 | Bedsheet Bundle (b) - Black / Navy / Beige                                 | Bedsheet Bundle (b) family               | no exact; family uniform 3600
+  3600 | Bedsheet Bundle (b) - Bold black / Plum / Grey                             | Bedsheet Bundle (b) family               | family uniform 3600
+  3600 | Bedsheet Bundle (b) - Grey / black / Offwhite                              | Bedsheet Bundle (b) | Grey / black / Off | exact 1.00
+  3600 | Bedsheet Bundle (b) - Grey / Green / Plum                                  | Bedsheet Bundle (b) family               | family uniform 3600
+  3600 | Bedsheet Bundle (b) - Navy / Beige / Maroon                                | Bedsheet Bundle (b) family               | no exact; family uniform 3600
+  3600 | Bedsheet Bundle (b) - Offwhite / black / Maroon                            | Bedsheet Bundle (b) | Offwhite / black / | exact 1.00
+  3600 | Bedsheet Bundle (b) - Offwhite / Grey / Beige                              | Bedsheet Bundle (b) family               | no exact Beige variant; family uniform 3600
+  3600 | Bedsheet Bundle (b) - Offwhite / Maroon / Grey                             | Bedsheet Bundle (b) family               | family uniform 3600
+  3600 | Bedsheet Bundle (b) - Offwhite / Offwhite / Grey                           | Bedsheet Bundle (b) family               | family uniform 3600
+  3600 | Bedsheet Bundle (b) - Offwhite / Offwhite / Offwhite                       | Bedsheet Bundle (b) | Offwhite / Offwhit | exact 1.00
+  3600 | bedsheet bundle grey/ beige / maroon                                       | Bedsheet Bundle (b) family               | 3-color → (b); family uniform 3600
+  3600 | Duvet Bundle  Maroon / Black                                               | Duvet Bundle (a) | Maroon / Black        | tier missing → 2 colors → (a); 3600
+  3600 | Duvet Bundle (a) - Navy / Black                                            | Duvet Bundle (a) | Navy / Black          | exact 1.00
+  3600 | Duvet Bundle (a) - Offwhite / Beige                                        | Duvet Bundle (a) | Offwhite / Beige      | exact 1.00
+  3200 | black duvet cover set                                                      | Black Duvet Cover Set | Duvet cover set  | loose; 3200
+  3200 | Black Duvet Cover Set - Bed in a bag                                       | Black Duvet Cover Set | Bed in a bag     | exact 1.00
+  3200 | Black Duvet Cover Set - Duvet cover set                                    | Black Duvet Cover Set | Duvet cover set  | exact 1.00
+  3200 | Mattress Topper                                                            | Mattress Topper | Default Title          | exact
+  3200 | navy blue duvet cover set                                                  | Navy Duvet Cover Set | Duvet cover set   | loose; 3200
+  3200 | navy duvet cover set                                                       | Navy Duvet Cover Set | Duvet cover set   | loose; 3200
+  3200 | Navy Duvet Cover Set - Bed in a bag                                        | Navy Duvet Cover Set | Bed in a bag      | exact 1.00
+  3200 | Navy Duvet Cover Set - Duvet cover set                                     | Navy Duvet Cover Set | Duvet cover set   | exact 1.00
+  3060 | beige bedset 6 pcs                                                         | BEIGE STRIPED 6 PCS(white) | Default Tit | no plain beige 6pcs; closest 3060
+  3060 | BLACK 6 PCS SET                                                            | BLACK 6 PCS SET | Default Title          | exact
+  3060 | black 6 PCS SET( white)                                                    | BLACK 6 PCS SET (white) | Default Title  | spacing variant; 3060
+  3060 | BOLD BLACK 6 PCS SET (grey)                                                | BOLD BLACK 6 PCS SET (grey) | Default Ti | exact
+  3060 | EVERGREEN 6 PCS SET                                                        | EVERGREEN 6 PCS SET | Default Title      | exact
+  3060 | GREY 6 PCS SET                                                             | GREY 6 PCS SET | Default Title           | exact
+  3060 | GREY 6 PCS SET (white)                                                     | GREY 6 PCS SET (white) | Default Title   | exact
+  3060 | maroon 6 pcs set (white)                                                   | MAROON 6 PCS SET (white) | Default Title | lowercase; 3060
+  3060 | MAROON 6 PCS SET (white)                                                   | MAROON 6 PCS SET (white) | Default Title | exact
+  3060 | NAVY 6 PCS SET (white)                                                     | NAVY 6 PCS SET (white) | Default Title   | exact
+  3060 | off white 6 pieces set                                                     | OFF-WHITE 6 PCS SET (white) | Default Ti | loose; 3060
+  3060 | OFF WHITE BEDSET                                                           | OFF-WHITE 6 PCS SET (white) | Default Ti | loose, 6-pcs-style; conservatively 3060
+  3060 | OFF-WHITE 6 PCS SET                                                        | OFF-WHITE 6 PCS SET (white) | Default Ti | no plain off-white 6pcs; (lines)=1860, (white)/(flower)=3060. Conservative pick: (white) family 3060
+  3060 | OFF-WHITE 6 PCS SET (white)                                                | OFF-WHITE 6 PCS SET (white) | Default Ti | exact
+  3060 | OFFWHITE 6 PCS SET                                                         | OFF-WHITE 6 PCS SET (white) | Default Ti | spelling variant; 3060
+  3060 | PLUM 6 PCS SET (white)                                                     | PLUM 6 PCS SET (white) | Default Title   | exact
+  3060 | teal 6 PCS set (white)                                                     | TEAL 6 PCS SET (white) | Default Title   | lowercase; 3060
+  3060 | TEAL 6 PCS SET (white)                                                     | TEAL 6 PCS SET (white) | Default Title   | exact
+  3000 | Beige Duvet Cover Set - Bed in a bag                                       | Beige Duvet Cover Set | Bed in a bag     | exact 1.00
+  3000 | beige duvet cover set (bed in bag)                                         | Beige Duvet Cover Set | Bed in a bag     | lowercase; bed-in-bag = 3000 (no 'with filling' so plain)
+  3000 | black and navy pajama set                                                  | 1×Black + 1×Navy pajama                  | composite of 2 pajamas
+  3000 | Grey Duvet Cover Set - Bed in a bag                                        | Grey Duvet Cover Set | Bed in a bag      | exact 1.00
+  3000 | navy pajama set piping wala medium size ] [ black pajama set piping wala m | 1×Navy + 1×Black pajama                  | parser ate the [/]; composite of 2
+  3000 | Off-white Duvet Cover Set - Bed in a bag                                   | Off-white Duvet Cover Set | Bed in a bag | exact 1.00
+  2400 | Bedsheet Bundle (a) - Maroon / Navy                                        | (no Navy in (a))                         | (a) family uniform 2400
+  2400 | Bedsheet Bundle (a) - Maroon / Offwhite                                    | Bedsheet Bundle (a) | Maroon / Offwhite  | exact 1.00
+  2400 | Bedsheet Bundle (a) - Offwhite / Black                                     | (no Black in (a))                        | (a) family uniform 2400
+  2400 | Bedsheet Bundle (a) - Offwhite / Maroon                                    | Bedsheet Bundle (a) | Offwhite / Maroon  | exact 1.00
+  2400 | Bedsheet Bundle (a) - Offwhite / Offwhite                                  | Bedsheet Bundle (a) | Offwhite / Offwhit | exact 1.00
+  1860 | 1 x BEIGE QUILTED BEDSPREAD SET(flower) - King ]                           | BEIGE QUILTED BEDSPREAD SET(flower) | Ki | parser artifact (missing leading [); same product
+  1860 | beige quilted bedspread set                                                | BEIGE QUILTED BEDSPREAD SET(flower) | Ki | lowercase variant; family 1860
+  1860 | BEIGE QUILTED BEDSPREAD SET - King                                         | BEIGE QUILTED BEDSPREAD SET(flower) | Ki | no plain beige; family uniform 1860
+  1860 | BEIGE QUILTED BEDSPREAD SET(check) - King                                  | BEIGE QUILTED BEDSPREAD SET(flower) | Ki | no check variant; family uniform 1860
+  1860 | BEIGE QUILTED BEDSPREAD SET(flower) - King                                 | BEIGE QUILTED BEDSPREAD SET(flower) | Ki | exact 1.00
+  1860 | BEIGE QUILTED BEDSPREAD SET(lines) - King                                  | BEIGE QUILTED BEDSPREAD SET(flower) | Ki | no beige(lines); family uniform 1860
+  1860 | black bedspread set                                                        | BLACK QUILTED BEDSPREAD SET(flower) | Ki | loose form; family 1860
+  1860 | black quilted bedspread set                                                | BLACK QUILTED BEDSPREAD SET(flower) | Ki | family 1860
+  1860 | BLACK QUILTED BEDSPREAD SET - King                                         | BLACK QUILTED BEDSPREAD SET(flower) | Ki | family uniform 1860
+  1860 | BLACK QUILTED BEDSPREAD SET(check) - King                                  | BLACK QUILTED BEDSPREAD SET(flower) | Ki | family uniform 1860
+  1860 | BLACK QUILTED BEDSPREAD SET(flower) - King                                 | BLACK QUILTED BEDSPREAD SET(flower) | Ki | exact 1.00
+  1860 | BLACK QUILTED BEDSPREAD SET(lines) - King                                  | BLACK QUILTED BEDSPREAD SET(flower) | Ki | family uniform 1860
+  1860 | gray quilted bedspread set                                                 | GREY QUILTED BEDSPREAD SET (flower) | Ki | spelling variant; family 1860
+  1860 | grey quilted bedspread set                                                 | GREY QUILTED BEDSPREAD SET (flower) | Ki | family 1860
+  1860 | GREY QUILTED BEDSPREAD SET - King                                          | GREY QUILTED BEDSPREAD SET (flower) | Ki | no plain grey; family uniform 1860
+  1860 | GREY QUILTED BEDSPREAD SET (check) - King                                  | GREY QUILTED BEDSPREAD SET (flower) | Ki | family uniform 1860
+  1860 | GREY QUILTED BEDSPREAD SET (flower) - King                                 | GREY QUILTED BEDSPREAD SET (flower) | Ki | exact 1.00
+  1860 | GREY QUILTED BEDSPREAD SET (lines) - King                                  | GREY QUILTED BEDSPREAD SET (flower) | Ki | family uniform 1860
+  1860 | MAROON 6 PCS SET                                                           | MAROON 6 PCS SET | Default Title         | exact (no qualifier = 1860 in catalog)
+  1860 | maroon bedspread set                                                       | MAROON QUILTED BEDSPREAD SET(flower) | K | loose form; family 1860
+  1860 | MAROON QUILTED BEDSPREAD SET - King                                        | MAROON QUILTED BEDSPREAD SET(flower) | K | family uniform 1860
+  1860 | MAROON QUILTED BEDSPREAD SET(check) - King                                 | MAROON QUILTED BEDSPREAD SET(flower) | K | family uniform 1860
+  1860 | MAROON QUILTED BEDSPREAD SET(flower) - King                                | MAROON QUILTED BEDSPREAD SET(flower) | K | exact 1.00
+  1860 | navy bedset                                                                | NAVY BEDSET 6 PCS SET | Default Title    | loose; 1860
+  1860 | NAVY BEDSET 6 PCS SET                                                      | NAVY BEDSET 6 PCS SET | Default Title    | exact (this row = 1860)
+  1860 | navy quilted bedspread set                                                 | NAVY QUILTED BEDSPREAD SET(flower) | Kin | family 1860
+  1860 | NAVY QUILTED BEDSPREAD SET - King                                          | NAVY QUILTED BEDSPREAD SET(flower) | Kin | family uniform 1860
+  1860 | NAVY QUILTED BEDSPREAD SET (flower)                                        | NAVY QUILTED BEDSPREAD SET(flower) | Kin | family uniform 1860
+  1860 | navy quilted bedspread set (lines)                                         | NAVY QUILTED BEDSPREAD SET(lines) | King | family 1860
+  1860 | NAVY QUILTED BEDSPREAD SET(check) - King                                   | NAVY QUILTED BEDSPREAD SET(flower) | Kin | family uniform 1860
+  1860 | NAVY QUILTED BEDSPREAD SET(flower) - King                                  | NAVY QUILTED BEDSPREAD SET(flower) | Kin | exact 1.00
+  1860 | NAVY QUILTED BEDSPREAD SET(lines) - King                                   | NAVY QUILTED BEDSPREAD SET(lines) | King | exact 1.00
+  1860 | off white bedspread  set (lines)                                           | OFF-WHITE QUILTED BEDSPREAD SET(lines) | | family 1860
+  1860 | off white quilted bedspread set                                            | OFF-WHITE QUILTED BEDSPREAD SET (flower) | family 1860
+  1860 | off white quilted bedspread set (diamond design)                           | OFF-WHITE QUILTED BEDSPREAD SET (flower) | no diamond variant; family 1860
+  1860 | off white quilted bedspread set (flower)                                   | OFF-WHITE QUILTED BEDSPREAD SET (flower) | family 1860
+  1860 | off white quilted bedspread set (lines)                                    | OFF-WHITE QUILTED BEDSPREAD SET(lines) | | family 1860
+  1860 | OFF-WHITE 6 PCS SET(lines)                                                 | OFF-WHITE 6 PCS SET(lines) | Default Tit | exact (lines variant = 1860)
+  1860 | OFF-WHITE QUILTED BEDSPREAD SET - King                                     | OFF-WHITE QUILTED BEDSPREAD SET (flower) | no plain off-white in catalog; family uniform 1860
+  1860 | OFF-WHITE QUILTED BEDSPREAD SET (check) - King                             | OFF-WHITE QUILTED BEDSPREAD SET (flower) | no check variant; family uniform 1860
+  1860 | OFF-WHITE QUILTED BEDSPREAD SET (flower) - King                            | OFF-WHITE QUILTED BEDSPREAD SET (flower) | exact 1.00
+  1860 | OFF-WHITE QUILTED BEDSPREAD SET(flower) - King                             | OFF-WHITE QUILTED BEDSPREAD SET (flower) | exact 1.00 (only spacing differs)
+  1860 | OFF-WHITE QUILTED BEDSPREAD SET(lines) - King                              | OFF-WHITE QUILTED BEDSPREAD SET(lines) | | exact 1.00
+  1860 | plum quilted bedspread set                                                 | PLUM QUILTED BEDSPREAD SET( flower) | Ki | family 1860
+  1860 | PLUM QUILTED BEDSPREAD SET - King                                          | PLUM QUILTED BEDSPREAD SET( flower) | Ki | no plain plum; family uniform 1860
+  1860 | PLUM QUILTED BEDSPREAD SET( flower) - King                                 | PLUM QUILTED BEDSPREAD SET( flower) | Ki | exact 1.00
+  1860 | RED QUILTED BEDSPREAD SET - King                                           | (no red in catalog)                      | family uniform 1860
+  1860 | teal quilted bedspread set                                                 | TEAL QUILTED BEDSPREAD SET(flower) | Kin | family 1860
+  1860 | TEAL QUILTED BEDSPREAD SET - King                                          | TEAL QUILTED BEDSPREAD SET(flower) | Kin | no plain teal; family uniform 1860
+  1860 | TEAL QUILTED BEDSPREAD SET(check) - King                                   | TEAL QUILTED BEDSPREAD SET(flower) | Kin | family uniform 1860
+  1860 | TEAL QUILTED BEDSPREAD SET(flower) - King                                  | TEAL QUILTED BEDSPREAD SET(flower) | Kin | exact 1.00
+  1860 | TEAL QUILTED BEDSPREAD SET(lines) - King                                   | TEAL QUILTED BEDSPREAD SET(lines) | King | exact 1.00
+  1800 | Beige Duvet Cover Set - Duvet cover set                                    | Beige Duvet Cover Set | Duvet cover set  | exact 1.00
+  1800 | grey duvet cover set                                                       | Grey Duvet Cover Set | Duvet cover set   | loose plain duvet = 1800
+  1800 | Grey Duvet Cover Set - Duvet cover set                                     | Grey Duvet Cover Set | Duvet cover set   | exact 1.00
+  1800 | Maroon Duver Cover Set - Bed in a bag                                      | Maroon Duver Cover Set | Bed in a bag    | exact 1.00
+  1800 | Maroon Duver Cover Set - Bed in bag                                        | Maroon Duver Cover Set | Bed in a bag    | loose; 1800
+  1800 | Maroon Duver Cover Set - Bed in bag (with filling)                         | Maroon Duver Cover Set | Bed in bag (wit | exact 1.00 (catalog typo 'Duver')
+  1800 | Maroon Duver Cover Set - Duvet cover set                                   | Maroon Duver Cover Set | Duvet cover set | exact 1.00
+  1800 | marron duvet cover set (bed in bag)                                        | Maroon Duver Cover Set | Bed in a bag    | spelling variant; 1800
+  1800 | Off-white Duvet Cover Set - Duvet cover set                                | Off-white Duvet Cover Set | Duvet cover  | exact 1.00
+  1500 | black pajama set                                                           | Black Pajama Set family                  | loose; family 1500
+  1500 | Black Pajama Set - Large to extra large                                    | Black Pajama Set | Large to extra large  | exact 1.00
+  1500 | Black Pajama Set - Medium to large                                         | (no medium-to-large)                     | family uniform 1500
+  1500 | Black Pajama Set - Small to Medium                                         | Black Pajama Set | Small to Medium       | exact 1.00
+  1500 | Light Pink Pajama Set - Large to extra large                               | Light Pink Pajama Set | Large to extra l | exact 1.00
+  1500 | navy blue pajama set s-m size                                              | Navy Pajama Set family                   | loose; family 1500
+  1500 | navy blue pj set s-m                                                       | Navy Pajama Set | Small to Medium        | loose abbrev; family 1500
+  1500 | navy pajama set                                                            | Navy Pajama Set family                   | loose; family 1500
+  1500 | Navy Pajama Set - Large to extra large                                     | Navy Pajama Set | Large to extra large   | exact 1.00
+  1500 | Navy Pajama Set - Medium to large                                          | (no medium-to-large)                     | family uniform 1500
+  1500 | Navy Pajama Set - Small to Medium                                          | Navy Pajama Set | Small to Medium        | exact 1.00
+  1500 | navy pajama set medium size                                                | Navy Pajama Set family                   | loose; family 1500
+  1500 | pink pajama set                                                            | Pink Pajama Set family                   | loose; family 1500
+  1500 | Pink Pajama Set - Large to extra large                                     | Pink Pajama Set | Large to extra large   | exact 1.00
+  1500 | Pink Pajama Set - Small to medium                                          | Pink Pajama Set | Small to medium        | exact 1.00
+  1500 | pink pajama set medium size                                                | Pink Pajama Set family                   | loose; family 1500
+  1500 | pink pj set s-m                                                            | Pink Pajama Set | Small to medium        | loose abbrev; family 1500
+  1500 | Premium Pajama Set -Cord set - Black / Medium to large                     | Black Pajama Set family                  | no Premium SKU; family 1500
+  1500 | Premium Pajama Set -Cord set - Black / Small to Medium                     | Black Pajama Set family                  | no Premium SKU; family 1500
+  1500 | SILK EMBROIDERED PILLOWS                                                   | SILK EMBROIDERED PILLOWS | Default Title | exact
+  1200 | BEIGE BED SET (white)                                                      | BEIGE BED SET (white) | Default Title    | exact
+  1200 | black bedsheet set                                                         | STRIPED BLACK BED SHEET SET | Default Ti | loose; 1200
+  1200 | bold black bedsheet                                                        | BOLD BLACK BEDSHEET SET | Default Title  | loose; 1200
+  1200 | bold black bedsheet set                                                    | BOLD BLACK BEDSHEET SET | Default Title  | lowercase; 1200
+  1200 | BOLD BLACK BEDSHEET SET                                                    | BOLD BLACK BEDSHEET SET | Default Title  | exact
+  1200 | EVERGREEN BEDSHEET SET                                                     | EVERGREEN BEDSHEET SET | Default Title   | exact
+  1200 | maroon bedsheet set                                                        | STRIPED MAROON SHEET SET | King          | loose; bedsheet 1200 (NOT bundle)
+  1200 | navy bedsheet set                                                          | STRIPED NAVY BED SHEET SET | King        | loose; bedsheet family 1200
+  1200 | navy blue bedsheet set                                                     | STRIPED NAVY BED SHEET SET | King        | loose; 1200
+  1200 | off white bedsheet set                                                     | STRIPED OFF-WHITE BED SHEET SET | King   | loose; 1200
+  1200 | PLUM 6 PCS SET                                                             | PLUM 6 PCS SET | Default Title           | exact (no qualifier = 1200 in catalog)
+  1200 | plum striped bedsheet set                                                  | (no plum striped in catalog)             | striped family uniform 1200
+  1200 | striped  green bedsheet set                                                | STRIPED GREEN BED SHEET SET | Default Ti | lowercase; 1200
+  1200 | STRIPED BEIGE BED SHEET SET                                                | STRIPED BEIGE BED SHEET SET | Default Ti | exact
+  1200 | striped beige bedsheet set                                                 | STRIPED BEIGE BED SHEET SET | Default Ti | lowercase; 1200
+  1200 | STRIPED BLACK BED SHEET SET                                                | STRIPED BLACK BED SHEET SET | Default Ti | exact
+  1200 | STRIPED GREEN BED SHEET SET                                                | STRIPED GREEN BED SHEET SET | Default Ti | exact
+  1200 | STRIPED GREY BED SHEET - King                                              | STRIPED GREY BED SHEET | King            | exact 1.00
+  1200 | STRIPED GREY BEDSHEET SET                                                  | STRIPED GREY BED SHEET | King            | spelling variant; 1200
+  1200 | STRIPED MAROON  SHEET SET - King                                           | STRIPED MAROON  SHEET SET | King         | exact 1.00
+  1200 | STRIPED NAVY BED SHEET SET - King                                          | STRIPED NAVY BED SHEET SET | King        | exact 1.00
+  1200 | STRIPED OFF-WHITE BED SHEET SET - King                                     | STRIPED OFF-WHITE BED SHEET SET | King   | exact 1.00
+  1200 | striped white bedsheet set                                                 | STRIPED WHITE SHEET SET | Default Title  | lowercase; 1200
+  1200 | STRIPED WHITE SHEET SET                                                    | STRIPED WHITE SHEET SET | Default Title  | exact
+  1000 | Pillow Filling                                                             | Pillow Filling | Default Title           | exact
+   850 | BEIGE 100% COTTON TOWEL                                                    | BEIGE 100% COTTON TOWEL | Default Title  | exact
+   850 | EMBROIDERED TOWEL SET                                                      | EMBROIDERED TOWEL SET | Default Title    | exact
+   850 | emnroidered towel set                                                      | EMBROIDERED TOWEL SET | Default Title    | typo; family 850
+   850 | GREY 100% COTTON TOWEL                                                     | GREY 100% COTTON TOWEL | Default Title   | exact
+   850 | mr and mrs embroiderey towel set                                           | EMBROIDERED TOWEL SET | Default Title    | Mr & Mrs branding of embroidered towel; 850
+   850 | mr and mrs towel set                                                       | EMBROIDERED TOWEL SET | Default Title    | same as above; 850
+   850 | OFF-WHITE  100% COTTON TOWEL                                               | OFF-WHITE  100% COTTON TOWEL | Default T | exact (double space)
+   850 | OFF-WHITE 100% COTTON TOWEL                                                | OFF-WHITE  100% COTTON TOWEL | Default T | single space variant; same product 850
+     0 | Maroon plush blanket - King                                                | (NOT IN CATALOG)                         | Plush blanket not in product_costs
+     0 | Mega Offer (beige)                                                         | (NOT IN CATALOG)                         | Mega Offer not present in product_costs at all
+     0 | Mega Offer (navy)                                                          | (NOT IN CATALOG)                         | Mega Offer not present in product_costs at all
+     0 | Mega Offer (off-white)                                                     | (NOT IN CATALOG)                         | Mega Offer not present in product_costs at all
+     0 | mega offer(black) mega offer (offwhite)                                    | (NOT IN CATALOG)                         | Mega Offer × 2; both absent from catalog
+     0 | NA                                                                         | (none)                                   | placeholder, not a product
+     0 | return                                                                     | (none)                                   | not a product

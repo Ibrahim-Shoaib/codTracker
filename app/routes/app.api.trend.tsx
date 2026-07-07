@@ -3,8 +3,8 @@ import { json } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import { getSupabaseForStore } from "../lib/supabase.server.js";
 import {
-  getTodayPKT,
-  formatPKTDate,
+  getToday,
+  formatDate,
   getPriorEqualLengthRange,
 } from "../lib/dates.server.js";
 import { effectiveStoreId } from "../lib/demo-pool.server.js";
@@ -26,13 +26,6 @@ import { maskDemoAdSpendForTrendPoint } from "../lib/demo-ad-spend.server.js";
 const ALLOWED_DAY_WINDOWS = new Set([7, 30, 90]);
 const MAX_RANGE_DAYS = 365 * 20; // 20 years — generous; payload is bucketed
 
-function ymd(d: Date) {
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
-}
-
 function isYmd(s: string | null): s is string {
   return !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
@@ -48,6 +41,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const shop = session.shop;
   const url = new URL(request.url);
 
+  const supabase = await getSupabaseForStore(shop);
+
+  // Demo stores read trend data from the shared pool. Fetch is_demo + the
+  // store's timezone (default-window "today" is computed in it) in one query.
+  const { data: storeRow } = await supabase
+    .from("stores")
+    .select("is_demo, meta_access_token, timezone")
+    .eq("store_id", shop)
+    .single();
+  const tz = storeRow?.timezone ?? "Asia/Karachi";
+
   let from: string;
   let to: string;
 
@@ -60,11 +64,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (!ALLOWED_DAY_WINDOWS.has(days)) {
       return json({ error: "invalid_days" }, { status: 400 });
     }
-    const today = getTodayPKT();
-    to = formatPKTDate(today.start);
+    const today = getToday(tz);
+    to = formatDate(today.start, tz);
     const start = new Date(today.start);
     start.setUTCDate(start.getUTCDate() - (days - 1));
-    from = ymd(start);
+    from = formatDate(start, tz);
   } else if (isYmd(fromParam) && isYmd(toParam)) {
     if (fromParam > toParam) {
       return json({ error: "from_after_to" }, { status: 400 });
@@ -88,15 +92,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const granularity = pickGranularity(lengthDays);
   const prior = getPriorEqualLengthRange(from, to);
 
-  const supabase = await getSupabaseForStore(shop);
-
-  // Demo stores read trend data from the shared pool. Fetch the is_demo
-  // flag with a single cheap query — same swap the dashboard loader does.
-  const { data: storeRow } = await supabase
-    .from("stores")
-    .select("is_demo, meta_access_token")
-    .eq("store_id", shop)
-    .single();
   const dataStoreId = effectiveStoreId(storeRow ?? null, shop);
 
   const args = {

@@ -59,41 +59,45 @@ function fmtDateLabel(from, to) {
   return `${fd} ${MONTHS_LONG[fm - 1]} ${fy} – ${td} ${MONTHS_LONG[tm - 1]} ${ty}`;
 }
 
-// ── Preset date ranges — computed in PKT (UTC+5) ─────────────────────────────
-// Every server-side period boundary is PKT; presets must match or a merchant
-// (or their VA) viewing from another timezone gets "Today" = the wrong
-// business day. Same fixed-offset trick as app/lib/dates.server.js — Pakistan
-// has no DST, so UTC+5 is always correct.
-const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
-
-function toDateStrUTC(d) {
-  return `${d.getUTCFullYear()}-${padTwo(d.getUTCMonth() + 1)}-${padTwo(d.getUTCDate())}`;
+// Today's calendar Y/M/D in the store's timezone (falls back to browser-local
+// when no timezone is supplied). Month is 0-indexed to match Date.getMonth().
+function nowPartsInTz(tz) {
+  const now = new Date();
+  if (!tz) return { y: now.getFullYear(), m: now.getMonth(), d: now.getDate() };
+  try {
+    const p = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+      }).formatToParts(now).map((x) => [x.type, x.value])
+    );
+    return { y: +p.year, m: +p.month - 1, d: +p.day };
+  } catch {
+    return { y: now.getFullYear(), m: now.getMonth(), d: now.getDate() };
+  }
 }
 
-function computePresets() {
-  // A Date whose UTC fields read as PKT local time.
-  const now = new Date(Date.now() + PKT_OFFSET_MS);
-  const today = toDateStrUTC(now);
-  const yest  = new Date(now); yest.setUTCDate(yest.getUTCDate() - 1);
+// ── Preset date ranges — computed in the store's local timezone so a merchant
+//    viewing from anywhere still sees that store's calendar days. ─────────────
+function computePresets(tz) {
+  const { y, m, d } = nowPartsInTz(tz);
+  const today = `${y}-${padTwo(m + 1)}-${padTwo(d)}`;
+  const yest  = new Date(y, m, d - 1); // local-midnight date; rolls over correctly
 
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth(); // 0-indexed
+  const firstDay = (yr, mo) => new Date(yr, mo, 1);
+  const lastDay  = (yr, mo) => new Date(yr, mo + 1, 0);
 
-  const firstDay = (yr, mo) => new Date(Date.UTC(yr, mo, 1));
-  const lastDay  = (yr, mo) => new Date(Date.UTC(yr, mo + 1, 0));
+  const lmFrom = toDateStr(firstDay(y, m - 1));
+  const lmTo   = toDateStr(lastDay(y, m - 1));
+  const m2From = toDateStr(firstDay(y, m - 2));
+  const m2To   = toDateStr(lastDay(y, m - 2));
+  const m3From = toDateStr(firstDay(y, m - 3));
+  const m3To   = toDateStr(lastDay(y, m - 3));
 
-  const lmFrom = toDateStrUTC(firstDay(y, m - 1));
-  const lmTo   = toDateStrUTC(lastDay(y, m - 1));
-  const m2From = toDateStrUTC(firstDay(y, m - 2));
-  const m2To   = toDateStrUTC(lastDay(y, m - 2));
-  const m3From = toDateStrUTC(firstDay(y, m - 3));
-  const m3To   = toDateStrUTC(lastDay(y, m - 3));
-
-  const mtdFrom = toDateStrUTC(firstDay(y, m));
+  const mtdFrom = toDateStr(firstDay(y, m));
 
   return [
     { label: "Today",           from: today,           to: today           },
-    { label: "Yesterday",       from: toDateStrUTC(yest), to: toDateStrUTC(yest) },
+    { label: "Yesterday",       from: toDateStr(yest), to: toDateStr(yest) },
     { label: "Last month",      from: lmFrom,          to: lmTo            },
     { label: "2 months ago",    from: m2From,          to: m2To            },
     { label: "3 months ago",    from: m3From,          to: m3To            },
@@ -194,6 +198,7 @@ export default function KPICard({
   unfulfilledPromise,
   onMore,
   currency = "PKR",
+  timezone,
   caps = { showPipelinePills: true, returnsLabel: "Returns", returnsUnit: "count" },
 }) {
   const fetcher = useFetcher();
@@ -227,7 +232,7 @@ export default function KPICard({
     ? fetcher.data?.expenseBreakdown ?? []
     : defaultExpenseBreakdown ?? [];
   const loading = fetcher.state === "loading";
-  const presets = computePresets();
+  const presets = computePresets(timezone);
 
   // Unfulfilled pill rendering rules:
   //   * Default range (no fetcher.data) → use the deferred Shopify promise

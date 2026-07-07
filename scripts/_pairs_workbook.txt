@@ -1,0 +1,2014 @@
+
+[102× qty=1] BEIGE QUILTED BEDSPREAD SET(flower) - King
+   1.00  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.83  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[74× qty=1] OFF-WHITE QUILTED BEDSPREAD SET(lines) - King
+   1.00  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.86  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.71  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+   0.71  cost= 1860  TEAL QUILTED BEDSPREAD SET(lines)  |  King
+   0.57  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.57  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+
+[64× qty=1] OFF-WHITE QUILTED BEDSPREAD SET - King
+   0.86  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.86  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[61× qty=1] EMBROIDERED TOWEL SET
+   0.60  cost=  850  EMBROIDERED TOWEL SET  |  Default Title
+   0.40  cost= 4000  Crystal Embroidered Set  |  Default Title
+   0.25  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+
+[57× qty=1] PLUM QUILTED BEDSPREAD SET - King
+   0.83  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[53× qty=1] GREY QUILTED BEDSPREAD SET (flower) - King
+   1.00  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.83  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[52× qty=1] GREY QUILTED BEDSPREAD SET - King
+   0.83  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[49× qty=1] STRIPED OFF-WHITE BED SHEET SET - King
+   1.00  cost= 1200  STRIPED OFF-WHITE BED SHEET SET  |  King
+   0.71  cost= 1200  STRIPED NAVY BED SHEET SET  |  King
+   0.57  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.57  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.57  cost= 1200  STRIPED BEIGE BED SHEET SET  |  Default Title
+   0.57  cost= 1200  STRIPED BLACK BED SHEET SET  |  Default Title
+
+[48× qty=1] BEIGE QUILTED BEDSPREAD SET - King
+   0.83  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[38× qty=1] TEAL QUILTED BEDSPREAD SET - King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(lines)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[36× qty=1] MAROON QUILTED BEDSPREAD SET(flower) - King
+   1.00  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.83  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+
+[35× qty=1] MAROON QUILTED BEDSPREAD SET - King
+   0.83  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+
+[31× qty=1] STRIPED BEIGE BED SHEET SET
+   0.71  cost= 1200  STRIPED BEIGE BED SHEET SET  |  Default Title
+   0.67  cost= 1200  STRIPED NAVY BED SHEET SET  |  King
+   0.60  cost= 1200  STRIPED GREY BED SHEET  |  King
+   0.60  cost= 1200  STRIPED MAROON  SHEET SET  |  King
+   0.57  cost= 1200  STRIPED OFF-WHITE BED SHEET SET  |  King
+   0.57  cost= 1200  STRIPED BLACK BED SHEET SET  |  Default Title
+
+[31× qty=1] BLACK QUILTED BEDSPREAD SET(flower) - King
+   1.00  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.83  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[30× qty=1] NAVY QUILTED BEDSPREAD SET - King
+   0.83  cost= 1860  NAVY QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[30× qty=1] PLUM QUILTED BEDSPREAD SET( flower) - King
+   1.00  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.83  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.83  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[29× qty=1] STRIPED GREY BED SHEET - King
+   1.00  cost= 1200  STRIPED GREY BED SHEET  |  King
+   0.67  cost= 1200  STRIPED NAVY BED SHEET SET  |  King
+   0.60  cost= 1200  STRIPED MAROON  SHEET SET  |  King
+   0.57  cost= 1200  STRIPED OFF-WHITE BED SHEET SET  |  King
+   0.43  cost= 1200  STRIPED BEIGE BED SHEET SET  |  Default Title
+   0.43  cost= 1200  STRIPED BLACK BED SHEET SET  |  Default Title
+
+[28× qty=1] TEAL QUILTED BEDSPREAD SET(flower) - King
+   1.00  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.83  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.83  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[27× qty=1] BLACK QUILTED BEDSPREAD SET - King
+   0.83  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[27× qty=1] OFF-WHITE QUILTED BEDSPREAD SET (flower) - King
+   1.00  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.86  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.71  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.71  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.71  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.71  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[26× qty=1] Crystal Embroidered Set
+   0.60  cost= 4000  Crystal Embroidered Set  |  Default Title
+   0.40  cost=  850  EMBROIDERED TOWEL SET  |  Default Title
+   0.25  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+
+[24× qty=1] OFF-WHITE 6 PCS SET
+   0.71  cost= 3060  OFF-WHITE 6 PCS SET (white)  |  Default Title
+   0.63  cost= 1860  OFF-WHITE 6 PCS SET(lines)  |  Default Title
+   0.63  cost= 3060  OFF-WHITE 6 PCS SET(flower)  |  Default Title
+   0.60  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.57  cost= 3060  GREY 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  BLACK 6 PCS SET (white)  |  Default Title
+
+[20× qty=1] OFF-WHITE QUILTED BEDSPREAD SET (check) - King
+   0.86  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.86  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.57  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.57  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.57  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.57  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[17× qty=1] MAROON 6 PCS SET
+   0.67  cost= 1860  MAROON 6 PCS SET  |  Default Title
+   0.57  cost= 3060  MAROON 6 PCS SET (white)  |  Default Title
+   0.50  cost= 3060  EVERGREEN 6 PCS SET  |  Default Title
+   0.50  cost= 1200  PLUM 6 PCS SET  |  Default Title
+   0.50  cost= 3060  GREY 6 PCS SET  |  Default Title
+   0.50  cost= 3060  BLACK 6 PCS SET  |  Default Title
+
+[16× qty=1] Beige Duvet Cover Set - Bed in a bag
+   1.00  cost= 3000  Beige Duvet Cover Set  |  Bed in a bag
+   0.88  cost= 3000  Grey Duvet Cover Set  |  Bed in a bag
+   0.88  cost= 3200  Black Duvet Cover Set  |  Bed in a bag
+   0.88  cost= 3200  Navy Duvet Cover Set  |  Bed in a bag
+   0.78  cost= 3000  Off-white Duvet Cover Set  |  Bed in a bag
+   0.78  cost= 7000  Beige Duvet Cover Set  |  Bed in bag (with filling)
+
+[16× qty=1] NAVY BEDSET 6 PCS SET
+   0.71  cost= 1860  NAVY BEDSET 6 PCS SET  |  Default Title
+   0.57  cost= 3060  NAVY 6 PCS SET (white)  |  Default Title
+   0.50  cost= 3060  EVERGREEN 6 PCS SET  |  Default Title
+   0.50  cost= 1860  MAROON 6 PCS SET  |  Default Title
+   0.50  cost= 1200  PLUM 6 PCS SET  |  Default Title
+   0.50  cost= 3060  GREY 6 PCS SET  |  Default Title
+
+[16× qty=1] NAVY QUILTED BEDSPREAD SET(flower) - King
+   1.00  cost= 1860  NAVY QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.83  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+
+[14× qty=1] Off-white Duvet Cover Set - Duvet cover set
+   1.00  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Maroon Duver Cover Set  |  Duvet cover set
+
+[13× qty=1] BOLD BLACK BEDSHEET SET
+   0.67  cost= 1200  BOLD BLACK BEDSHEET SET  |  Default Title
+   0.60  cost= 3600  Bedsheet Bundle (b)  |  Bold black / black / Black
+   0.50  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Offwhite / Offwhite
+   0.50  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Maroon / Maroon
+   0.50  cost= 3600  Bedsheet Bundle (b)  |  Bold black / black / Offwhite
+   0.50  cost= 3600  Bedsheet Bundle (b)  |  Bold black / black / Maroon
+
+[13× qty=1] Beige Duvet Cover Set - Duvet cover set
+   1.00  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Maroon Duver Cover Set  |  Duvet cover set
+
+[13× qty=1] OFF-WHITE QUILTED BEDSPREAD SET(flower) - King
+   1.00  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.86  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.71  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.71  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.71  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.71  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[12× qty=1] STRIPED BLACK BED SHEET SET
+   0.71  cost= 1200  STRIPED BLACK BED SHEET SET  |  Default Title
+   0.67  cost= 1200  STRIPED NAVY BED SHEET SET  |  King
+   0.60  cost= 1200  STRIPED GREY BED SHEET  |  King
+   0.60  cost= 1200  STRIPED MAROON  SHEET SET  |  King
+   0.57  cost= 1200  STRIPED OFF-WHITE BED SHEET SET  |  King
+   0.57  cost= 1200  STRIPED BEIGE BED SHEET SET  |  Default Title
+
+[11× qty=1] Black Duvet Cover Set - Duvet cover set
+   1.00  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Maroon Duver Cover Set  |  Duvet cover set
+
+[11× qty=1] GREY 6 PCS SET
+   0.67  cost= 3060  GREY 6 PCS SET  |  Default Title
+   0.57  cost= 3060  GREY 6 PCS SET (white)  |  Default Title
+   0.50  cost= 3060  EVERGREEN 6 PCS SET  |  Default Title
+   0.50  cost= 1860  MAROON 6 PCS SET  |  Default Title
+   0.50  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.50  cost= 1200  PLUM 6 PCS SET  |  Default Title
+
+[11× qty=1] STRIPED NAVY BED SHEET SET - King
+   1.00  cost= 1200  STRIPED NAVY BED SHEET SET  |  King
+   0.71  cost= 1200  STRIPED OFF-WHITE BED SHEET SET  |  King
+   0.67  cost= 1200  STRIPED GREY BED SHEET  |  King
+   0.67  cost= 1200  STRIPED MAROON  SHEET SET  |  King
+   0.57  cost= 1200  STRIPED BEIGE BED SHEET SET  |  Default Title
+   0.57  cost= 1200  STRIPED BLACK BED SHEET SET  |  Default Title
+
+[10× qty=1] Grey Duvet Cover Set - Duvet cover set
+   1.00  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Maroon Duver Cover Set  |  Duvet cover set
+
+[10× qty=1] Navy Duvet Cover Set - Duvet cover set
+   1.00  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Maroon Duver Cover Set  |  Duvet cover set
+
+[10× qty=1] EVERGREEN BEDSHEET SET
+   0.60  cost= 1200  EVERGREEN BEDSHEET SET  |  Default Title
+   0.33  cost= 3060  EVERGREEN 6 PCS SET  |  Default Title
+   0.33  cost= 1200  BOLD BLACK BEDSHEET SET  |  Default Title
+   0.25  cost= 2400  Bedsheet Bundle (a)  |  Offwhite / Offwhite
+   0.25  cost= 2400  Bedsheet Bundle (a)  |  Maroon / Maroon
+   0.25  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Offwhite / Offwhite
+
+[10× qty=1] Black Pajama Set - Small to Medium
+   1.00  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.83  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.83  cost= 1500  Pink Pajama Set  |  Small to medium
+   0.71  cost= 1500  Light Pink Pajama Set  |  Small to medium
+   0.67  cost= 1500  Black Pajama Set  |  Large to extra large
+   0.50  cost= 1500  Navy Pajama Set  |  Large to extra large
+
+[9× qty=1] Off-white Duvet Cover Set - Bed in a bag
+   1.00  cost= 3000  Off-white Duvet Cover Set  |  Bed in a bag
+   0.80  cost= 7000  Off-white Duvet Cover Set  |  Bed in bag (with filling)
+   0.78  cost= 3000  Beige Duvet Cover Set  |  Bed in a bag
+   0.78  cost= 3000  Grey Duvet Cover Set  |  Bed in a bag
+   0.78  cost= 3200  Black Duvet Cover Set  |  Bed in a bag
+   0.78  cost= 3200  Navy Duvet Cover Set  |  Bed in a bag
+
+[9× qty=1] STRIPED GREEN BED SHEET SET
+   0.71  cost= 1200  STRIPED GREEN BED SHEET SET  |  Default Title
+   0.67  cost= 1200  STRIPED NAVY BED SHEET SET  |  King
+   0.60  cost= 1200  STRIPED GREY BED SHEET  |  King
+   0.60  cost= 1200  STRIPED MAROON  SHEET SET  |  King
+   0.57  cost= 1200  STRIPED OFF-WHITE BED SHEET SET  |  King
+   0.57  cost= 1200  STRIPED BEIGE BED SHEET SET  |  Default Title
+
+[9× qty=1] BEIGE QUILTED BEDSPREAD SET(check) - King
+   0.83  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[9× qty=1] NAVY QUILTED BEDSPREAD SET(lines) - King
+   1.00  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+   0.83  cost= 1860  NAVY QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(lines)  |  King
+   0.71  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+
+[8× qty=1] BEIGE 100% COTTON TOWEL
+   0.67  cost=  850  BEIGE 100% COTTON TOWEL  |  Default Title
+   0.50  cost=  850  GREY 100% COTTON TOWEL  |  Default Title
+   0.43  cost=  850  OFF-WHITE  100% COTTON TOWEL  |  Default Title
+   0.25  cost= 3720  Bedspread Bundle (a)  |  Beige / Beige
+   0.25  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3600  Duvet Bundle (a)  |  Beige / Beige
+
+[8× qty=1] BLACK 6 PCS SET
+   0.67  cost= 3060  BLACK 6 PCS SET  |  Default Title
+   0.57  cost= 3060  BLACK 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  BOLD BLACK 6 PCS SET  |  Default Title
+   0.50  cost= 3060  EVERGREEN 6 PCS SET  |  Default Title
+   0.50  cost= 1860  MAROON 6 PCS SET  |  Default Title
+   0.50  cost= 1200  PLUM 6 PCS SET  |  Default Title
+
+[8× qty=1] Black Pajama Set - Large to extra large
+   1.00  cost= 1500  Black Pajama Set  |  Large to extra large
+   0.83  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.83  cost= 1500  Pink Pajama Set  |  Large to extra large
+   0.71  cost= 1500  Light Pink Pajama Set  |  Large to extra large
+   0.67  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.50  cost= 1500  Navy Pajama Set  |  Small to Medium
+
+[7× qty=1] OFF-WHITE 6 PCS SET (white)
+   0.71  cost= 3060  OFF-WHITE 6 PCS SET (white)  |  Default Title
+   0.63  cost= 1860  OFF-WHITE 6 PCS SET(lines)  |  Default Title
+   0.63  cost= 3060  OFF-WHITE 6 PCS SET(flower)  |  Default Title
+   0.60  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.57  cost= 3060  GREY 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  BLACK 6 PCS SET (white)  |  Default Title
+
+[7× qty=1] GREY 100% COTTON TOWEL
+   0.67  cost=  850  GREY 100% COTTON TOWEL  |  Default Title
+   0.50  cost=  850  BEIGE 100% COTTON TOWEL  |  Default Title
+   0.43  cost=  850  OFF-WHITE  100% COTTON TOWEL  |  Default Title
+   0.25  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3600  Duvet Bundle (a)  |  Grey / Grey
+   0.25  cost= 5400  Duvet Bundle (b)  |  Grey / Grey / Grey
+
+[7× qty=1] Bedspread Bundle (a) - Offwhite / Off white
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Maroon / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Black / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Beige / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Teal / Off white
+
+[7× qty=1] TEAL QUILTED BEDSPREAD SET(lines) - King
+   1.00  cost= 1860  TEAL QUILTED BEDSPREAD SET(lines)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+   0.71  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+
+[7× qty=1] Navy Pajama Set - Small to Medium
+   1.00  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.83  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.83  cost= 1500  Pink Pajama Set  |  Small to medium
+   0.71  cost= 1500  Light Pink Pajama Set  |  Small to medium
+   0.67  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.50  cost= 1500  Black Pajama Set  |  Large to extra large
+
+[6× qty=2] BEIGE QUILTED BEDSPREAD SET - King
+   0.83  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[6× qty=1] Bedspread Bundle (a) - Offwhite / Beige
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Navy
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Black
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Teal
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Red
+
+[6× qty=1] BEIGE QUILTED BEDSPREAD SET(lines) - King
+   0.83  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(lines)  |  King
+   0.71  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+
+[6× qty=2] OFF-WHITE QUILTED BEDSPREAD SET(lines) - King
+   1.00  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.86  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.71  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+   0.71  cost= 1860  TEAL QUILTED BEDSPREAD SET(lines)  |  King
+   0.57  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.57  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+
+[5× qty=2] STRIPED OFF-WHITE BED SHEET SET - King
+   1.00  cost= 1200  STRIPED OFF-WHITE BED SHEET SET  |  King
+   0.71  cost= 1200  STRIPED NAVY BED SHEET SET  |  King
+   0.57  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.57  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.57  cost= 1200  STRIPED BEIGE BED SHEET SET  |  Default Title
+   0.57  cost= 1200  STRIPED BLACK BED SHEET SET  |  Default Title
+
+[5× qty=1] crystal embroidered set
+   0.60  cost= 4000  Crystal Embroidered Set  |  Default Title
+   0.40  cost=  850  EMBROIDERED TOWEL SET  |  Default Title
+   0.25  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+
+[5× qty=1] Black Duvet Cover Set - Bed in a bag
+   1.00  cost= 3200  Black Duvet Cover Set  |  Bed in a bag
+   0.88  cost= 3000  Beige Duvet Cover Set  |  Bed in a bag
+   0.88  cost= 3000  Grey Duvet Cover Set  |  Bed in a bag
+   0.88  cost= 3200  Navy Duvet Cover Set  |  Bed in a bag
+   0.78  cost= 3000  Off-white Duvet Cover Set  |  Bed in a bag
+   0.78  cost= 3200  Black Duvet Cover Set  |  Bed in bag (with filling)
+
+[5× qty=1] OFF-WHITE  100% COTTON TOWEL
+   0.71  cost=  850  OFF-WHITE  100% COTTON TOWEL  |  Default Title
+   0.50  cost=  850  BEIGE 100% COTTON TOWEL  |  Default Title
+   0.50  cost=  850  GREY 100% COTTON TOWEL  |  Default Title
+   0.40  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+
+[5× qty=1] STRIPED MAROON  SHEET SET - King
+   1.00  cost= 1200  STRIPED MAROON  SHEET SET  |  King
+   0.67  cost= 1200  STRIPED NAVY BED SHEET SET  |  King
+   0.60  cost= 1200  STRIPED GREY BED SHEET  |  King
+   0.57  cost= 1200  STRIPED OFF-WHITE BED SHEET SET  |  King
+   0.50  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1200  STRIPED WHITE SHEET SET  |  Default Title
+
+[5× qty=1] NA
+   (no candidates)
+
+[5× qty=1] Black Pajama Set - Medium to large
+   0.83  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.83  cost= 1500  Black Pajama Set  |  Large to extra large
+   0.67  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.67  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.67  cost= 1500  Pink Pajama Set  |  Small to medium
+   0.67  cost= 1500  Pink Pajama Set  |  Large to extra large
+
+[5× qty=1] Navy Pajama Set - Large to extra large
+   1.00  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.83  cost= 1500  Black Pajama Set  |  Large to extra large
+   0.83  cost= 1500  Pink Pajama Set  |  Large to extra large
+   0.71  cost= 1500  Light Pink Pajama Set  |  Large to extra large
+   0.67  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.50  cost= 1500  Black Pajama Set  |  Small to Medium
+
+[4× qty=1] GREY 6 PCS SET (white)
+   0.71  cost= 3060  GREY 6 PCS SET (white)  |  Default Title
+   0.67  cost= 3060  GREY 6 PCS SET  |  Default Title
+   0.57  cost= 3060  BLACK 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  OFF-WHITE 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  GREY STRIPED 6 PCS(white)  |  Default Title
+   0.57  cost= 3060  MAROON 6 PCS SET (white)  |  Default Title
+
+[4× qty=1] Mega Offer (off-white)
+   0.40  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Maroon / Off white
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Black / Off white
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Beige / Off white
+
+[4× qty=1] STRIPED GREY BEDSHEET SET
+   0.50  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.40  cost= 1200  EVERGREEN BEDSHEET SET  |  Default Title
+   0.40  cost= 1200  STRIPED GREY BED SHEET  |  King
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Grey / Offwhite / Offwhite
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Grey / Maroon / Maroon
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Grey / Offwhite
+
+[4× qty=1] Navy Duvet Cover Set - Bed in a bag
+   1.00  cost= 3200  Navy Duvet Cover Set  |  Bed in a bag
+   0.88  cost= 3000  Beige Duvet Cover Set  |  Bed in a bag
+   0.88  cost= 3000  Grey Duvet Cover Set  |  Bed in a bag
+   0.88  cost= 3200  Black Duvet Cover Set  |  Bed in a bag
+   0.78  cost= 3000  Off-white Duvet Cover Set  |  Bed in a bag
+   0.78  cost= 3200  Navy Duvet Cover Set  |  Bed in bag (with filling)
+
+[4× qty=1] Mattress Topper
+   0.50  cost= 3200  Mattress Topper  |  Default Title
+
+[4× qty=1] Off-White Bundle (b)
+   0.67  cost= 4000  Off-White Bundle (b)  |  Default Title
+   0.67  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Off white / Offwhite
+   0.67  cost= 5580  Bedspread Bundle (b)  |  Navy / Off white / Navy
+   0.57  cost= 5580  Bedspread Bundle (b)  |  Navy / Off white / Offwhite
+   0.57  cost= 5580  Bedspread Bundle (b)  |  Maroon / Off white / Offwhite
+   0.57  cost= 5580  Bedspread Bundle (b)  |  Black / Off white / Offwhite
+
+[4× qty=1] EVERGREEN 6 PCS SET
+   0.67  cost= 3060  EVERGREEN 6 PCS SET  |  Default Title
+   0.50  cost= 1860  MAROON 6 PCS SET  |  Default Title
+   0.50  cost= 1200  PLUM 6 PCS SET  |  Default Title
+   0.50  cost= 3060  GREY 6 PCS SET  |  Default Title
+   0.50  cost= 3060  BLACK 6 PCS SET  |  Default Title
+   0.43  cost= 1860  NAVY BEDSET 6 PCS SET  |  Default Title
+
+[4× qty=2] beige quilted bedspread set
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.50  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.50  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 3720  Bedspread Bundle (a)  |  Beige / Beige
+
+[3× qty=1] PLUM 6 PCS SET (white)
+   0.71  cost= 3060  PLUM 6 PCS SET (white)  |  Default Title
+   0.67  cost= 1200  PLUM 6 PCS SET  |  Default Title
+   0.57  cost= 3060  GREY 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  BLACK 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  OFF-WHITE 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  MAROON 6 PCS SET (white)  |  Default Title
+
+[3× qty=2] OFF-WHITE QUILTED BEDSPREAD SET - King
+   0.86  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.86  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[3× qty=2] STRIPED BEIGE BED SHEET SET
+   0.71  cost= 1200  STRIPED BEIGE BED SHEET SET  |  Default Title
+   0.67  cost= 1200  STRIPED NAVY BED SHEET SET  |  King
+   0.60  cost= 1200  STRIPED GREY BED SHEET  |  King
+   0.60  cost= 1200  STRIPED MAROON  SHEET SET  |  King
+   0.57  cost= 1200  STRIPED OFF-WHITE BED SHEET SET  |  King
+   0.57  cost= 1200  STRIPED BLACK BED SHEET SET  |  Default Title
+
+[3× qty=1] beige quilted bedspread set
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.50  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.50  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 3720  Bedspread Bundle (a)  |  Beige / Beige
+
+[3× qty=1] striped beige bedsheet set
+   0.50  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.43  cost= 1200  STRIPED BEIGE BED SHEET SET  |  Default Title
+   0.40  cost= 1200  EVERGREEN BEDSHEET SET  |  Default Title
+   0.40  cost= 1200  STRIPED MAROON  SHEET SET  |  King
+   0.33  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.33  cost= 1200  STRIPED NAVY BED SHEET SET  |  King
+
+[3× qty=1] Bedspread Bundle (a) - Maroon / Beige
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Maroon / Beige
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Beige / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Beige
+
+[3× qty=1] Beige Bundle (b)
+   0.60  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Beige / Offwhite
+   0.60  cost= 5580  Bedspread Bundle (b)  |  Beige / Beige / Offwhite
+   0.60  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Beige / Beige
+   0.60  cost= 4860  Beige Bundle (b)  |  Default Title
+   0.50  cost= 3720  Bedspread Bundle (a)  |  Beige / Beige
+   0.50  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Offwhite / Offwhite
+
+[3× qty=1] Bedspread Bundle (a) - Beige / Teal
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Beige / Teal
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Teal / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Teal
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Teal
+
+[3× qty=1] Bedspread Bundle (a) - Beige / Navy
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Navy / Beige
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Beige / Navy
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Navy
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Navy
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Maroon
+
+[3× qty=1] Bedsheet Bundle (a) - Offwhite / Offwhite
+   1.00  cost= 2400  Bedsheet Bundle (a)  |  Offwhite / Offwhite
+   0.80  cost= 2400  Bedsheet Bundle (a)  |  Maroon / Offwhite
+   0.80  cost= 2400  Bedsheet Bundle (a)  |  Offwhite / Maroon
+   0.75  cost= 2400  Bedsheet Bundle (a)  |  Maroon / Maroon
+   0.75  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Offwhite / Offwhite
+   0.75  cost= 3600  Duvet Bundle (a)  |  Offwhite / Offwhite
+
+[3× qty=1] Bedspread Bundle (a) - Beige / Maroon
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Maroon / Beige
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Beige / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Beige
+
+[3× qty=2] black bedspread set
+   0.50  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 3720  Bedspread Bundle (a)  |  Black / Black
+   0.50  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.40  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Black
+   0.40  cost= 3720  Bedspread Bundle (a)  |  Navy / Black
+   0.40  cost= 3720  Bedspread Bundle (a)  |  Maroon / Black
+
+[3× qty=2] grey quilted bedspread set
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.50  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.50  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[2× qty=1] STRIPED WHITE SHEET SET
+   0.67  cost= 1200  STRIPED WHITE SHEET SET  |  Default Title
+   0.60  cost= 1200  STRIPED MAROON  SHEET SET  |  King
+   0.57  cost= 1200  STRIPED OFF-WHITE BED SHEET SET  |  King
+   0.50  cost= 1200  STRIPED NAVY BED SHEET SET  |  King
+   0.43  cost= 1200  STRIPED BEIGE BED SHEET SET  |  Default Title
+   0.43  cost= 1200  STRIPED BLACK BED SHEET SET  |  Default Title
+
+[2× qty=1] Bedspread Bundle - Plum / Teal
+   0.75  cost= 3720  Bedspread Bundle (a)  |  Teal / Teal
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Teal
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Navy / Teal
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Maroon / Teal
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Black / Teal
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Beige / Teal
+
+[2× qty=1] TEAL 6 PCS SET (white)
+   0.71  cost= 3060  TEAL 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  GREY 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  BLACK 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  OFF-WHITE 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  MAROON 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  NAVY 6 PCS SET (white)  |  Default Title
+
+[2× qty=1] Maroon Duver Cover Set - Bed in bag (with filling)
+   1.00  cost= 1800  Maroon Duver Cover Set  |  Bed in bag (with filling)
+   0.78  cost= 7000  Beige Duvet Cover Set  |  Bed in bag (with filling)
+   0.78  cost= 7000  Grey Duvet Cover Set  |  Bed in bag (with filling)
+   0.78  cost= 3200  Black Duvet Cover Set  |  Bed in bag (with filling)
+   0.78  cost= 3200  Navy Duvet Cover Set  |  Bed in bag (with filling)
+   0.78  cost= 1800  Maroon Duver Cover Set  |  Bed in a bag
+
+[2× qty=2] PLUM QUILTED BEDSPREAD SET - King
+   0.83  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[2× qty=1] MAROON 6 PCS SET (white)
+   0.71  cost= 3060  MAROON 6 PCS SET (white)  |  Default Title
+   0.67  cost= 1860  MAROON 6 PCS SET  |  Default Title
+   0.57  cost= 3060  GREY 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  BLACK 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  OFF-WHITE 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  MAROON STRIPED 6 PCS(white)  |  Default Title
+
+[2× qty=2] Mega Offer (navy)
+   0.25  cost= 3720  Bedspread Bundle (a)  |  Navy / Navy
+   0.25  cost= 5580  Bedspread Bundle (b)  |  Navy / Navy / Navy
+   0.25  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3600  Duvet Bundle (a)  |  Navy / Navy
+   0.25  cost= 5400  Duvet Bundle (b)  |  Navy / Navy / Navy
+   0.25  cost= 1800  Offer 3  |  Default Title
+
+[2× qty=1] striped white bedsheet set
+   0.50  cost= 1200  STRIPED WHITE SHEET SET  |  Default Title
+   0.43  cost= 1200  STRIPED OFF-WHITE BED SHEET SET  |  King
+   0.40  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.40  cost= 1200  EVERGREEN BEDSHEET SET  |  Default Title
+   0.40  cost= 1200  STRIPED MAROON  SHEET SET  |  King
+   0.33  cost= 1200  STRIPED NAVY BED SHEET SET  |  King
+
+[2× qty=1] maroon bedsheet set
+   0.50  cost= 2400  Bedsheet Bundle (a)  |  Maroon / Maroon
+   0.50  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Maroon / Maroon
+   0.40  cost= 2400  Bedsheet Bundle (a)  |  Maroon / Offwhite
+   0.40  cost= 2400  Bedsheet Bundle (a)  |  Offwhite / Maroon
+   0.40  cost= 1200  EVERGREEN BEDSHEET SET  |  Default Title
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Offwhite / Offwhite
+
+[2× qty=2] STRIPED GREY BED SHEET - King
+   1.00  cost= 1200  STRIPED GREY BED SHEET  |  King
+   0.67  cost= 1200  STRIPED NAVY BED SHEET SET  |  King
+   0.60  cost= 1200  STRIPED MAROON  SHEET SET  |  King
+   0.57  cost= 1200  STRIPED OFF-WHITE BED SHEET SET  |  King
+   0.43  cost= 1200  STRIPED BEIGE BED SHEET SET  |  Default Title
+   0.43  cost= 1200  STRIPED BLACK BED SHEET SET  |  Default Title
+
+[2× qty=1] BEIGE BED SET (white)
+   0.67  cost= 1200  BEIGE BED SET (white)  |  Default Title
+   0.50  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.43  cost= 1200  STRIPED OFF-WHITE BED SHEET SET  |  King
+   0.43  cost= 1200  STRIPED BEIGE BED SHEET SET  |  Default Title
+   0.40  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.40  cost= 3060  PURPLE BED SET  |  Default Title
+
+[2× qty=1] Bedspread Bundle (a) - Maroon / Navy
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Navy / Maroon
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Maroon / Navy
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Navy
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Navy
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Black
+
+[2× qty=1] navy quilted bedspread set
+   0.67  cost= 1860  NAVY QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+   0.50  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.50  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[2× qty=1] Bedsheet Bundle (b) - Offwhite / Grey / Beige
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Grey / Offwhite / Offwhite
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Grey / Offwhite / Maroon
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Grey / Maroon / Offwhite
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Grey / black / Offwhite
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Grey / Green / Offwhite
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Grey / Offwhite
+
+[2× qty=1] black quilted bedspread set
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.50  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.50  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 3720  Bedspread Bundle (a)  |  Black / Black
+
+[2× qty=1] Bedspread Bundle (a) - Black / Teal
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Black / Teal
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Teal / Black
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Black
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Teal
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Black
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Teal
+
+[2× qty=1] Duvet Bundle (b) - Beige / Maroon / Black
+   0.83  cost= 5400  Duvet Bundle (b)  |  Black / Maroon / Navy
+   0.83  cost= 5400  Duvet Bundle (b)  |  Maroon / Black / Navy
+   0.83  cost= 5400  Duvet Bundle (b)  |  Offwhite / Maroon / Black
+   0.83  cost= 5400  Duvet Bundle (b)  |  Offwhite / Black / Maroon
+   0.83  cost= 5400  Duvet Bundle (b)  |  Navy / Maroon / Black
+   0.83  cost= 5400  Duvet Bundle (b)  |  Navy / Black / Maroon
+
+[2× qty=1] Bedsheet Bundle (b) - Navy / Beige / Maroon
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Offwhite / Offwhite
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Maroon / Offwhite
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Maroon / Offwhite
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Offwhite / Maroon
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Maroon / Maroon
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Maroon / Maroon
+
+[2× qty=1] black duvet cover set
+   1.00  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Maroon Duver Cover Set  |  Duvet cover set
+
+[2× qty=1] plum quilted bedspread set
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.50  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.50  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[2× qty=1] Maroon Bundle (b)
+   0.75  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Maroon / Maroon
+   0.75  cost= 5400  Duvet Bundle (b)  |  Maroon / Maroon / Maroon
+   0.60  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Offwhite / Offwhite
+   0.60  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Maroon / Offwhite
+   0.60  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Maroon / Offwhite
+   0.60  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Offwhite / Maroon
+
+[2× qty=2] Pillow Filling
+   0.50  cost= 1000  Pillow Filling  |  Default Title
+   0.25  cost= 5000  Duvet Filling  |  Default Title
+   0.11  cost= 7000  Beige Duvet Cover Set  |  Bed in bag (with filling)
+   0.11  cost= 7000  Grey Duvet Cover Set  |  Bed in bag (with filling)
+   0.11  cost= 3200  Black Duvet Cover Set  |  Bed in bag (with filling)
+   0.11  cost= 3200  Navy Duvet Cover Set  |  Bed in bag (with filling)
+
+[2× qty=1] BLACK QUILTED BEDSPREAD SET(check) - King
+   0.83  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[2× qty=1] Maroon Duver Cover Set - Duvet cover set
+   1.00  cost= 1800  Maroon Duver Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+
+[2× qty=1] Premium Pajama Set -Cord set - Black / Small to Medium
+   0.75  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.63  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.63  cost= 1500  Pink Pajama Set  |  Small to medium
+   0.63  cost= 1500  Light Pink Pajama Set  |  Small to medium
+   0.50  cost= 1500  Black Pajama Set  |  Large to extra large
+   0.38  cost= 1500  Navy Pajama Set  |  Large to extra large
+
+[2× qty=2] BEIGE QUILTED BEDSPREAD SET(flower) - King
+   1.00  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.83  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[2× qty=1] RED QUILTED BEDSPREAD SET - King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[2× qty=2] GREY QUILTED BEDSPREAD SET (flower) - King
+   1.00  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.83  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[2× qty=1] Bedspread Bundle (a) - Teal / Black
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Black / Teal
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Teal / Black
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Black
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Teal
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Black
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Teal
+
+[2× qty=1] off white quilted bedspread set (lines)
+   0.86  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.71  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(lines)  |  King
+   0.50  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+
+[2× qty=1] OFF-WHITE 6 PCS SET(lines)
+   0.75  cost= 1860  OFF-WHITE 6 PCS SET(lines)  |  Default Title
+   0.71  cost= 3060  OFF-WHITE 6 PCS SET (white)  |  Default Title
+   0.63  cost= 3060  OFF-WHITE 6 PCS SET(flower)  |  Default Title
+   0.57  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.57  cost= 3060  GREY 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  BLACK 6 PCS SET (white)  |  Default Title
+
+[1× qty=2] Off-white Duvet Cover Set - Bed in a bag
+   1.00  cost= 3000  Off-white Duvet Cover Set  |  Bed in a bag
+   0.80  cost= 7000  Off-white Duvet Cover Set  |  Bed in bag (with filling)
+   0.78  cost= 3000  Beige Duvet Cover Set  |  Bed in a bag
+   0.78  cost= 3000  Grey Duvet Cover Set  |  Bed in a bag
+   0.78  cost= 3200  Black Duvet Cover Set  |  Bed in a bag
+   0.78  cost= 3200  Navy Duvet Cover Set  |  Bed in a bag
+
+[1× qty=1] Beige Duvet Cover Set - Bed in bag (with filling)
+   1.00  cost= 7000  Beige Duvet Cover Set  |  Bed in bag (with filling)
+   0.89  cost= 7000  Grey Duvet Cover Set  |  Bed in bag (with filling)
+   0.89  cost= 3200  Black Duvet Cover Set  |  Bed in bag (with filling)
+   0.89  cost= 3200  Navy Duvet Cover Set  |  Bed in bag (with filling)
+   0.80  cost= 7000  Off-white Duvet Cover Set  |  Bed in bag (with filling)
+   0.78  cost= 3000  Beige Duvet Cover Set  |  Bed in a bag
+
+[1× qty=1] (Embroidered set Grey bedset with duvet Mr mrs towel)
+   0.44  cost= 7000  Grey Duvet Cover Set  |  Bed in bag (with filling)
+   0.33  cost= 7000  Beige Duvet Cover Set  |  Bed in bag (with filling)
+   0.33  cost=  850  EMBROIDERED TOWEL SET  |  Default Title
+   0.33  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.33  cost= 3000  Grey Duvet Cover Set  |  Bed in a bag
+   0.33  cost= 3200  Black Duvet Cover Set  |  Bed in bag (with filling)
+
+[1× qty=1] black and navy pajama set
+   0.50  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.50  cost= 1500  Black Pajama Set  |  Large to extra large
+   0.50  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.50  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.40  cost= 3720  Bedspread Bundle (a)  |  Navy / Black
+   0.40  cost= 3720  Bedspread Bundle (a)  |  Black / Navy
+
+[1× qty=1] beige duvet cover set (bed in bag)
+   0.88  cost= 3000  Beige Duvet Cover Set  |  Bed in a bag
+   0.78  cost= 7000  Beige Duvet Cover Set  |  Bed in bag (with filling)
+   0.75  cost= 3000  Grey Duvet Cover Set  |  Bed in a bag
+   0.75  cost= 3200  Black Duvet Cover Set  |  Bed in a bag
+   0.75  cost= 3200  Navy Duvet Cover Set  |  Bed in a bag
+   0.67  cost= 3000  Off-white Duvet Cover Set  |  Bed in a bag
+
+[1× qty=1] Mega Offer (beige)
+   0.25  cost= 3720  Bedspread Bundle (a)  |  Beige / Beige
+   0.25  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3600  Duvet Bundle (a)  |  Beige / Beige
+   0.25  cost= 1800  Offer 3  |  Default Title
+   0.20  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Beige
+   0.20  cost= 3720  Bedspread Bundle (a)  |  Navy / Beige
+
+[1× qty=1] Bedspread Bundle - Plum / Maroon
+   0.75  cost= 3720  Bedspread Bundle (a)  |  Maroon / Maroon
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Navy / Maroon
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Maroon / Navy
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Maroon / Black
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Maroon / Beige
+
+[1× qty=1] Bedspread Bundle - Beige / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Beige / Off white
+   0.71  cost= 5580  Bedspread Bundle (b)  |  Beige / Off white / Offwhite
+   0.71  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Off white / Beige
+   0.71  cost= 5580  Bedspread Bundle (b)  |  Navy / Off white / Beige
+   0.67  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.67  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+
+[1× qty=1] Bedspread Bundle - Beige / Teal
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Beige / Teal
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Teal / Beige
+   0.75  cost= 3720  Bedspread Bundle (a)  |  Beige / Beige
+   0.75  cost= 3720  Bedspread Bundle (a)  |  Teal / Teal
+   0.67  cost= 5580  Bedspread Bundle (b)  |  Beige / Teal / Offwhite
+   0.67  cost= 5580  Bedspread Bundle (b)  |  Teal / Beige / Offwhite
+
+[1× qty=1] Bedspread Bundle - Maroon / Plum
+   0.75  cost= 3720  Bedspread Bundle (a)  |  Maroon / Maroon
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Navy / Maroon
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Maroon / Navy
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Maroon / Black
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Maroon / Beige
+
+[1× qty=1] Bedspread Bundle - Black / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Black / Off white
+   0.71  cost= 5580  Bedspread Bundle (b)  |  Black / Off white / Offwhite
+   0.71  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Off white / Black
+   0.71  cost= 5580  Bedspread Bundle (b)  |  Navy / Off white / Black
+   0.67  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.67  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+
+[1× qty=1] navy bedsheet set
+   0.50  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.40  cost= 1200  EVERGREEN BEDSHEET SET  |  Default Title
+   0.33  cost= 1860  NAVY QUILTED BEDSPREAD SET(flower)  |  King
+   0.33  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.33  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.33  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+
+[1× qty=1] bold black bedsheet set
+   0.67  cost= 1200  BOLD BLACK BEDSHEET SET  |  Default Title
+   0.60  cost= 3600  Bedsheet Bundle (b)  |  Bold black / black / Black
+   0.50  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Offwhite / Offwhite
+   0.50  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Maroon / Maroon
+   0.50  cost= 3600  Bedsheet Bundle (b)  |  Bold black / black / Offwhite
+   0.50  cost= 3600  Bedsheet Bundle (b)  |  Bold black / black / Maroon
+
+[1× qty=1] teal quilted bedspread set
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(lines)  |  King
+   0.50  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.50  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[1× qty=1] off white quilted bedspread set
+   0.71  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.71  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.60  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.50  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.50  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+
+[1× qty=1] teal 6 PCS set (white)
+   0.71  cost= 3060  TEAL 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  GREY 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  BLACK 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  OFF-WHITE 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  MAROON 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  NAVY 6 PCS SET (white)  |  Default Title
+
+[1× qty=1] navy bedset
+   0.29  cost= 1860  NAVY BEDSET 6 PCS SET  |  Default Title
+   0.25  cost= 3720  Bedspread Bundle (a)  |  Navy / Navy
+   0.25  cost= 5580  Bedspread Bundle (b)  |  Navy / Navy / Navy
+   0.25  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3600  Duvet Bundle (a)  |  Navy / Navy
+   0.25  cost= 5400  Duvet Bundle (b)  |  Navy / Navy / Navy
+
+[1× qty=1] OFF WHITE BEDSET
+   0.40  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Maroon / Off white
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Black / Off white
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Beige / Off white
+
+[1× qty=1] Bedspread Bundle - Offwhite / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Beige
+   0.80  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Beige / Offwhite
+   0.80  cost= 5580  Bedspread Bundle (b)  |  Beige / Beige / Offwhite
+   0.80  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Beige / Beige
+   0.75  cost= 3720  Bedspread Bundle (a)  |  Beige / Beige
+   0.67  cost= 5580  Bedspread Bundle (b)  |  Navy / Beige / Offwhite
+
+[1× qty=1] Bedspread Bundle - Offwhite / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.83  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Off white / Offwhite
+   0.71  cost= 5580  Bedspread Bundle (b)  |  Navy / Off white / Offwhite
+   0.71  cost= 5580  Bedspread Bundle (b)  |  Maroon / Off white / Offwhite
+   0.71  cost= 5580  Bedspread Bundle (b)  |  Black / Off white / Offwhite
+   0.71  cost= 5580  Bedspread Bundle (b)  |  Beige / Off white / Offwhite
+
+[1× qty=1] Maroon plush blanket - King
+   0.40  cost= 1200  STRIPED MAROON  SHEET SET  |  King
+   0.33  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+   0.25  cost= 3720  Bedspread Bundle (a)  |  Maroon / Maroon
+   0.25  cost= 2400  Bedsheet Bundle (a)  |  Maroon / Maroon
+   0.25  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Maroon / Maroon
+   0.25  cost= 3600  Duvet Bundle (a)  |  Maroon / Maroon
+
+[1× qty=1] Bedspread Bundle - Beige / Navy
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Beige / Navy
+   0.75  cost= 3720  Bedspread Bundle (a)  |  Navy / Navy
+   0.75  cost= 3720  Bedspread Bundle (a)  |  Beige / Beige
+   0.75  cost= 5580  Bedspread Bundle (b)  |  Navy / Navy / Navy
+   0.67  cost= 5580  Bedspread Bundle (b)  |  Navy / Beige / Offwhite
+
+[1× qty=1] Maroon Duver Cover Set - Bed in a bag
+   1.00  cost= 1800  Maroon Duver Cover Set  |  Bed in a bag
+   0.78  cost= 1800  Maroon Duver Cover Set  |  Bed in bag (with filling)
+   0.75  cost= 3000  Beige Duvet Cover Set  |  Bed in a bag
+   0.75  cost= 3000  Grey Duvet Cover Set  |  Bed in a bag
+   0.75  cost= 3200  Black Duvet Cover Set  |  Bed in a bag
+   0.75  cost= 3200  Navy Duvet Cover Set  |  Bed in a bag
+
+[1× qty=1] - Offwhite bedspread and duvet set Maroon bedspread with bedsheet White bedsheet )
+   0.44  cost= 5580  Bedspread Bundle (b)  |  Maroon / Off white / Offwhite
+   0.44  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Off white / Maroon
+   0.40  cost= 7000  Off-white Duvet Cover Set  |  Bed in bag (with filling)
+   0.33  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.33  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+
+[1× qty=1] mega offer(black) mega offer (offwhite)
+   0.40  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Black
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / black / Offwhite
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Black / Offwhite / Offwhite
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Black / black / Offwhite
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Offwhite / Black
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / black / Black
+
+[1× qty=1] Bedspread Bundle - Maroon / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Maroon / Off white
+   0.71  cost= 5580  Bedspread Bundle (b)  |  Maroon / Off white / Offwhite
+   0.71  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Off white / Maroon
+   0.71  cost= 5580  Bedspread Bundle (b)  |  Navy / Off white / Maroon
+   0.67  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.67  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+
+[1× qty=1] black bedsheet set
+   0.50  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.50  cost= 1200  BOLD BLACK BEDSHEET SET  |  Default Title
+   0.40  cost= 1200  EVERGREEN BEDSHEET SET  |  Default Title
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / black / Offwhite
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Maroon / black / Maroon
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Black / Offwhite / Offwhite
+
+[1× qty=1] black 6 PCS SET( white)
+   0.71  cost= 3060  BLACK 6 PCS SET (white)  |  Default Title
+   0.67  cost= 3060  BLACK 6 PCS SET  |  Default Title
+   0.57  cost= 3060  GREY 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  OFF-WHITE 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  BLACK STRIPED 6 PCS(white)  |  Default Title
+   0.57  cost= 3060  BOLD BLACK 6 PCS SET  |  Default Title
+
+[1× qty=1] OFFWHITE 6 PCS SET
+   0.50  cost= 3060  EVERGREEN 6 PCS SET  |  Default Title
+   0.50  cost= 1860  MAROON 6 PCS SET  |  Default Title
+   0.50  cost= 1200  PLUM 6 PCS SET  |  Default Title
+   0.50  cost= 3060  GREY 6 PCS SET  |  Default Title
+   0.50  cost= 3060  BLACK 6 PCS SET  |  Default Title
+   0.50  cost= 3060  OFFWHITE STRIPED 6 PCS  |  Default Title
+
+[1× qty=1] navy duvet cover set
+   1.00  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Maroon Duver Cover Set  |  Duvet cover set
+
+[1× qty=1] Grey Duvet Cover Set - Bed in bag (with filling)
+   1.00  cost= 7000  Grey Duvet Cover Set  |  Bed in bag (with filling)
+   0.89  cost= 7000  Beige Duvet Cover Set  |  Bed in bag (with filling)
+   0.89  cost= 3200  Black Duvet Cover Set  |  Bed in bag (with filling)
+   0.89  cost= 3200  Navy Duvet Cover Set  |  Bed in bag (with filling)
+   0.80  cost= 7000  Off-white Duvet Cover Set  |  Bed in bag (with filling)
+   0.78  cost= 3000  Grey Duvet Cover Set  |  Bed in a bag
+
+[1× qty=1] Bedspread Bundle - Maroon / Teal
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Maroon / Teal
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Teal / Maroon
+   0.75  cost= 3720  Bedspread Bundle (a)  |  Maroon / Maroon
+   0.75  cost= 3720  Bedspread Bundle (a)  |  Teal / Teal
+   0.67  cost= 5580  Bedspread Bundle (b)  |  Maroon / Teal / Offwhite
+   0.67  cost= 5580  Bedspread Bundle (b)  |  Teal / Maroon / Offwhite
+
+[1× qty=1] Grey Duvet Cover Set - Bed in a bag
+   1.00  cost= 3000  Grey Duvet Cover Set  |  Bed in a bag
+   0.88  cost= 3000  Beige Duvet Cover Set  |  Bed in a bag
+   0.88  cost= 3200  Black Duvet Cover Set  |  Bed in a bag
+   0.88  cost= 3200  Navy Duvet Cover Set  |  Bed in a bag
+   0.78  cost= 3000  Off-white Duvet Cover Set  |  Bed in a bag
+   0.78  cost= 7000  Grey Duvet Cover Set  |  Bed in bag (with filling)
+
+[1× qty=1] off white quilted bedspread set (diamond design)
+   0.71  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.71  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.43  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.43  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.43  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.43  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[1× qty=1] Bedspread Bundle (b) - Offwhite / Navy / Teal
+   1.00  cost= 5580  Bedspread Bundle (b)  |  Navy / Teal / Offwhite
+   1.00  cost= 5580  Bedspread Bundle (b)  |  Teal / Navy / Offwhite
+   1.00  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Navy / Teal
+   1.00  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Teal / Navy
+   0.83  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Navy / Offwhite
+   0.83  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Teal / Offwhite
+
+[1× qty=1] Pink Pajama Set - Small to medium
+   1.00  cost= 1500  Pink Pajama Set  |  Small to medium
+   0.86  cost= 1500  Light Pink Pajama Set  |  Small to medium
+   0.83  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.83  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.67  cost= 1500  Pink Pajama Set  |  Large to extra large
+   0.57  cost= 1500  Light Pink Pajama Set  |  Large to extra large
+
+[1× qty=1] Mega Offer (navy)
+   0.25  cost= 3720  Bedspread Bundle (a)  |  Navy / Navy
+   0.25  cost= 5580  Bedspread Bundle (b)  |  Navy / Navy / Navy
+   0.25  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3600  Duvet Bundle (a)  |  Navy / Navy
+   0.25  cost= 5400  Duvet Bundle (b)  |  Navy / Navy / Navy
+   0.25  cost= 1800  Offer 3  |  Default Title
+
+[1× qty=2] GREY QUILTED BEDSPREAD SET - King
+   0.83  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[1× qty=1] Bedspread Bundle - Maroon / Maroon
+   0.75  cost= 3720  Bedspread Bundle (a)  |  Maroon / Maroon
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Navy / Maroon
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Maroon / Navy
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Maroon / Black
+   0.60  cost= 3720  Bedspread Bundle (a)  |  Maroon / Beige
+
+[1× qty=2] EMBROIDERED TOWEL SET
+   0.60  cost=  850  EMBROIDERED TOWEL SET  |  Default Title
+   0.40  cost= 4000  Crystal Embroidered Set  |  Default Title
+   0.25  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+
+[1× qty=1] off white 6 pieces set
+   0.60  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.57  cost= 3060  OFF-WHITE 6 PCS SET (white)  |  Default Title
+   0.50  cost= 1860  OFF-WHITE 6 PCS SET(lines)  |  Default Title
+   0.50  cost= 3060  OFF-WHITE 6 PCS SET(flower)  |  Default Title
+   0.43  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.43  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+
+[1× qty=1] mr and mrs embroiderey towel set
+   0.33  cost=  850  EMBROIDERED TOWEL SET  |  Default Title
+   0.17  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.17  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.17  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.17  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.17  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+
+[1× qty=1] Bedsheet Bundle (a) - Maroon / Navy
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Maroon / Navy
+   0.80  cost= 2400  Bedsheet Bundle (a)  |  Maroon / Offwhite
+   0.80  cost= 2400  Bedsheet Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 2400  Bedsheet Bundle (a)  |  Maroon / Maroon
+   0.80  cost= 3600  Duvet Bundle (a)  |  Navy / Maroon
+
+[1× qty=1] OFF-WHITE 100% COTTON TOWEL
+   0.71  cost=  850  OFF-WHITE  100% COTTON TOWEL  |  Default Title
+   0.50  cost=  850  BEIGE 100% COTTON TOWEL  |  Default Title
+   0.50  cost=  850  GREY 100% COTTON TOWEL  |  Default Title
+   0.40  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+
+[1× qty=1] SILK EMBROIDERED PILLOWS
+   0.60  cost= 1500  SILK EMBROIDERED PILLOWS  |  Default Title
+   0.20  cost= 4000  Crystal Embroidered Set  |  Default Title
+   0.20  cost=  850  EMBROIDERED TOWEL SET  |  Default Title
+
+[1× qty=1] Bedspread Bundle (a) - Teal / Maroon
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Maroon / Teal
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Teal / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Teal
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Teal
+
+[1× qty=1] Bedsheet Bundle (b) - Black / Navy / Beige
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Offwhite / Offwhite
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Maroon / Maroon
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / black / Offwhite
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / black / Maroon
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Bold black / black / Offwhite
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Bold black / black / Maroon
+
+[1× qty=1] Duvet Bundle (a) - Navy / Black
+   1.00  cost= 3600  Duvet Bundle (a)  |  Black / Navy
+   1.00  cost= 3600  Duvet Bundle (a)  |  Navy / Black
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Black
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Black / Navy
+   0.80  cost= 3600  Duvet Bundle (a)  |  Navy / Offwhite
+   0.80  cost= 3600  Duvet Bundle (a)  |  Offwhite / Navy
+
+[1× qty=1] 1 - off white bedspread set x flat bedsheet set - 6pcs
+   0.44  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.44  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Maroon / Off white
+   0.33  cost= 3720  Bedspread Bundle (a)  |  Black / Off white
+
+[1× qty=1] Maroon Duver Cover Set - Bed in bag
+   0.88  cost= 1800  Maroon Duver Cover Set  |  Bed in a bag
+   0.78  cost= 1800  Maroon Duver Cover Set  |  Bed in bag (with filling)
+   0.63  cost= 3000  Beige Duvet Cover Set  |  Bed in a bag
+   0.63  cost= 3000  Grey Duvet Cover Set  |  Bed in a bag
+   0.63  cost= 3200  Black Duvet Cover Set  |  Bed in a bag
+   0.63  cost= 3200  Navy Duvet Cover Set  |  Bed in a bag
+
+[1× qty=1] off white bedspread set x flat bedsheet set - 6pcs
+   0.50  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.50  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.38  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.38  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+   0.38  cost= 3720  Bedspread Bundle (a)  |  Maroon / Off white
+   0.38  cost= 3720  Bedspread Bundle (a)  |  Black / Off white
+
+[1× qty=1] beige bedset 6 pcs
+   0.43  cost= 1860  NAVY BEDSET 6 PCS SET  |  Default Title
+   0.43  cost= 3060  BEIGE STRIPED 6 PCS(white)  |  Default Title
+   0.33  cost= 3060  EVERGREEN 6 PCS SET  |  Default Title
+   0.33  cost= 1860  MAROON 6 PCS SET  |  Default Title
+   0.33  cost= 1200  PLUM 6 PCS SET  |  Default Title
+   0.33  cost= 3060  GREY 6 PCS SET  |  Default Title
+
+[1× qty=1] Bedsheet Bundle (b) - Beige / Grey / Navy
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Grey / Offwhite / Offwhite
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Grey / Offwhite / Maroon
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Grey / Maroon / Offwhite
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Grey / Maroon / Maroon
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Grey / black / Offwhite
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Grey / black / Maroon
+
+[1× qty=1] Bedspread Bundle (a) - Offwhite / Plum
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Navy
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Black
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Teal
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Red
+
+[1× qty=3] navy quilted bedspread set
+   0.67  cost= 1860  NAVY QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+   0.50  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.50  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[1× qty=1] gray quilted bedspread set
+   0.50  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.50  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.50  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[1× qty=3] BEIGE QUILTED BEDSPREAD SET - King
+   0.83  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[1× qty=1] off white bedspread set x off white duvet cover set
+   0.71  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.57  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.57  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.56  cost= 3000  Off-white Duvet Cover Set  |  Bed in a bag
+   0.50  cost= 7000  Off-white Duvet Cover Set  |  Bed in bag (with filling)
+   0.43  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+
+[1× qty=1] off white bundle (a)
+   0.67  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.67  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+   0.67  cost= 3720  Bedspread Bundle (a)  |  Maroon / Off white
+   0.67  cost= 3720  Bedspread Bundle (a)  |  Black / Off white
+   0.67  cost= 3720  Bedspread Bundle (a)  |  Beige / Off white
+   0.67  cost= 3720  Bedspread Bundle (a)  |  Teal / Off white
+
+[1× qty=1] Bedspread Bundle (a) - Beige / Off white
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Beige / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Maroon / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Black / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Teal / Off white
+
+[1× qty=1] Bedsheet Bundle (b) - Beige / Offwhite / Offwhite
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Offwhite / Offwhite
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Offwhite / Offwhite
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Maroon / Offwhite
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Maroon / Offwhite
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Offwhite / Maroon
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Maroon / Maroon
+
+[1× qty=1] Bedsheet Bundle (b) - Beige / Maroon / Black
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Maroon / Maroon
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / black / Maroon
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Bold black / black / Maroon
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Maroon / black / Offwhite
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Maroon / black / Maroon
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Grey / black / Maroon
+
+[1× qty=1] Teal bedspread set and grey bedspread set
+   0.50  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.50  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Teal / Grey
+   0.50  cost= 1860  TEAL QUILTED BEDSPREAD SET(lines)  |  King
+   0.40  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Teal
+   0.40  cost= 3720  Bedspread Bundle (a)  |  Navy / Teal
+
+[1× qty=1] Bedsheet Bundle (b) - Beige / Navy / Maroon
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Offwhite / Offwhite
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Maroon / Offwhite
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Maroon / Offwhite
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Offwhite / Maroon
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Maroon / Maroon
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Maroon / Maroon
+
+[1× qty=1] Duvet Bundle (a) - Offwhite / Beige
+   1.00  cost= 3600  Duvet Bundle (a)  |  Beige / Offwhite
+   1.00  cost= 3600  Duvet Bundle (a)  |  Offwhite / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Beige
+   0.80  cost= 3600  Duvet Bundle (a)  |  Offwhite / Offwhite
+   0.80  cost= 3600  Duvet Bundle (a)  |  Navy / Offwhite
+   0.80  cost= 3600  Duvet Bundle (a)  |  Maroon / Offwhite
+
+[1× qty=1] emnroidered towel set
+   0.40  cost=  850  EMBROIDERED TOWEL SET  |  Default Title
+   0.25  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.20  cost= 4000  Crystal Embroidered Set  |  Default Title
+
+[1× qty=1] marron duvet cover set (bed in bag)
+   0.75  cost= 3000  Beige Duvet Cover Set  |  Bed in a bag
+   0.75  cost= 3000  Grey Duvet Cover Set  |  Bed in a bag
+   0.75  cost= 3200  Black Duvet Cover Set  |  Bed in a bag
+   0.75  cost= 3200  Navy Duvet Cover Set  |  Bed in a bag
+   0.67  cost= 3000  Off-white Duvet Cover Set  |  Bed in a bag
+   0.67  cost= 7000  Beige Duvet Cover Set  |  Bed in bag (with filling)
+
+[1× qty=1] Duvet Bundle  Maroon / Black
+   0.80  cost= 3600  Duvet Bundle (a)  |  Black / Maroon
+   0.80  cost= 3600  Duvet Bundle (a)  |  Maroon / Black
+   0.80  cost= 5400  Duvet Bundle (b)  |  Maroon / Maroon / Black
+   0.80  cost= 5400  Duvet Bundle (b)  |  Maroon / Black / Maroon
+   0.80  cost= 5400  Duvet Bundle (b)  |  Maroon / Black / Black
+   0.75  cost= 3600  Duvet Bundle (a)  |  Maroon / Maroon
+
+[1× qty=1] bedsheet bundle grey/ beige / maroon
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Grey / Maroon / Maroon
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Grey / Maroon
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Grey / Grey / Maroon
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Grey / Offwhite / Maroon
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Grey / Maroon / Offwhite
+   0.67  cost= 3600  Bedsheet Bundle (b)  |  Grey / black / Maroon
+
+[1× qty=2] OFF-WHITE QUILTED BEDSPREAD SET(flower) - King
+   1.00  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.86  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.71  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.71  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.71  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.71  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[1× qty=1] striped  green bedsheet set
+   0.43  cost= 1200  STRIPED GREEN BED SHEET SET  |  Default Title
+   0.40  cost= 1200  EVERGREEN BEDSHEET SET  |  Default Title
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Green / Offwhite
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Green / Maroon
+   0.40  cost= 1200  STRIPED MAROON  SHEET SET  |  King
+   0.33  cost= 1200  STRIPED NAVY BED SHEET SET  |  King
+
+[1× qty=1] grey duvet cover set
+   1.00  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.75  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Maroon Duver Cover Set  |  Duvet cover set
+
+[1× qty=1] TEAL QUILTED BEDSPREAD SET(check) - King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(lines)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[1× qty=1] GREY QUILTED BEDSPREAD SET (check) - King
+   0.83  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[1× qty=1] black pajama set
+   0.50  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.50  cost= 1500  Black Pajama Set  |  Large to extra large
+   0.50  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.33  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.33  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.33  cost= 1500  Navy Pajama Set  |  Large to extra large
+
+[1× qty=1] navy pajama set
+   0.50  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.50  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.50  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.33  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.33  cost= 1500  Black Pajama Set  |  Large to extra large
+   0.33  cost= 1860  NAVY QUILTED BEDSPREAD SET(flower)  |  King
+
+[1× qty=1] pink pajama set
+   0.50  cost= 1500  Pink Pajama Set  |  Small to medium
+   0.50  cost= 1500  Pink Pajama Set  |  Large to extra large
+   0.43  cost= 1500  Light Pink Pajama Set  |  Small to medium
+   0.43  cost= 1500  Light Pink Pajama Set  |  Large to extra large
+   0.33  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.33  cost= 1500  Black Pajama Set  |  Large to extra large
+
+[1× qty=1] off white bedspread  set (lines)
+   0.71  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.60  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.57  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.50  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.50  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+   0.50  cost= 3720  Bedspread Bundle (a)  |  Maroon / Off white
+
+[1× qty=1] off white bedsheet set
+   0.60  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.43  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.43  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.43  cost= 1200  STRIPED OFF-WHITE BED SHEET SET  |  King
+   0.43  cost= 3060  OFF-WHITE 6 PCS SET (white)  |  Default Title
+   0.40  cost= 1200  EVERGREEN BEDSHEET SET  |  Default Title
+
+[1× qty=1] Bedspread Bundle (a) - Beige / Plum
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Maroon / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Black / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Beige / Navy
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Beige / Maroon
+
+[1× qty=1] Premium Pajama Set -Cord set - Black / Medium to large
+   0.63  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.63  cost= 1500  Black Pajama Set  |  Large to extra large
+   0.50  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.50  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.50  cost= 1500  Pink Pajama Set  |  Small to medium
+   0.50  cost= 1500  Pink Pajama Set  |  Large to extra large
+
+[1× qty=1] Bedsheet Bundle (a) - Offwhite / Black
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Black
+   0.80  cost= 2400  Bedsheet Bundle (a)  |  Offwhite / Offwhite
+   0.80  cost= 2400  Bedsheet Bundle (a)  |  Maroon / Offwhite
+   0.80  cost= 2400  Bedsheet Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / black / Offwhite
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Black / Offwhite / Offwhite
+
+[1× qty=1] NAVY 6 PCS SET (white)
+   0.71  cost= 3060  NAVY 6 PCS SET (white)  |  Default Title
+   0.57  cost= 1860  NAVY BEDSET 6 PCS SET  |  Default Title
+   0.57  cost= 3060  GREY 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  BLACK 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  OFF-WHITE 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  MAROON 6 PCS SET (white)  |  Default Title
+
+[1× qty=1] Bedsheet Bundle (b) - Offwhite / Offwhite / Offwhite
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Offwhite / Offwhite
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Offwhite / Offwhite
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Maroon / Offwhite
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Maroon / Offwhite
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Offwhite / Maroon
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Maroon / Maroon
+
+[1× qty=1] Bedspread Bundle (a) - Maroon / Plum
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Maroon / Navy
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Maroon / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Maroon / Black
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Maroon / Beige
+
+[1× qty=1] BLACK QUILTED BEDSPREAD SET(lines) - King
+   0.83  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(lines)  |  King
+   0.71  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+
+[1× qty=1] return
+   (no candidates)
+
+[1× qty=1] maroon 6 pcs set (white)
+   0.71  cost= 3060  MAROON 6 PCS SET (white)  |  Default Title
+   0.67  cost= 1860  MAROON 6 PCS SET  |  Default Title
+   0.57  cost= 3060  GREY 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  BLACK 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  OFF-WHITE 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  MAROON STRIPED 6 PCS(white)  |  Default Title
+
+[1× qty=1] grey quilted bedspread set
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.50  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.50  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[1× qty=1] navy pink black pajama set in medium size
+   0.50  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.50  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.50  cost= 1500  Pink Pajama Set  |  Small to medium
+   0.50  cost= 1500  Light Pink Pajama Set  |  Small to medium
+   0.38  cost= 1500  Black Pajama Set  |  Large to extra large
+   0.38  cost= 1500  Navy Pajama Set  |  Large to extra large
+
+[1× qty=1] pink pajama set medium size
+   0.67  cost= 1500  Pink Pajama Set  |  Small to medium
+   0.57  cost= 1500  Light Pink Pajama Set  |  Small to medium
+   0.50  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.50  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.50  cost= 1500  Pink Pajama Set  |  Large to extra large
+   0.43  cost= 1500  Light Pink Pajama Set  |  Large to extra large
+
+[1× qty=1] MAROON QUILTED BEDSPREAD SET(check) - King
+   0.83  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+
+[1× qty=1] Bedsheet Bundle (b) - Grey / black / Offwhite
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Grey / black / Offwhite
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Black / Grey / Offwhite
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / black / Grey
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Grey / Black
+   0.86  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Grey / Offwhite
+   0.86  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Offwhite / Grey
+
+[1× qty=1] NAVY QUILTED BEDSPREAD SET(check) - King
+   0.83  cost= 1860  NAVY QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[1× qty=1] 1 x BEIGE QUILTED BEDSPREAD SET(flower) - King ]
+   0.75  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.63  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.63  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.63  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.63  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.63  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+
+[1× qty=1] GREY QUILTED BEDSPREAD SET (lines) - King
+   0.83  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.83  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(lines)  |  King
+   0.71  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+
+[1× qty=2] BLACK QUILTED BEDSPREAD SET(lines) - King
+   0.83  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(lines)  |  King
+   0.71  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+
+[1× qty=3] BEIGE QUILTED BEDSPREAD SET(check) - King
+   0.83  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[1× qty=1] Navy Pajama Set - Medium to large
+   0.83  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.83  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.67  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.67  cost= 1500  Black Pajama Set  |  Large to extra large
+   0.67  cost= 1500  Pink Pajama Set  |  Small to medium
+   0.67  cost= 1500  Pink Pajama Set  |  Large to extra large
+
+[1× qty=1] Bedsheet Bundle (b) - Bold black / Plum / Grey
+   0.86  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Grey / Offwhite
+   0.86  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Grey / Maroon
+   0.86  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Plum / Offwhite
+   0.86  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Plum / Maroon
+   0.86  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Offwhite / Grey
+   0.86  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Offwhite / Plum
+
+[1× qty=1] BOLD BLACK 6 PCS SET (grey)
+   0.75  cost= 3060  BOLD BLACK 6 PCS SET (grey)  |  Default Title
+   0.71  cost= 3060  BOLD BLACK 6 PCS SET  |  Default Title
+   0.67  cost= 3060  GREY 6 PCS SET  |  Default Title
+   0.67  cost= 3060  BLACK 6 PCS SET  |  Default Title
+   0.57  cost= 3060  GREY 6 PCS SET (white)  |  Default Title
+   0.57  cost= 3060  BLACK 6 PCS SET (white)  |  Default Title
+
+[1× qty=1] Bedspread Bundle (b) - Offwhite / Off white / Grey
+   1.00  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Off white / Grey
+   0.86  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Off white / Offwhite
+   0.86  cost= 5580  Bedspread Bundle (b)  |  Navy / Off white / Offwhite
+   0.86  cost= 5580  Bedspread Bundle (b)  |  Maroon / Off white / Offwhite
+   0.86  cost= 5580  Bedspread Bundle (b)  |  Black / Off white / Offwhite
+   0.86  cost= 5580  Bedspread Bundle (b)  |  Beige / Off white / Offwhite
+
+[1× qty=1] Bedsheet Bundle (b) - Offwhite / Offwhite / Grey
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Grey / Offwhite / Offwhite
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Grey / Offwhite
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Grey / Grey / Offwhite
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Offwhite / Grey
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Grey / Grey
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Grey / Offwhite / Maroon
+
+[1× qty=1] navy pajama set medium size
+   0.67  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.50  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.50  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.50  cost= 1500  Pink Pajama Set  |  Small to medium
+   0.43  cost= 1500  Light Pink Pajama Set  |  Small to medium
+   0.40  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+
+[1× qty=1] Bedsheet Bundle (b) - Grey / Green / Plum
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Grey / Green / Offwhite
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Grey / Green / Maroon
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Plum / Green / Offwhite
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Plum / Green / Maroon
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Grey / Plum / Offwhite
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Grey / Plum / Maroon
+
+[1× qty=1] Bedspread Bundle (a) - Teal / Off white
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Teal / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Maroon / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Black / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Beige / Off white
+
+[1× qty=1] Bedsheet Bundle (b) - Offwhite / Maroon / Grey
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Grey / Offwhite / Maroon
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Grey / Maroon / Offwhite
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Grey / Maroon
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Grey / Offwhite
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Maroon / Grey
+   0.83  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Offwhite / Offwhite
+
+[1× qty=1] Bedspread Bundle (b) - Navy / Beige / Maroon
+   0.83  cost= 5580  Bedspread Bundle (b)  |  Navy / Maroon / Offwhite
+   0.83  cost= 5580  Bedspread Bundle (b)  |  Navy / Beige / Offwhite
+   0.83  cost= 5580  Bedspread Bundle (b)  |  Maroon / Navy / Offwhite
+   0.83  cost= 5580  Bedspread Bundle (b)  |  Maroon / Beige / Offwhite
+   0.83  cost= 5580  Bedspread Bundle (b)  |  Beige / Navy / Offwhite
+   0.83  cost= 5580  Bedspread Bundle (b)  |  Beige / Maroon / Offwhite
+
+[1× qty=1] Bedspread Bundle (a) - Maroon / Red
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Maroon / Red
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Red / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Red
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Red
+
+[1× qty=1] Bedsheet Bundle (a) - Offwhite / Maroon
+   1.00  cost= 2400  Bedsheet Bundle (a)  |  Maroon / Offwhite
+   1.00  cost= 2400  Bedsheet Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 2400  Bedsheet Bundle (a)  |  Offwhite / Offwhite
+   0.80  cost= 2400  Bedsheet Bundle (a)  |  Maroon / Maroon
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Offwhite / Offwhite
+
+[1× qty=2] PLUM QUILTED BEDSPREAD SET( flower) - King
+   1.00  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.83  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.83  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[1× qty=1] Bedspread Bundle (a) - Maroon / Teal
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Maroon / Teal
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Teal / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Teal
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Navy / Teal
+
+[1× qty=1] off white quilted bedspread set (flower)
+   0.86  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.71  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[1× qty=1] Pink Pajama Set - Large to extra large
+   1.00  cost= 1500  Pink Pajama Set  |  Large to extra large
+   0.86  cost= 1500  Light Pink Pajama Set  |  Large to extra large
+   0.83  cost= 1500  Black Pajama Set  |  Large to extra large
+   0.83  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.67  cost= 1500  Pink Pajama Set  |  Small to medium
+   0.57  cost= 1500  Light Pink Pajama Set  |  Small to medium
+
+[1× qty=2] Crystal Embroidered Set
+   0.60  cost= 4000  Crystal Embroidered Set  |  Default Title
+   0.40  cost=  850  EMBROIDERED TOWEL SET  |  Default Title
+   0.25  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.25  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+
+[1× qty=1] navy blue pajama set s-m size
+   0.43  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.43  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.29  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.29  cost= 1500  Black Pajama Set  |  Large to extra large
+   0.29  cost= 1860  NAVY QUILTED BEDSPREAD SET(flower)  |  King
+   0.29  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+
+[1× qty=1] navy pajama set piping wala medium size ] [ black pajama set piping wala medium size
+   0.50  cost= 1500  Black Pajama Set  |  Small to Medium
+   0.50  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.38  cost= 1500  Black Pajama Set  |  Large to extra large
+   0.38  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.38  cost= 1500  Pink Pajama Set  |  Small to medium
+   0.38  cost= 1500  Light Pink Pajama Set  |  Small to medium
+
+[1× qty=3] OFF-WHITE QUILTED BEDSPREAD SET (flower) - King
+   1.00  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET (flower)  |  King
+   0.86  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.71  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.71  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.71  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.71  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+
+[1× qty=1] navy blue bedsheet set
+   0.50  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.40  cost= 1200  EVERGREEN BEDSHEET SET  |  Default Title
+   0.33  cost= 1860  NAVY QUILTED BEDSPREAD SET(flower)  |  King
+   0.33  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.33  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.33  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+
+[1× qty=1] navy blue duvet cover set
+   0.80  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 3200  Black Duvet Cover Set  |  Duvet cover set
+   0.60  cost= 1800  Maroon Duver Cover Set  |  Duvet cover set
+
+[1× qty=1] maroon bedspread set
+   0.50  cost= 3720  Bedspread Bundle (a)  |  Maroon / Maroon
+   0.50  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+   0.40  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.40  cost= 3720  Bedspread Bundle (a)  |  Navy / Maroon
+   0.40  cost= 3720  Bedspread Bundle (a)  |  Maroon / Navy
+   0.40  cost= 3720  Bedspread Bundle (a)  |  Maroon / Black
+
+[1× qty=1] bold black bedsheet
+   0.60  cost= 3600  Bedsheet Bundle (b)  |  Bold black / black / Black
+   0.50  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Offwhite / Offwhite
+   0.50  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Maroon / Maroon
+   0.50  cost= 3600  Bedsheet Bundle (b)  |  Bold black / black / Offwhite
+   0.50  cost= 3600  Bedsheet Bundle (b)  |  Bold black / black / Maroon
+   0.50  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Offwhite / Black
+
+[1× qty=1] navy blue pj set s-m
+   0.33  cost= 1860  NAVY QUILTED BEDSPREAD SET(flower)  |  King
+   0.33  cost= 1500  Navy Pajama Set  |  Small to Medium
+   0.33  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.33  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+   0.33  cost= 1200  STRIPED NAVY BED SHEET SET  |  King
+   0.33  cost= 3200  Navy Duvet Cover Set  |  Duvet cover set
+
+[1× qty=1] pink pj set s-m
+   0.33  cost= 1500  Pink Pajama Set  |  Small to medium
+   0.33  cost= 1500  Pink Pajama Set  |  Large to extra large
+   0.29  cost= 1500  Light Pink Pajama Set  |  Small to medium
+   0.29  cost= 1500  Light Pink Pajama Set  |  Large to extra large
+   0.20  cost= 4000  Crystal Embroidered Set  |  Default Title
+   0.20  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+
+[1× qty=1] Bedspread Bundle (a) - Maroon / Off white
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Maroon / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Black / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Beige / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Teal / Off white
+
+[1× qty=1] PLUM 6 PCS SET
+   0.67  cost= 1200  PLUM 6 PCS SET  |  Default Title
+   0.57  cost= 3060  PLUM 6 PCS SET (white)  |  Default Title
+   0.50  cost= 3060  EVERGREEN 6 PCS SET  |  Default Title
+   0.50  cost= 1860  MAROON 6 PCS SET  |  Default Title
+   0.50  cost= 3060  GREY 6 PCS SET  |  Default Title
+   0.50  cost= 3060  BLACK 6 PCS SET  |  Default Title
+
+[1× qty=1] one navy blue bedsheet set  one navy blue duvet cover set  one maroon bedsheet set  one maroon bedspread set  one bold black bedsheet  one black duvet cover set  one navy blue pj set s-m one pink pj set s-m
+   0.27  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Maroon / Offwhite
+   0.27  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Offwhite / Maroon
+   0.27  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Maroon / Maroon
+   0.27  cost= 3600  Bedsheet Bundle (b)  |  Bold black / black / Maroon
+   0.27  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Green / Maroon
+   0.27  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Grey / Maroon
+
+[1× qty=1] plum striped bedsheet set
+   0.40  cost= 1200  EVERGREEN BEDSHEET SET  |  Default Title
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Plum / Offwhite / Offwhite
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Plum / Maroon / Maroon
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Plum / Offwhite
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Plum / Maroon
+   0.40  cost= 3600  Bedsheet Bundle (b)  |  Plum / Plum / Offwhite
+
+[1× qty=1] mr and mrs towel set
+   0.40  cost=  850  EMBROIDERED TOWEL SET  |  Default Title
+   0.20  cost= 4000  Crystal Embroidered Set  |  Default Title
+   0.20  cost= 1800  Off-white Duvet Cover Set  |  Duvet cover set
+   0.20  cost= 1200  EVERGREEN BEDSHEET SET  |  Default Title
+   0.20  cost= 1800  Beige Duvet Cover Set  |  Duvet cover set
+   0.20  cost= 1800  Grey Duvet Cover Set  |  Duvet cover set
+
+[1× qty=1] Light Pink Pajama Set - Large to extra large
+   1.00  cost= 1500  Light Pink Pajama Set  |  Large to extra large
+   0.86  cost= 1500  Pink Pajama Set  |  Large to extra large
+   0.71  cost= 1500  Black Pajama Set  |  Large to extra large
+   0.71  cost= 1500  Navy Pajama Set  |  Large to extra large
+   0.71  cost= 1500  Light Pink Pajama Set  |  Small to medium
+   0.57  cost= 1500  Pink Pajama Set  |  Small to medium
+
+[1× qty=1] Bedspread Bundle (a) - Navy / Off white
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Maroon / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Black / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Beige / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Teal / Off white
+
+[1× qty=1] Bedspread Bundle (a) - Black / Off white
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Black / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Navy / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Maroon / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Beige / Off white
+   0.83  cost= 3720  Bedspread Bundle (a)  |  Teal / Off white
+
+[1× qty=2] BLACK QUILTED BEDSPREAD SET(flower) - King
+   1.00  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.83  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.83  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
+   0.83  cost= 1860  MAROON QUILTED BEDSPREAD SET(flower)  |  King
+
+[1× qty=1] Bedspread Bundle (a) - Offwhite / Maroon
+   1.00  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Navy
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Black
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Beige
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Teal
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Red
+
+[1× qty=1] Bedsheet Bundle (a) - Maroon / Offwhite
+   1.00  cost= 2400  Bedsheet Bundle (a)  |  Maroon / Offwhite
+   1.00  cost= 2400  Bedsheet Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 3720  Bedspread Bundle (a)  |  Offwhite / Maroon
+   0.80  cost= 2400  Bedsheet Bundle (a)  |  Offwhite / Offwhite
+   0.80  cost= 2400  Bedsheet Bundle (a)  |  Maroon / Maroon
+   0.80  cost= 3600  Bedsheet Bundle (b)  |  Maroon / Offwhite / Offwhite
+
+[1× qty=1] navy quilted bedspread set (lines)
+   0.83  cost= 1860  NAVY QUILTED BEDSPREAD SET(lines)  |  King
+   0.67  cost= 1860  NAVY QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(lines)  |  King
+   0.57  cost= 1860  OFF-WHITE QUILTED BEDSPREAD SET(lines)  |  King
+   0.50  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.50  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+
+[1× qty=1] Bedspread Bundle (b) - Offwhite / Maroon / Navy
+   1.00  cost= 5580  Bedspread Bundle (b)  |  Navy / Maroon / Offwhite
+   1.00  cost= 5580  Bedspread Bundle (b)  |  Maroon / Navy / Offwhite
+   1.00  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Navy / Maroon
+   1.00  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Maroon / Navy
+   0.83  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Navy / Offwhite
+   0.83  cost= 5580  Bedspread Bundle (b)  |  Offwhite / Maroon / Offwhite
+
+[1× qty=1] Bedsheet Bundle (b) - Offwhite / black / Maroon
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / black / Maroon
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Maroon / black / Offwhite
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Black / Offwhite / Maroon
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Black / Maroon / Offwhite
+   1.00  cost= 3600  Bedsheet Bundle (b)  |  Offwhite / Maroon / Black
+   0.86  cost= 3600  Bedsheet Bundle (b)  |  Bold black / Maroon / Offwhite
+
+[1× qty=1] NAVY QUILTED BEDSPREAD SET (flower)
+   0.83  cost= 1860  NAVY QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  BEIGE QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  GREY QUILTED BEDSPREAD SET (flower)  |  King
+   0.67  cost= 1860  BLACK QUILTED BEDSPREAD SET(flower)  |  King
+   0.67  cost= 1860  PLUM QUILTED BEDSPREAD SET( flower)  |  King
+   0.67  cost= 1860  TEAL QUILTED BEDSPREAD SET(flower)  |  King
