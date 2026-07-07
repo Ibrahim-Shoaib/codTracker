@@ -1,853 +1,571 @@
-# COD Tracker — Shopify App Build Guide
-> This document is written for future Claude instances. Read every section before writing any code. All decisions in this document are final unless the user explicitly changes them.
+# cod-tracker — Architecture & Build Guide
+
+> Reference for future Claude instances and contributors. Covers the *current* state of the app — what shipped, where it lives, why decisions were made. Update this when you change behavior; otherwise it rots and stops being useful (the old version of this doc was kept as truth long after the schema, scopes, and feature surface had moved).
+>
+> When in doubt, treat code, the live Supabase schema, and `shopify.app.toml` as the source of truth — not this document.
 
 ---
 
-## Project Overview
-A Shopify-embedded COD analytics dashboard that reconciles Shopify orders with PostEx logistics data. It calculates real net profit by accounting for delivery costs, COGS, ad spend, and expenses. Built for Pakistani COD merchants. **PKR only. No currency conversion. Ever.**
+## What this app is
+
+A Shopify-embedded analytics + Meta-ad-tracking app for COD merchants:
+
+1. **Profit dashboard** — KPI cards (Today / Yesterday / MTD / Last Month), drill-down detail panel, city loss panel, trend chart, break-even projection, in-pipeline pills.
+2. **PostEx integration** — order sync + status flag derivation, historical backfill on first install. Pakistani COD couriers.
+3. **Shopify integration** — COGS matching by variant, customer-side `order_date` enrichment, unfulfilled-pipeline reads.
+4. **Meta ad spend** — `ads_read` OAuth, daily fetch + 2-hourly today refresh, FX-converted to store currency at ingest.
+5. **Meta Pixel + CAPI relay** — Custom Web Pixel, App Proxy first-party endpoint, server-side webhooks → CAPI with deterministic dedup, retry queue, EMQ scoring, channel attribution.
+6. **Demo mode** — synthetic data via a shared demo pool for sales/onboarding flows.
+
+Originally PKR-only. Now multi-currency: any Shopify-supported currency, with FX conversion applied to Meta ad spend at ingest. There is also a `shopify_direct` ingest mode for prepaid/international stores that don't use a courier integration — the dashboard reads live from Shopify Admin API instead of aggregating the `orders` table.
 
 ---
 
-## Tech Stack
+## Tech stack
 
-| Layer | Choice | Reason |
-|-------|--------|--------|
-| Framework | Remix (Shopify App Template) | Official Shopify template, App Bridge native |
-| UI | Shopify Polaris + App Bridge | Native Shopify embedded look and feel |
-| Database | Supabase (PostgreSQL) | RLS, SQL aggregations via RPC, free tier |
-| Hosting | Railway | Public HTTPS URL required for Shopify OAuth on real stores |
-| Auth | Shopify OAuth | `.myshopify.com` domain = `store_id` everywhere |
-| Cron | Railway cron jobs | PostEx sync can take 30s+, Supabase Edge Functions have CPU limits |
+| Layer | Choice | Notes |
+|------|--------|-------|
+| Framework | Remix v2 (`@remix-run/*` 2.16) | Stick with Remix; *do not* migrate to React Router 7 unless deliberately scoped. |
+| UI | Shopify Polaris v12 + App Bridge v4 + Polaris-Viz | |
+| Database | Supabase (Postgres) | RLS, RPC aggregations, free tier. |
+| Sessions | `@shopify/shopify-app-session-storage-postgresql` | Uses `SUPABASE_DATABASE_URL` (pooled Postgres), **not** SQLite — Railway's filesystem is ephemeral. |
+| Hosting | Railway (Dockerfile) | `node:20.18.1-alpine` pinned (floating tag was hanging Metal builds). |
+| Cron | Railway scheduled jobs | Hit `/api/cron/*` with `x-cron-secret`. |
+| Shopify Admin | API `2025-10` | |
+| Node | `>=20.19 <22 \|\| >=22.12` | |
 
 ---
 
-## Architecture Decisions
+## Multi-tenancy
 
-### Multi-tenancy
-- Single-table approach: every table has a `store_id` column = merchant's `.myshopify.com` domain
-- Row Level Security (RLS) enabled on ALL tables
-- RLS policy on every table: `store_id = current_setting('app.current_store_id', true)`
-- The server sets this config before every Supabase query using the Shopify session shop domain
+`store_id` = the merchant's `.myshopify.com` domain. It is the natural key on every tenant table.
 
-### How to Set store_id on Every Supabase Request (Critical)
-Every server-side Supabase call must set the store context first:
+Every tenant table has RLS enabled with the policy:
+
+```sql
+USING      (store_id = current_setting('app.current_store_id', true))
+WITH CHECK (store_id = current_setting('app.current_store_id', true));
+```
+
+Both `USING` and `WITH CHECK` are required — without `WITH CHECK`, inserts pass RLS silently for the wrong store.
+
+The server-side helper:
+
 ```js
-// lib/supabase.server.js
+// app/lib/supabase.server.js
 export async function getSupabaseForStore(shop) {
-  const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-  // Set RLS context — this makes RLS policies work
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   await supabase.rpc('set_app_store', { store: shop });
   return supabase;
 }
 ```
-```sql
--- Supabase function to set the config
-CREATE OR REPLACE FUNCTION set_app_store(store text)
-RETURNS void AS $$
-  SELECT set_config('app.current_store_id', store, true);
-$$ LANGUAGE sql;
-```
 
-### Database: Rolling Window
-- Keep only: **current month (MTD) + last full month**
-- Purge anything older than the 1st of last month
-- Purge runs via Railway cron on the 1st of every month at 12:01 AM PKT
-- `daily_snapshots` are NEVER purged — required for % change calculations
-- `ad_spend` is NEVER purged — keep for historical ROAS reference
+…sets `app.current_store_id` for the duration of the connection. Every dashboard / onboarding / settings query goes through this. Cron jobs that fan out across stores either call `getSupabaseForStore` per iteration, or use the raw service-role client and filter by `store_id` explicitly (e.g. `api.cron.postex` lists tenants up-front and uses both patterns).
 
-### Timezone
-- **All date calculations use PKT (UTC+5)**
-- This app is Pakistan-only — PKT is hardcoded, never user-configurable
-- Railway server runs in UTC — always convert date boundaries to UTC when querying Supabase
-- "Today" = current date in PKT. Midnight in PKT = 19:00 UTC previous day
-
-### Environment Strategy
-- One Shopify app registration with multiple redirect URLs (ngrok for local dev + Railway URL for production)
-- Per-store credentials (PostEx token, Meta tokens) stored in `stores` table in Supabase — NOT in `.env`
-- App-level credentials (Shopify keys, Supabase keys, Meta App credentials) go in `.env`
-
-### Shopify Session Storage (Critical for Production)
-The Shopify Remix template uses SQLite + Prisma by default for session storage. **This breaks on Railway** because Railway has an ephemeral filesystem — SQLite data is wiped on every deploy.
-
-Must replace default session storage with a custom PostgreSQL adapter using Supabase:
-```js
-// shopify.server.js — configure custom session storage
-import { shopifyApp } from "@shopify/shopify-app-remix/server";
-import { PostgreSQLSessionStorage } from "@shopify/shopify-app-session-storage-postgresql";
-
-const shopify = shopifyApp({
-  sessionStorage: new PostgreSQLSessionStorage(process.env.SUPABASE_DATABASE_URL),
-  // ... other config
-});
-```
-Add `SUPABASE_DATABASE_URL` to `.env` — this is the direct PostgreSQL connection string from Supabase dashboard (not the REST API URL). Use the connection pooler URL for production.
-
-### App Entry Routing Logic
-On every load of `app._index`, the server must:
-1. Get the Shopify session shop domain
-2. Check if a `stores` row exists for this `store_id`
-   - If no row: create one with just `store_id`, redirect to `/app/onboarding/step1-postex`
-   - If row exists but `onboarding_complete = false`: redirect to the correct step based on `onboarding_step`
-   - If `onboarding_complete = true`: render the dashboard
-
-### Store Row Creation on Install
-When a merchant installs the app (Shopify OAuth callback completes), immediately create a `stores` row:
-```js
-await supabase.from('stores').upsert({
-  store_id: shop,  // .myshopify.com domain
-  onboarding_complete: false,
-  onboarding_step: 1
-}, { onConflict: 'store_id', ignoreDuplicates: true });
-```
-Use `ignoreDuplicates: true` so reinstalls don't overwrite existing config.
+`set_app_store` lives in `supabase/schema.sql`.
 
 ---
 
-## Database Schema
+## Environment variables
 
-### `stores` table
-```sql
-CREATE TABLE stores (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id text UNIQUE NOT NULL,           -- .myshopify.com domain
-  postex_token text,
-  postex_merchant_id text,
-  meta_access_token text,
-  meta_ad_account_id text,
-  meta_token_expires_at timestamptz,       -- Meta long-lived tokens expire after 60 days
-  expenses_amount numeric DEFAULT 0,
-  expenses_type text CHECK (expenses_type IN ('monthly', 'per_order')),
-  sellable_returns_pct numeric DEFAULT 100,
-  onboarding_complete boolean DEFAULT false,
-  onboarding_step integer DEFAULT 1,       -- 1=postex, 2=meta, 3=cogs, 4=expenses
-  last_postex_sync_at timestamptz,         -- track when last sync ran
-  last_meta_sync_at timestamptz,
-  created_at timestamptz DEFAULT now()
-);
-```
+Authoritative source: `example.env`. Highlights:
 
-### `orders` table
-```sql
-CREATE TABLE orders (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id text NOT NULL REFERENCES stores(store_id) ON DELETE CASCADE,
-
-  -- PostEx core fields
-  tracking_number text NOT NULL,
-  order_ref_number text,                   -- normalized: # stripped, matches Shopify order number
-  transaction_status text,                 -- raw status string from PostEx e.g. "Delivered"
-  status_code text,                        -- mapped code: '0001'-'0013'
-  invoice_payment numeric DEFAULT 0,       -- GROSS amount customer paid, NOT what merchant receives
-  transaction_fee numeric DEFAULT 0,
-  transaction_tax numeric DEFAULT 0,
-  reversal_fee numeric DEFAULT 0,
-  reversal_tax numeric DEFAULT 0,
-  upfront_payment numeric DEFAULT 0,
-  reserve_payment numeric DEFAULT 0,
-  balance_payment numeric DEFAULT 0,
-  items integer DEFAULT 1,
-  invoice_division integer DEFAULT 1,
-  city_name text,
-  customer_name text,
-  customer_phone text,
-  delivery_address text,
-  order_detail text,
-  transaction_notes text,
-  pickup_address text,
-  return_address text,
-  actual_weight numeric,
-  booking_weight numeric,
-  merchant_name text,
-
-  -- Shopify matched fields
-  shopify_order_id text,
-  cogs_total numeric DEFAULT 0,            -- SUM(unit_cost × quantity) for all line items
-  cogs_matched boolean DEFAULT false,      -- true = successfully matched to Shopify, false = defaulted to 0
-
-  -- Status flags (derived from status_code, set on every upsert)
-  is_delivered boolean DEFAULT false,      -- status_code = '0005'
-  is_returned boolean DEFAULT false,       -- status_code IN ('0002','0006','0007')
-  is_in_transit boolean DEFAULT true,      -- everything else
-
-  -- Dates
-  transaction_date timestamptz,            -- order creation date — used for rolling window logic
-  order_pickup_date timestamptz,
-  order_delivery_date timestamptz,
-  upfront_payment_date timestamptz,
-  reserve_payment_date timestamptz,
-
-  -- Future-proofing
-  raw_metadata jsonb,                      -- full PostEx API response stored here
-
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now(),
-
-  UNIQUE(store_id, tracking_number)
-);
-
--- Critical indexes for query performance
-CREATE INDEX idx_orders_store_date ON orders(store_id, transaction_date);
-CREATE INDEX idx_orders_store_flags ON orders(store_id, is_delivered, is_returned, is_in_transit);
-CREATE INDEX idx_orders_ref ON orders(store_id, order_ref_number);
-CREATE INDEX idx_orders_status ON orders(store_id, status_code);
-```
-
-### `product_costs` table
-```sql
-CREATE TABLE product_costs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id text NOT NULL REFERENCES stores(store_id) ON DELETE CASCADE,
-  shopify_variant_id text NOT NULL,
-  shopify_product_id text NOT NULL,
-  sku text,
-  product_title text,
-  variant_title text,
-  unit_cost numeric DEFAULT 0,
-  updated_at timestamptz DEFAULT now(),
-  UNIQUE(store_id, shopify_variant_id)
-);
-
-CREATE INDEX idx_product_costs_variant ON product_costs(store_id, shopify_variant_id);
-```
-
-### `ad_spend` table
-```sql
-CREATE TABLE ad_spend (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id text NOT NULL REFERENCES stores(store_id) ON DELETE CASCADE,
-  spend_date date NOT NULL,
-  amount numeric DEFAULT 0,
-  source text DEFAULT 'meta',              -- 'meta' always for now
-  meta_campaign_data jsonb,               -- raw Meta API response for future use
-  updated_at timestamptz DEFAULT now(),
-  UNIQUE(store_id, spend_date)
-);
-
-CREATE INDEX idx_ad_spend_store_date ON ad_spend(store_id, spend_date);
-```
-
-### `daily_snapshots` table
-```sql
--- NEVER purged. Used for period-over-period % change calculations.
-CREATE TABLE daily_snapshots (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id text NOT NULL REFERENCES stores(store_id) ON DELETE CASCADE,
-  snapshot_date date NOT NULL,
-  total_sales numeric DEFAULT 0,
-  total_orders integer DEFAULT 0,
-  total_units integer DEFAULT 0,
-  total_returns integer DEFAULT 0,
-  total_in_transit integer DEFAULT 0,
-  total_delivery_cost numeric DEFAULT 0,
-  total_cogs numeric DEFAULT 0,
-  total_ad_spend numeric DEFAULT 0,
-  total_expenses numeric DEFAULT 0,
-  gross_profit numeric DEFAULT 0,
-  net_profit numeric DEFAULT 0,
-  UNIQUE(store_id, snapshot_date)
-);
-
-CREATE INDEX idx_snapshots_store_date ON daily_snapshots(store_id, snapshot_date);
-```
-
-### RLS Policies (apply to all tables)
-```sql
-ALTER TABLE stores ENABLE ROW LEVEL SECURITY;
-ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE product_costs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ad_spend ENABLE ROW LEVEL SECURITY;
-ALTER TABLE daily_snapshots ENABLE ROW LEVEL SECURITY;
-
--- BOTH USING and WITH CHECK are required:
--- USING controls SELECT/UPDATE/DELETE (which rows are visible)
--- WITH CHECK controls INSERT/UPDATE (which rows can be written)
--- Missing WITH CHECK = inserts will silently fail or error under RLS
-
-CREATE POLICY "store_isolation" ON orders
-  USING (store_id = current_setting('app.current_store_id', true))
-  WITH CHECK (store_id = current_setting('app.current_store_id', true));
-
-CREATE POLICY "store_isolation" ON stores
-  USING (store_id = current_setting('app.current_store_id', true))
-  WITH CHECK (store_id = current_setting('app.current_store_id', true));
-
-CREATE POLICY "store_isolation" ON product_costs
-  USING (store_id = current_setting('app.current_store_id', true))
-  WITH CHECK (store_id = current_setting('app.current_store_id', true));
-
-CREATE POLICY "store_isolation" ON ad_spend
-  USING (store_id = current_setting('app.current_store_id', true))
-  WITH CHECK (store_id = current_setting('app.current_store_id', true));
-
-CREATE POLICY "store_isolation" ON daily_snapshots
-  USING (store_id = current_setting('app.current_store_id', true))
-  WITH CHECK (store_id = current_setting('app.current_store_id', true));
-```
+- **Shopify** — `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`. `SHOPIFY_SCOPES` is optional; when unset, `app/shopify.server.ts` uses `CANONICAL_SCOPES` (which **must match `shopify.app.toml`** exactly, or scope-diff re-auth detection breaks).
+- **Supabase** — `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DATABASE_URL`.
+- **Meta Ads spend OAuth** — `META_APP_ID`, `META_APP_SECRET`, `META_REDIRECT_URI`. Scope: `ads_read`.
+- **Meta Pixel Tracking** — `META_PIXEL_CONFIG_ID` (Facebook Login for Business config from the Conversions API template), `META_PIXEL_REDIRECT_URI`, optional `META_TEST_EVENT_CODE` for routing dev events to the Test Events stream.
+- **PostEx** — `POSTEX_API_TOKEN` is local-dev only. Production tokens live per-merchant in `stores.postex_token`.
+- **Secrets** — `CRON_SECRET`, `SESSION_SECRET`, `ENCRYPTION_KEY`. Each `openssl rand -hex 32`. `ENCRYPTION_KEY` encrypts `meta_pixel_connections.bisu_token` at rest with AES-256-GCM (`app/lib/crypto.server.js`); **must differ** from `SESSION_SECRET` so leaking one doesn't compromise the other.
 
 ---
 
-## Financial Calculations (Source of Truth)
+## Shopify scopes (canonical list)
 
-All values in PKR. No conversion. No other currency.
+Hardcoded in `app/shopify.server.ts` as `CANONICAL_SCOPES` and mirrored in `shopify.app.toml`:
 
 ```
-Sales              = SUM(invoice_payment) WHERE is_delivered = true
+read_orders, read_products, read_inventory,
+read_customers, read_checkouts,
+write_pixels, read_pixels, read_customer_events,
+read_themes
+```
+
+Why each:
+
+| Scope | Reason |
+|---|---|
+| `read_orders` | COGS matching, order webhooks, dashboard reads. |
+| `read_products`, `read_inventory` | COGS table population. |
+| `read_customers` | Email/phone/name on order webhooks for hashed CAPI identity. |
+| `read_checkouts` | Checkout webhooks → InitiateCheckout CAPI events. |
+| `write_pixels`, `read_pixels` | Install/manage Custom Web Pixel via Admin GraphQL. |
+| `read_customer_events` | Required by `webPixelCreate` so the Web Pixel receives checkout/purchase events from the customer-events stream inside the LavaMoat sandbox. |
+| `read_themes` | Poll active theme `settings_data.json` to auto-detect when the merchant has saved our app embeds (no `write_themes`; Shopify gates programmatic theme writes behind an exemption tracking apps don't qualify for). |
+
+`afterAuth` (in `app/shopify.server.ts`) does three things on every install / re-auth:
+
+1. Upserts a `stores` row with `ignoreDuplicates: true` (re-installs don't overwrite credentials).
+2. Pulls `currency` + `money_format` from Shopify `shop.json` and stores them on `stores`.
+3. Re-asserts shop-specific webhook subscriptions for `app/uninstalled` and the meta-pixel topics — belt-and-suspenders against the real production case where TOML-managed subs failed to retroactively register on older installs.
+
+---
+
+## Database schema
+
+Authoritative: `supabase/schema.sql` for the original tables, `supabase/migrations/00N_*.sql` for incremental changes (run in numeric order). Schema below is illustrative; if it conflicts with the SQL files, the SQL files win.
+
+### Tenant tables (RLS-isolated)
+
+| Table | Purpose |
+|---|---|
+| `stores` | One row per merchant. Credentials, settings, currency, ingest mode, onboarding state, last-sync timestamps. |
+| `orders` | PostEx-synced orders + COGS-matched fields + Shopify `order_date`. |
+| `product_costs` | One row per (`store_id`, `shopify_variant_id`). Unit cost in store currency. |
+| `ad_spend` | One row per (`store_id`, `spend_date`). Amount in **store** currency (FX-converted at ingest). Never purged. |
+| `store_expenses` | Multi-row expenses per store. `{ name, amount, type IN ('monthly', 'per_order') }`. Replaced the legacy single-amount `stores.expenses_amount` / `stores.expenses_type` columns (which still exist but are unused). |
+| `daily_snapshots` | Per-day aggregate per store. Defined for % change calculations. Never purged. |
+| `meta_pixel_connections` | One row per shop with the Pixel Tracking config connected. Encrypted BISU token, dataset_id, business_id, web_pixel_id, status. |
+| `capi_retries` | Failed CAPI events awaiting retry. Drained by `api.cron.capi-retry` every 5 min. Deleted on success or after 5 attempts. |
+| `capi_delivery_log` | Rolling tail of recently-sent CAPI events. Capped at **500 rows per shop** by an after-insert trigger (`trim_capi_delivery_log`). Powers the dashboard's "Recent events" list. |
+| `emq_snapshots` | Daily Event Match Quality scores per dataset. 90-day TTL via `trim_emq_snapshots`. Drives EMQ trend chart. |
+| `visitors` | One row per cod_visitor_id (per-browser-per-store). Hashed PII + latest `fbp/fbc/ip/ua` + `fbc_history`/`utm_history` jsonb arrays. 180-day TTL on `last_seen_at`. |
+| `visitor_events` | Per-event breadcrumb. 30-day raw audit trail. |
+| `order_attribution` | One row per Shopify order, written at Purchase-webhook time. Pre-classified `channel ∈ {facebook_ads, instagram_ads, direct_organic}`, UTM provenance. 30-day TTL. |
+
+### Shared tables
+
+| Table | Purpose |
+|---|---|
+| `fx_rates` | Daily-cached `(base, quote) → rate` from open.er-api.com. Read-allowed to all (read-only RLS); writes are service-role only. Used by `app/lib/fx.server.js`. |
+
+### Notable columns / mechanisms
+
+- `orders.transaction_date` — when **PostEx** accepted the consignment.
+- `orders.order_date` — when the **customer** placed the order on Shopify. Filled by `enrich.server.js` (`enrichOrdersWithShopify`) from Shopify `created_at`. Fallback to `transaction_date` after 5 unsuccessful enrichment attempts. **Dashboard date-bucketing uses `COALESCE(order_date, transaction_date)`.** Without this, merchants who batch-ship once a week saw all unshipped orders collapse onto today.
+- `orders.cogs_match_source` — `'none' | 'sku' | 'exact' | 'fuzzy' | 'sibling_avg' | 'fallback_avg'`. Match strategy is implemented in `app/lib/cogs.server.js`.
+- `orders.is_delivered` / `is_returned` / `is_in_transit` — derived from `status_code`, set on every upsert.
+- `stores.is_demo` — when `true`, dashboard reads point to the shared demo pool `store_id` (see Demo mode below).
+- `stores.ingest_mode` — `'postex'` (default) or `'shopify_direct'`. Dispatched by `app/lib/stats-adapter.server.js`.
+- `stores.currency`, `stores.money_format`, `stores.meta_ad_account_currency` — multi-currency support.
+- `stores.meta_sync_error` — last Meta cron error message; cleared on success/reconnect. Drives a dashboard banner.
+- `meta_pixel_connections.bisu_token` — AES-256-GCM at rest. Encrypted via `app/lib/crypto.server.js` with `ENCRYPTION_KEY`.
+
+### RPC functions (`supabase/schema.sql`)
+
+| RPC | Purpose |
+|---|---|
+| `set_app_store(store text)` | Sets `app.current_store_id` for RLS. **Call before every Supabase query server-side.** |
+| `get_dashboard_stats(p_store_id, p_from_date, p_to_date, p_monthly_expenses, p_per_order_expenses)` | Main dashboard aggregate. Returns one row with sales / orders / units / returns / in_transit / delivery_cost / reversal_cost / tax / cogs / ad_spend / expenses / gross_profit / net_profit / return_loss / roas / poas / cac / aov / margin_pct / roi_pct / refund_pct / in_transit_value. NULL ratios (denominator = 0) → UI shows "N/A". |
+| `get_period_comparison(...)` | % change against a prior period using `daily_snapshots`. Skipped for the Last Month card (no prior data exists in rolling window). |
+| `get_orders_for_period(...)` | Paginated drill-down for the detail panel. |
+| `get_city_breakdown(...)` | City-level return-loss aggregation for the "Where you're losing money" panel. |
+| `trim_emq_snapshots()` | 90-day TTL. Called from `api.cron.visitors-trim`. |
+| `trim_order_attribution()` | 30-day TTL. Called from `api.cron.visitors-trim`. |
+| `trim_capi_delivery_log()` | After-insert trigger; per-shop 500-row cap. |
+
+---
+
+## Financial calculations
+
+All values in the **store's currency** (PKR for legacy installs; matches Shopify `shop.json` for new ones). Formulas live in `get_dashboard_stats` (the SQL is the source of truth — what's below is descriptive).
+
+```
+Sales              = SUM(invoice_payment) WHERE is_delivered
 Delivery Cost      = SUM(transaction_fee + transaction_tax + reversal_fee + reversal_tax)
-                     applies to BOTH delivered AND returned orders
-COGS               = SUM(cogs_total) WHERE is_delivered = true OR is_returned = true
-                     product left warehouse regardless of outcome
-Ad Spend           = SUM(ad_spend.amount) for the period
-                     = 0 if merchant has not connected Meta
-Expenses           = IF per_month: expenses_amount × (days_in_period / 30)
-                     IF per_order: expenses_amount × delivered_order_count
+                     for delivered + returned
+Reversal Cost      = SUM(reversal_fee)                  for returned
+Tax                = SUM(transaction_tax + reversal_tax) for delivered + returned
+COGS               = SUM(cogs_total) for delivered
+                   + SUM(cogs_total × (1 - sellable_returns_pct/100)) for returned
+                   (the unsellable portion is the real loss; default 85% sellable)
+Return Loss (PKR)  = per returned order: full delivery+reversal + unsellable COGS
+Ad Spend           = SUM(ad_spend.amount) for the period (already FX-converted at ingest)
+Expenses           = monthly_total × (number of month-starts in window)
+                   + per_order_total × delivered_order_count
+                   (monthly charges fire on the 1st of each month, not prorated daily)
 
 Gross Profit       = Sales - Delivery Cost - COGS
 Net Profit         = Gross Profit - Ad Spend - Expenses
 
-Blended ROAS       = Sales / Ad Spend           → "N/A" if Ad Spend = 0
-Blended POAS       = Net Profit / Ad Spend      → "N/A" if Ad Spend = 0
-CAC                = Ad Spend / Orders          → "N/A" if Ad Spend = 0 or Orders = 0
-Average Order Value = Sales / Orders            → "N/A" if Orders = 0
-Margin%            = (Net Profit / Sales) × 100 → "N/A" if Sales = 0
-ROI%               = (Net Profit / (COGS + Ad Spend + Delivery Cost)) × 100
-                     → "N/A" if denominator = 0
-% Refunds          = (Returns / (Delivered + Returns)) × 100 → 0 if no orders
-Sellable Returns%  = merchant-configured setting in stores table (default 100%)
+ROAS               = Sales       / Ad Spend          → NULL if Ad Spend = 0
+POAS               = Net Profit  / Ad Spend          → NULL if Ad Spend = 0
+CAC                = Ad Spend    / Delivered Orders  → NULL if either is 0
+AOV                = Sales       / Delivered Orders  → NULL if Delivered = 0
+Margin %           = Net Profit / Sales × 100        → NULL if Sales = 0
+ROI %              = Net Profit / (COGS + Ad Spend + Delivery Cost) × 100 → NULL if 0
+% Refunds          = Returns / (Delivered + Returns) × 100 → 0 if no orders
+In-Transit Value   = SUM(invoice_payment) for non-terminal orders
+                     (excludes Delivered, Returned, Cancelled, Transferred)
 ```
 
-### Division by Zero Rule
-**Never show 0 for a ratio metric when the denominator is 0. Always show "N/A".** Showing 0 ROAS when there is no ad spend is misleading — it implies the merchant spent money and got nothing back.
+### Order count rule
 
-### Order Counting Rules
-- **Sales**: Delivered orders only (`is_delivered = true`)
-- **Orders count**: Delivered orders only
-- **Units Sold**: SUM(items) WHERE is_delivered = true
-- **Returns**: COUNT WHERE is_returned = true
-- **In-transit**: COUNT WHERE is_in_transit = true — shown as informational count only, zero financial impact
-- **Returned orders**: `invoice_payment` excluded from Sales, `reversal_fee + reversal_tax` included in Delivery Cost, `cogs_total` included in COGS
-- **invoicePayment is GROSS** — it is what the customer paid, NOT what PostEx remits to the merchant
+The displayed `orders` count = `delivered + returned`. A return is still an order the customer placed; the carrier just didn't complete it. Internal `v_delivered` (delivered-only) is what feeds CAC / AOV.
+
+### Division-by-zero rule
+
+Ratio metrics return NULL when the denominator is 0; the UI renders "N/A". **Never display 0 for an undefined ratio** — implies the merchant spent money and got nothing back.
+
+### Last Month % change
+
+The Last Month card has **no % change**. The month before last falls outside the rolling window and was never stored.
 
 ---
 
-## % Change Logic (Per Card)
+## Currency + FX
 
-| Card | Current Period | Compared Against | Show % Change? |
-|------|---------------|-----------------|----------------|
-| Today | Today (PKT) | Yesterday | Yes |
-| Yesterday | Yesterday | Day before yesterday | Yes |
-| MTD | 1st of month → today | Same day-range last month (e.g. Apr 1-22 vs Mar 1-22) | Yes |
-| Last Month | Full last month | No comparison | **NO — never show % change on Last Month card** |
+- `stores.currency` — ISO 4217 code from Shopify `shop.json` (set in `afterAuth`). Source of truth for dashboard rendering (uses `Intl.NumberFormat`; `money_format` is a fallback hint).
+- `stores.meta_ad_account_currency` — set when the merchant connects Meta. If it differs from `stores.currency`, the spend-fetcher (`fetchSpendInStoreCurrency` in `app/lib/meta.server.js`) applies an FX conversion at **ingest time** and writes the converted amount to `ad_spend.amount`.
+- **Convert-at-ingest, Stripe-style.** Historical `ad_spend` rows are frozen — they don't drift as FX moves. Display is trivial (no FX at render).
+- `fx_rates` — daily-cached from open.er-api.com (free, no key, daily). The on-demand fetcher in `app/lib/fx.server.js` refreshes if cache is >24 h old, falls back to last-known-good when the live API is unavailable. Identity rates (USD→USD = 1.0) short-circuit and are not stored.
 
-**Why no % change on Last Month:** The month before last month falls outside the rolling database window and was never stored. There is no data to compare against. Do not show a % change, do not show a dash, simply omit the % change element entirely from the Last Month card.
-
-**% change source:** Always calculated from `daily_snapshots` table (never purged). Sum snapshot rows for the comparison period and compare.
-
-**% change color:**
-- Green = improvement (sales up, profit up)
-- Orange = decline (sales down, profit down)
+Legacy: all currently-installed stores were PKR before migration 018; the `currency` default of `'PKR'` and `money_format` of `'Rs.{{amount}}'` keep them rendering identically.
 
 ---
 
-## PostEx API Integration
+## Ingest modes
 
-### Base URL
-`https://api.postex.pk/services/integration/api/order/`
+`stores.ingest_mode` ∈ `{'postex', 'shopify_direct'}`. `app/lib/stats-adapter.server.js` dispatches.
 
-### Auth
-Header: `token: <postex_token>` — per-store token stored in `stores` table
+- **`postex`** (default for legacy + Pakistani COD) — PostEx cron populates `orders`; dashboard reads aggregates via RPC. Full feature set: city panel, trend, pipeline pills.
+- **`shopify_direct`** (prepaid / international, no courier) — `orders` table stays empty. Dashboard hits Shopify Admin API live at request time with a 60s in-memory cache. KPI cards render the same shape; the city / trend / pipeline panels are skipped (we don't have the data).
 
-### Key Endpoints
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `v1/get-all-order` | GET | Main order sync |
-| `v2/get-operational-city` | GET | Token validation during onboarding |
-| `v1/track-order/{trackingNumber}` | GET | Single order lookup if needed |
-
-### List Orders — Correct Param Names (verified by live testing)
-```
-GET /v1/get-all-order?orderStatusId=0&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
-Header: token: <value>
-```
-- `orderStatusId` — camelCase, lowercase 'd'. Value `0` = all statuses.
-- `startDate` / `endDate` — not `fromDate`/`toDate`. Verified from actual 400 error responses.
-- Returns JSON with `statusCode`, `statusMessage`, `dist` array of orders.
-
-### Status Code Mapping
-
-| Code | Meaning | DB Flag |
-|------|---------|---------|
-| 0001 | At Merchant's Warehouse | is_in_transit |
-| 0002 | Returned | is_returned |
-| 0003 | At PostEx Warehouse | is_in_transit |
-| 0004 | Package on Route | is_in_transit |
-| 0005 | **Delivered** | **is_delivered** |
-| 0006 | Returned | is_returned |
-| 0007 | Returned | is_returned |
-| 0008 | Delivery Under Review | is_in_transit |
-| 0013 | Attempt Made | is_in_transit |
-
-Status code comes from `transactionStatusHistory` array — use the **last item** in the array (most recent event). Use its `transactionStatusMessageCode` to set `status_code`.
-
-The top-level `transactionStatus` field is a human-readable string (e.g. "Delivered", "Booked") — store it as `transaction_status` for display purposes only.
-
-**Fallback:** If `transactionStatusHistory` is missing or empty, map `status_code` from the `transactionStatus` string:
-```js
-const statusStringMap = {
-  'Delivered': '0005',
-  'Returned': '0002',
-  'Booked': '0003',
-  'Out For Delivery': '0004',
-  'Attempted': '0013',
-  'Delivery Under Review': '0008',
-};
-```
-
-### Performance (from live testing on real store data)
-
-| Date Range | Orders | Time to First Byte | Total Time | Size |
-|------------|--------|--------------------|------------|------|
-| 3 weeks | 6 | <1s | <1s | ~7 KB |
-| 4 months | 768 | 8.59s | 9.19s | 703 KB |
-| 16 months | ~5,800 | 37.27s | 38.28s | 5.3 MB |
-
-Bottleneck is entirely server-side at PostEx. The 30-day sync window = approximately 2-3 seconds per store.
-
-### Order Ref Number Normalization
-PostEx `orderRefNumber` arrives as `#9271` or `9271` — inconsistent. Always strip `#` before storing and before matching to Shopify. Stored as `order_ref_number` in DB without `#`.
-
-### Error Handling for PostEx Sync
-- If PostEx returns non-200: log the error, skip that store, continue to next store
-- Do not retry immediately — wait for next scheduled sync
-- Update `last_postex_sync_at` only on success
+Switching modes later is supported but historical data is mode-bound (PostEx aggregates ≠ Shopify aggregates by design — different inclusion rules, different statuses). New data flows through the new path; old data stays where it was.
 
 ---
 
-## Shopify Integration
+## Date / timezone
 
-### Scopes Required
-```
-read_products, read_orders
-```
+All date-bucketing uses **PKT (UTC+5)**, hardcoded. App is Pakistan-first and even non-PKR merchants share the operational rhythm. Helpers live in `app/lib/dates.server.js` (`nowPKT`, `startOfDayUTC`, `endOfDayUTC`, `getTodayPKT`, `getYesterdayPKT`, `getMTDPKT`, `getLastMonthPKT`, `getMTDComparisonPKT`, `getDayBeforeYesterdayPKT`, `getMonthBeforeLastPKT`, `getPriorEqualLengthRange`).
 
-### Admin API Usage
-- Fetch all product variants + SKUs → COGS setup table
-- Fetch order by order number → get line items for COGS matching
-- Register `app/uninstalled` webhook → data deletion on uninstall
-
-### COGS Matching Flow
-1. Take `order_ref_number` from PostEx (already normalized, no `#`)
-2. Query Shopify Admin API: `GET /admin/api/2025-01/orders.json?name={order_ref_number}&status=any`
-3. Get line items → each has `variant_id` + `quantity`
-4. Look up `product_costs` by `(store_id, shopify_variant_id)`
-5. `cogs_total = SUM(unit_cost × quantity)` across all line items
-6. Set `cogs_matched = true` if all variants found in `product_costs`, `false` if any variant is missing
-7. Orders with `cogs_matched = false` are flagged on dashboard: "X orders have missing COGS"
-
-### Retroactive COGS Matching (after onboarding Step 3)
-When merchant completes the COGS setup step and saves their product costs, immediately trigger a batch retroactive match on all existing orders where `cogs_matched = false`. This runs as a background job after the COGS save completes. Without this, historical orders synced before COGS was set up will never get matched.
-
-### Uninstall Webhook
-- Register `app/uninstalled` topic during app installation
-- On receipt: delete ALL rows for that `store_id` from every table
-- Cascade deletes handle this automatically via `ON DELETE CASCADE` foreign keys on `stores` table
-- Just delete the row from `stores` and everything else cascades
+Strategy: shift `Date.now() + 5h` so UTC fields read as PKT, do day arithmetic, then convert back to real UTC for Supabase queries.
 
 ---
 
-## Meta Ads Integration
+## PostEx integration
 
-### Current State (Unverified Meta App)
-- Merchants must be added manually as testers in Meta Developer Console (max 25 testers)
-- Standard Meta OAuth flow works normally for whitelisted testers
-- No code difference — same OAuth flow, same API calls
-- Once Meta approves the app: tester requirement removed, no code changes needed
+Base URL: `https://api.postex.pk/services/integration/api/order/`
+Auth: header `token: <postex_token>` — per-store, in `stores.postex_token`.
 
-### Meta OAuth Scopes Required
-```
-ads_read
-```
+| Endpoint | Purpose |
+|---|---|
+| `GET v1/get-all-order?orderStatusId=0&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD` | Main order sync (camelCase params; `startDate`/`endDate`, **not** `fromDate`/`toDate`). |
+| `GET v2/get-operational-city` | Token validation in onboarding. |
+| `GET v1/track-order/{trackingNumber}` | Single-order lookup (rare). |
 
-### Meta API Endpoint for Spend Data
+### Status-code mapping
+
+| Code | Meaning | Flag |
+|---|---|---|
+| 0001 | At Merchant's Warehouse | `is_in_transit` |
+| 0002 | Returned | `is_returned` |
+| 0003 | At PostEx Warehouse | `is_in_transit` |
+| 0004 | Package on Route | `is_in_transit` |
+| 0005 | **Delivered** | `is_delivered` |
+| 0006 | Returned | `is_returned` |
+| 0007 | Returned | `is_returned` |
+| 0008 | Delivery Under Review | `is_in_transit` |
+| 0013 | Attempt Made | `is_in_transit` |
+
+`status_code` comes from the **last** entry in `transactionStatusHistory[]`. Top-level `transactionStatus` is a human-readable string stored in `transaction_status` for display. Fallback if history is empty: map from the string (`Delivered`→`0005`, `Returned`→`0002`, `Booked`→`0003`, …) — see `app/lib/postex.server.js`.
+
+### Order-ref normalization
+
+`orderRefNumber` arrives as `#9271` or `9271` inconsistently. Always strip `#` before storing and before matching to Shopify. `order_ref_number` is stored without `#`.
+
+### Sync flow
+
+`app/lib/sync.server.js` orchestrates per-store. The cron (`api.cron.postex`) lists all stores with `postex_token IS NOT NULL AND is_demo != true`, then runs them in batches of `CONCURRENCY = 5`. For each store:
+
+1. Fetch from PostEx with a 30-day rolling window.
+2. Upsert by `(store_id, tracking_number)`; recompute flags from `status_code`.
+3. Trigger `retroactiveCOGSMatch` (fire-and-forget).
+4. If a Shopify offline session exists, fire `fixZeroInvoicePayments` (best-effort recovery for known-bad PostEx rows).
+5. Update `stores.last_postex_sync_at` on success.
+
+Failure on one store doesn't abort the run; the error is logged.
+
+### Historical backfill
+
+`app/lib/backfill.server.js`. Triggered when the merchant saves their PostEx token in onboarding step 1. Fetches Jan 1 of current year → today, chunked monthly, run sequentially as a background job. Dashboard banner: "Syncing your order history…".
+
+---
+
+## Shopify integration
+
+`app/lib/shopify.server.js` and `app/lib/shopify-pipeline.server.js`. Admin API `2025-10`.
+
+### COGS matching
+
+`app/lib/cogs.server.js` and `app/lib/enrich.server.js`. Strategies, in priority order:
+
+1. **`sku`** — line-item SKU matches a `product_costs.sku`.
+2. **`exact`** — variant title + product title exact match.
+3. **`fuzzy`** — token-overlap title match.
+4. **`sibling_avg`** — average across other variants of the same product.
+5. **`fallback_avg`** — store-wide average. Last resort.
+
+Match source is recorded in `orders.cogs_match_source`. `cogs_matched = true` when all line items found a non-zero cost.
+
+### Order date enrichment
+
+`enrichOrdersWithShopify` runs on every cron tick + after onboarding. When it has a Shopify match, it writes `order_date = shopify created_at`. When it doesn't, it increments `order_date_attempts`; after 5 attempts a finalize sweep writes `order_date = transaction_date` as the permanent fallback. The `preserve_order_date` BEFORE-UPDATE trigger defends against any future code path that mistakenly tries to clobber a resolved date with NULL.
+
+### Retroactive matching
+
+When the merchant completes COGS setup, a batch retroactive match runs over all existing orders with `cogs_matched = false`. Without this, orders synced before COGS was configured would never match.
+
+### Uninstall
+
+`app/uninstalled` webhook → delete the `stores` row. `ON DELETE CASCADE` removes everything else.
+
+---
+
+## Meta Ads spend integration
+
+Separate from the Pixel Tracking flow.
+
+OAuth scope: `ads_read`. Tokens are long-lived (60 days). Stored as `stores.meta_access_token` + `stores.meta_token_expires_at` + `stores.meta_ad_account_id` + `stores.meta_ad_account_name` + `stores.meta_ad_account_currency`.
+
+### Endpoint
+
 ```
 GET /{ad_account_id}/insights
   ?fields=spend
   &time_range={"since":"YYYY-MM-DD","until":"YYYY-MM-DD"}
   &level=account
-  &access_token={meta_access_token}
+  &access_token={token}
 ```
-Returns: `{ "data": [{ "spend": "194.97" }] }`
 
-### Token Expiry Handling
-- Meta long-lived tokens expire after **60 days**
-- Store expiry in `stores.meta_token_expires_at`
-- Before every Meta sync: check if token expires within 7 days → if yes, show warning banner on dashboard: "Your Meta Ads connection expires soon. Go to Settings to reconnect."
-- If token is already expired: skip Meta sync for that store, show error banner on dashboard
-- Merchant reconnects via Settings page → new token replaces old one, new expiry stored
+`fetchSpendInStoreCurrency` wraps this and applies FX from `fx_rates` if `meta_ad_account_currency != stores.currency`.
 
-### Meta Skipped / Not Connected
-- Meta step is optional during onboarding — merchant can skip
-- If skipped: `meta_access_token = null`, `meta_ad_account_id = null`
-- Ad Spend = 0 for all periods
-- ROAS, POAS, CAC all show "N/A" on dashboard
-- Show a subtle "Connect Meta Ads" prompt on dashboard for merchants who skipped
+### Token expiry handling
+
+- Within 7 days of expiry → dashboard banner ("Your Meta Ads connection expires on [date]").
+- Expired → skip Meta cron for that store, set `stores.meta_sync_error`, dashboard banner ("Meta Ads disconnected — token expired").
+- Reconnect via `/app/settings` → new token + new expiry.
+
+### Skipped Meta
+
+If the merchant skipped Meta in onboarding, all ad-spend reads return 0; ROAS / POAS / CAC render "N/A"; a subtle prompt invites them to connect later.
 
 ---
 
-## Cron Jobs (Railway)
+## Meta Pixel + CAPI relay
 
-All times PKT (UTC+5). All endpoints protected by `x-cron-secret` header.
+The headline ad-tracking feature. Lives across:
 
-### Schedule Overview
+- `app/routes/app.ad-tracking.tsx` — connect / status / recent events page.
+- `app/routes/auth.meta-pixel.callback.tsx` — completes BISU flow, persists encrypted token.
+- `app/routes/api.webhooks.meta-pixel.tsx` — receives Shopify order/checkout/refund webhooks, fires CAPI.
+- `app/routes/proxy.tracking.config.tsx` and `proxy.tracking.track.tsx` — App Proxy at `/apps/tracking/*`.
+- `app/lib/meta-pixel.server.js`, `meta-pixel-session.server.js`, `meta-capi.server.js`, `meta-hash.server.js`.
+- `app/lib/web-pixel-install.server.js` — installs/uninstalls the Custom Web Pixel via Admin GraphQL.
+- `app/lib/visitors.server.js`, `cart-attributes.server.js`, `channel-attribution.server.js`, `app-proxy-verify.server.js`.
 
-| Job | Schedule (PKT) | Railway Cron Expression (UTC) | Endpoint |
-|-----|---------------|-------------------------------|----------|
-| PostEx sync | 6 AM + 6 PM | `0 1,13 * * *` | `POST /api/cron/postex` |
-| Meta today sync | Every 2 hours | `0 */2 * * *` | `POST /api/cron/meta-today` |
-| Meta yesterday finalize | 2 AM | `0 21 * * *` | `POST /api/cron/meta-finalize` |
-| Daily snapshot | 11:55 PM | `55 18 * * *` | `POST /api/cron/snapshot` |
-| Monthly purge | 1st of month 12:01 AM | `1 19 1 * *` | `POST /api/cron/purge` |
+### Connect flow
 
-### Cron Endpoint Security Pattern (apply to every cron route)
-```js
-export async function action({ request }) {
-  const secret = request.headers.get('x-cron-secret');
-  if (secret !== process.env.CRON_SECRET) {
-    return new Response('Unauthorized', { status: 401 });
+1. Merchant clicks "Connect Pixel" → Facebook Login for Business with `META_PIXEL_CONFIG_ID` (the "Pixel Tracking" configuration created from the Conversions API template).
+2. Callback receives a BISU (Business Integration System User) token. Encrypted with AES-256-GCM (`ENCRYPTION_KEY`) and stored in `meta_pixel_connections.bisu_token`.
+3. We pull dataset list, business, ad accounts. Merchant picks a dataset.
+4. We install a Custom Web Pixel via Shopify Admin GraphQL `webPixelCreate` (requires `write_pixels` + `read_customer_events`).
+5. The merchant must save the app embeds in the active theme — `theme-embed.server.js` polls `settings_data.json` to auto-detect this and `app.api.embed-status.tsx` exposes the status to the UI.
+
+### Conversion path (server-side)
+
+Webhook subscriptions in `shopify.app.toml` (`uri = /api/webhooks/meta-pixel`):
+
+- `orders/create` + `orders/paid` → Purchase
+- `orders/edited` → ignored in v1 (most edits don't move CAPI numbers)
+- `refunds/create` → negative-value Purchase
+- `checkouts/create` + `checkouts/update` → InitiateCheckout
+
+**Why `orders/create` (not just `orders/paid`):** for COD stores payment is captured later — often days later, manually. `orders/paid` arrives long after Meta's 7-day attribution window has closed. Firing Purchase on `orders/create` with the same deterministic `event_id` means the canonical conversion lands at order placement; if `orders/paid` eventually fires too, Meta dedupes by `event_id`.
+
+**Deterministic event_id:** `<event>:<shop>:<resource_id>` (e.g. `purchase:store.myshopify.com:5634819345`). Stays under Meta's 100-char limit even for very long shop domains. Shopify retries non-2xx webhooks with the same resource id, so the same event_id repeats — Meta dedupes; we never double-count.
+
+**Cross-session enrichment:** at Purchase time we look up the visitor row written by earlier storefront events (see Visitor identity below) and merge its hashed identity + best `fbc` into the CAPI payload. Meta receives the union of every signal we ever saw for that visitor, not just what's on the live order.
+
+### App Proxy first-party endpoint
+
+Configured in `shopify.app.toml`:
+
+```toml
+[app_proxy]
+url = "https://codtracker-production.up.railway.app/proxy/tracking"
+subpath = "tracking"
+prefix = "apps"
+```
+
+Public URL: `https://{shop}.myshopify.com/apps/tracking/{config|track}`.
+
+Requests are first-party at the merchant's domain (bypasses ad blockers; Safari ITP grants the full 1-year `Max-Age` on `Set-Cookie` headers, instead of truncating to 7 days the way it does for `document.cookie`-set cookies).
+
+Shopify signs the request with HMAC-SHA256 over the query params; `verifyAppProxySignature` rejects anything unsigned (without it we'd accept arbitrary CAPI events from anyone on the internet).
+
+`/apps/tracking/config` mints (or recognizes) a `cod_visitor_id` cookie via `Set-Cookie`. `/apps/tracking/track` accepts beacon POSTs from the Custom Web Pixel: upserts the `visitors` row with latest fbp/fbc/ip/ua + hashed PII, appends a `visitor_events` breadcrumb, fires CAPI for whitelisted client-side events.
+
+### Visitor identity store
+
+`visitors` (one row per `cod_visitor_id`) carries the cross-session identity:
+
+- Hashed PII columns (em / ph / fn / ln / ct / st / zp / country / external_id) — indefinite retention.
+- Latest raw `fbp / fbc / ip / ua` — refreshed on every event (CAPI sends these unhashed).
+- `fbc_history` and `utm_history` — jsonb arrays of `{value, seen_at}`, capped at 5 entries each. Visitor who clicks two ads days apart keeps both click_ids.
+
+The theme block writes `_cod_visitor_id` into Shopify cart attributes via `/cart/update.js`, so the id rides through to the order webhook. The Purchase handler joins on `visitor_id` and `pickBestFbc` chooses the highest-confidence click id from history. `visitors.server.js` also supports fallback lookups by fbclid and by recent (ip, ua) when cart attributes are missing.
+
+`visitor_events` is the per-event breadcrumb trail with 30-day retention — purely for diagnostics and a future "session timeline" UI. The Purchase enrichment path reads from `visitors` directly, never from `visitor_events`.
+
+### Channel attribution
+
+`order_attribution` is written at Purchase-webhook time. Three buckets (locked — keep the dashboard clear):
+
+- `facebook_ads` — fbclid present + `utm_source` is `facebook` (or absent).
+- `instagram_ads` — fbclid present + `utm_source = instagram`.
+- `direct_organic` — no fbclid (organic / direct / non-Meta).
+
+30-day rolling TTL via `trim_order_attribution` in `api.cron.visitors-trim`. Powers the Ad Tracking dashboard's channel breakdown card.
+
+### CAPI delivery + retries
+
+`capi_delivery_log` keeps the most-recent 500 events per shop (after-insert trigger). Drives the dashboard's "Recent events" list.
+
+`capi_retries` holds events that failed first try. `api.cron.capi-retry` drains it every 5 min with exponential backoff. Rows are deleted on success or after 5 attempts (Meta won't accept events older than 7 days anyway, so further retries are wasted).
+
+### Event Match Quality
+
+`api.cron.emq` (daily) calls Meta's EMQ endpoint per dataset and stores `overall_emq` + per-event scores + per-field coverage in `emq_snapshots`. 90-day TTL via `trim_emq_snapshots`. Powers the EMQ trend chart on the Ad Tracking page.
+
+---
+
+## Demo mode
+
+`stores.is_demo = true` flips dashboard reads to a shared demo pool `store_id` (resolved by `effectiveStoreId` in `app/lib/demo-pool.server.js`). Expenses + COGS still come from the merchant's own row; only orders / ad_spend reads are redirected.
+
+`api.cron.demo-tick` (daily, 9 AM PKT) fabricates synthetic orders + ad spend for the pool. Lives in `demo-fabricator.server.js`. `demo-pipeline.server.js` builds the in-pipeline mock data the pills display.
+
+The PostEx cron explicitly excludes demo stores (`is_demo != true`) — hitting PostEx with the magic-key token returns 401 and would pollute the row.
+
+---
+
+## Cron schedule
+
+Railway scheduled jobs. All endpoints require `x-cron-secret: $CRON_SECRET`. Times are UTC (PKT = UTC+5).
+
+| Job | UTC | PKT | Endpoint |
+|---|---|---|---|
+| PostEx sync | `0 1,13 * * *` | 6 AM + 6 PM | `POST /api/cron/postex` |
+| Meta today | `0 */2 * * *` | every 2 h | `POST /api/cron/meta-today` |
+| Meta finalize | `0 21 * * *` | 2 AM | `POST /api/cron/meta-finalize` |
+| CAPI retry | `*/5 * * * *` | every 5 min | `POST /api/cron/capi-retry` |
+| EMQ snapshot | `0 6 * * *` | 11 AM | `POST /api/cron/emq` |
+| Trim tables | `0 3 * * *` | 8 AM | `POST /api/cron/visitors-trim` |
+| Demo tick | `0 4 * * *` | 9 AM | `POST /api/cron/demo-tick` |
+
+There is no daily-snapshot cron and no monthly-purge cron in the current build (earlier plans were dropped). `daily_snapshots` and `ad_spend` rows are populated as a side effect of the live aggregation; if a true rolling-window purge is reintroduced, mirror the cron-secret pattern below.
+
+Standard guard:
+
+```ts
+export const action = async ({ request }: ActionFunctionArgs) => {
+  if (request.headers.get("x-cron-secret") !== process.env.CRON_SECRET) {
+    return new Response("Unauthorized", { status: 401 });
   }
-  // sync logic here
-}
-```
-
-### 1. PostEx Sync — 6 AM + 6 PM PKT
-
-**Why 12-hour interval:** Pakistani delivery statuses update slowly. Two syncs per day covers morning and evening status changes without hammering PostEx.
-
-**What it does:**
-- Fetch all stores from `stores` table where `postex_token IS NOT NULL`
-- For each store sequentially:
-  - Call `/v1/get-all-order` with **30-day rolling window** (today-30 → today) in PKT dates
-  - Upsert every order by `(store_id, tracking_number)`
-  - On each upsert: recompute `is_delivered`, `is_returned`, `is_in_transit` from `status_code`
-  - If an order's status changed TO delivered or returned AND `cogs_matched = false`: trigger COGS matching against Shopify
-  - Update `stores.last_postex_sync_at` on success
-- Run stores sequentially. At 50+ stores consider parallelizing with max 5 concurrent.
-
-**Historical backfill (first install only):**
-- Triggered immediately when merchant saves PostEx token in onboarding Step 1
-- Fetch from January 1st of current year to today
-- Chunk into monthly requests (12 API calls max) run sequentially
-- Run as background job — do not block the onboarding UI
-- Show a "Syncing historical data..." banner on dashboard until complete
-
-### 2. Meta Today Sync — Every 2 Hours
-
-**Why 2 hours:** Today's Meta spend is a live running number. Merchants check the Today card throughout the day. 2-hour intervals give a reasonably fresh number without excessive API calls.
-
-**What it does:**
-- Fetch all stores where `meta_access_token IS NOT NULL` and token is not expired
-- For each store: call Meta API for **today's date only**
-- Upsert `ad_spend` for `spend_date = today` — overwrites previous today entry
-- Small payload: one number per store
-
-**Note:** Today's number is preliminary. The Meta Yesterday Finalize job locks in the final number.
-
-### 3. Meta Yesterday Finalize — 2 AM PKT
-
-**Why 2 AM:** Meta finalizes previous day spend after midnight. 2 AM PKT gives buffer for Meta's processing.
-
-**What it does:**
-- For each connected store: call Meta API for **yesterday's date**
-- Upsert `ad_spend` for yesterday — this is the authoritative final number
-- Overwrites whatever partial number the 2-hourly job stored during that day
-
-### 4. Daily Snapshot — 11:55 PM PKT
-
-**What it does:**
-- For each store: aggregate today's orders from `orders` table
-- Write one row to `daily_snapshots` for today's date
-- Include: sales, orders, units, returns, in_transit, delivery_cost, cogs, ad_spend, expenses, gross_profit, net_profit
-- These snapshots power the % change calculations on dashboard cards
-- **Never deleted**
-
-### 5. Monthly Purge — 1st of Month 12:01 AM PKT
-
-**What it does:**
-- Delete from `orders` WHERE `transaction_date < first day of last month`
-- Example: On May 1st, delete everything before April 1st
-- `ON DELETE CASCADE` is NOT used here — only deleting specific date range from `orders`
-- Never touches: `daily_snapshots`, `ad_spend`, `product_costs`, `stores`
-
----
-
-## Onboarding Wizard (4 Steps)
-
-Merchant is redirected to onboarding on first install. `stores.onboarding_step` tracks progress. Merchant can navigate back to previous steps freely.
-
-### Step 1: PostEx Setup
-- Fields: PostEx API Token, Merchant ID
-- On save: hit `GET /v2/get-operational-city` with the token
-  - 200 response = valid → save to `stores`, advance to step 2, trigger background historical backfill
-  - Non-200 = show error "Invalid token. Please check your PostEx credentials."
-
-### Step 2: Meta Ads Setup (Skippable)
-- "Connect Meta Ads" button → Meta OAuth flow
-- Merchant must be pre-added as tester (until Meta app approved)
-- On success: save `meta_access_token`, `meta_ad_account_id`, `meta_token_expires_at` (now + 60 days)
-- Show dropdown of available ad accounts for merchant to select
-- "Skip for now" link → advance to step 3 with `meta_access_token = null`
-
-### Step 3: COGS Setup
-- Fetch all product variants from Shopify Admin API
-- Display table: Product Title | Variant | SKU | Unit Cost (PKR) input
-- Merchant enters cost per SKU
-- "Save & Continue" → bulk upsert to `product_costs` table
-- Variants with no cost entered are saved with `unit_cost = 0`
-- Show count: "X of Y variants have costs entered"
-
-### Step 4: Expenses Setup
-- Field: Monthly/Per-Order expense amount in PKR
-- Radio: "Per Month" or "Per Order"
-- Explanation shown: "Per Month expenses are prorated across each time period. Per Order expenses multiply by the number of delivered orders."
-- Save to `stores.expenses_amount` and `stores.expenses_type`
-- "Finish Setup" → set `onboarding_complete = true`, redirect to dashboard
-
----
-
-## Settings Page
-
-All settings are editable post-onboarding. Show a warning banner before saving changes.
-
-### PostEx Settings
-- Edit: Token, Merchant ID
-- Warning on save: "Changing your PostEx token will trigger a validation check. Your order data will remain unchanged."
-- On save: re-validate token via Operational Cities API. If invalid, reject and show error. If valid, save.
-
-### Meta Ads Settings
-- Edit: Reconnect Meta account (full OAuth flow again)
-- Warning on save: "You will be redirected to Meta to re-authorize. This is required when your token expires."
-- Use this flow for both initial connect and token renewal
-- Useful path: token expired → merchant comes here → re-authorizes → new token + new expiry saved
-
-### COGS Settings
-- Full editable table: same UI as onboarding Step 3
-- Warning on save: "Updated costs apply to future calculations only. Historical snapshots will not be recalculated."
-- Merchants change suppliers and prices frequently — this should be easy to access
-
-### Expenses Settings
-- Edit: Amount and type
-- Warning on save: "Expense changes apply from today. Past snapshots will not be updated."
-
----
-
-## Dashboard UI
-
-Reference images: `docs/img/img0.png` (main cards) and `docs/img/img1.png` (detail panel).
-
-### Main View — 4 KPI Cards
-
-Layout: 4 horizontal cards — Today | Yesterday | MTD | Last Month
-
-**Card header colors:**
-- Today: Green
-- Yesterday: Green  
-- MTD: Teal
-- Last Month: Teal/Blue
-
-**Each card contains:**
-```
-[Period Name]          [Date or date range]
-Sales [±X.X%]
-PKR X,XXX,XXX
-
-Orders / Units         Returns
-XXX / XXX              XX
-
-Adv. cost              Blended ROAS
--PKR X,XXX             X.XX
-
-Net Profit [±X.X%]     Orders
-PKR X,XXX              XXX
-
-                [More]
-```
-
-- % change shown on Sales and Net Profit — colored orange (down) or green (up)
-- **Last Month card: NO % change shown on any metric** — no prior data exists
-- "More" link at bottom of every card → opens Detail Panel for that period
-- ROAS, POAS, CAC show "N/A" when Meta not connected or Ad Spend = 0
-
-### Detail Panel — Triggered by "More"
-
-Slide-in panel (Polaris Modal or Sheet) showing full breakdown for the selected period:
-
-```
-[Period Name]
-[Date range]                              [×]
-
-> Sales                        PKR X,XXX,XXX
-> Orders                                  XXX
-> Units Sold                              XXX
-> Returns                                  XX
-> In Transit                               XX   (informational only)
-> Advertising cost            -PKR X,XXX,XXX
-> Shipping costs              -PKR X,XXX,XXX   (transaction_fee + transaction_tax)
-> Reversal costs              -PKR X,XXX,XXX   (reversal_fee + reversal_tax)
-> Cost of goods               -PKR X,XXX,XXX
-  Expenses                   -PKR X,XXX,XXX
-  ─────────────────────────────────────────
-  Gross profit                 PKR X,XXX,XXX
-  Net profit                   PKR X,XXX,XXX
-  ─────────────────────────────────────────
-  Average order value          PKR X,XXX
-  Blended ROAS                 X.XX
-  Blended POAS                 X.XX
-  CAC                          PKR X,XXX
-  % Refunds                    X.XX%
-  Sellable returns             X.XX%
-  Margin                       X.XX%
-  ROI                          X.XX%
-```
-
-**The `>` rows are drill-down.** Clicking opens a table of the individual orders contributing to that number.
-
-### Drill-Down Order Table Columns
-
-| Column | Source |
-|--------|--------|
-| Tracking # | `tracking_number` |
-| Order Ref | `order_ref_number` |
-| Customer | `customer_name` |
-| City | `city_name` |
-| Date | `transaction_date` |
-| Invoice (PKR) | `invoice_payment` |
-| Delivery Cost | `transaction_fee + transaction_tax` |
-| Reversal Cost | `reversal_fee + reversal_tax` |
-| COGS | `cogs_total` |
-| Status | `transaction_status` |
-| Items | `items` |
-| COGS Matched | `cogs_matched` (flag) |
-
-Paginate drill-down table — do not load all orders at once.
-
-### Dashboard Warning Banners (shown above cards)
-- `cogs_matched = false` orders exist: "X orders have missing COGS. Update your product costs in Settings."
-- Meta token expiring within 7 days: "Your Meta Ads connection expires on [date]. Reconnect in Settings."
-- Meta token expired: "Meta Ads disconnected — token expired. Reconnect in Settings to restore ad spend data."
-- Meta not connected: subtle prompt "Connect Meta Ads in Settings to see advertising costs and ROAS."
-- Historical backfill in progress: "Syncing your order history... This may take a few minutes."
-
-### Empty State (New Merchant, No Orders Yet)
-If the dashboard loads and there are zero orders in the DB (e.g. backfill still in progress or merchant has no PostEx orders yet), show a friendly empty state instead of cards full of zeros:
-- "Your order data is being synced. Check back in a few minutes."
-- If backfill is confirmed complete and still no orders: "No orders found for this period."
-
----
-
-## Supabase RPC Functions
-
-All dashboard aggregations done via RPC — never fetch raw order rows to the frontend.
-
-```sql
--- 1. Main dashboard stats for a period
-CREATE OR REPLACE FUNCTION get_dashboard_stats(
-  p_store_id text,
-  p_from_date date,
-  p_to_date date,
-  p_expenses_amount numeric,
-  p_expenses_type text,
-  p_days_in_period integer
-)
-RETURNS TABLE (
-  sales numeric, orders bigint, units bigint, returns bigint, in_transit bigint,
-  delivery_cost numeric, reversal_cost numeric, cogs numeric,
-  ad_spend numeric, expenses numeric, gross_profit numeric, net_profit numeric,
-  roas numeric, poas numeric, cac numeric, aov numeric,
-  margin_pct numeric, roi_pct numeric, refund_pct numeric
-);
-
--- 2. Period comparison using daily_snapshots (for % change)
-CREATE OR REPLACE FUNCTION get_period_comparison(
-  p_store_id text,
-  p_current_from date,
-  p_current_to date,
-  p_prior_from date,
-  p_prior_to date
-)
-RETURNS TABLE (
-  current_sales numeric, prior_sales numeric, sales_pct_change numeric,
-  current_profit numeric, prior_profit numeric, profit_pct_change numeric
-);
-
--- 3. Drill-down orders for a period (paginated)
-CREATE OR REPLACE FUNCTION get_orders_for_period(
-  p_store_id text,
-  p_from_date date,
-  p_to_date date,
-  p_status_filter text,  -- 'delivered', 'returned', 'in_transit', 'all'
-  p_limit integer DEFAULT 50,
-  p_offset integer DEFAULT 0
-)
-RETURNS TABLE ( -- all order columns needed for drill-down table );
+  // ...
+};
 ```
 
 ---
 
-## Project File Structure (Remix)
+## Onboarding (4 steps)
+
+`stores.onboarding_step` (1–4) tracks progress; `onboarding_complete` flips the dashboard on. The onboarding layout (`app.onboarding.tsx`) renders a Polaris `Page backAction` to the previous step (none on step 1) so the wizard is never a dead-end — `onboarding_step` only ever advances in the step actions, so going back and re-entering is safe.
+
+1. **PostEx (`/app/onboarding/step1-postex`)** — token field. Validated against `GET v2/get-operational-city`. On success: save token, advance, kick off background historical backfill.
+2. **Meta Ads (`/app/onboarding/step2-meta`)** — skippable. Connect via Meta OAuth (`ads_read`). On success: save token + expiry + ad-account choice. Skip → `meta_access_token = null`.
+3. **COGS (`/app/onboarding/step3-cogs`)** — fetch all variants from Shopify Admin API, present table (Product / Variant / SKU / Unit Cost), bulk upsert to `product_costs`. Empty cells stored as 0. Counter: "X of Y variants have costs entered". On save: trigger retroactive COGS match.
+4. **Expenses (`/app/onboarding/step4-expenses`)** — the shared `<ExpenseManager>` (segments model — see Expenses page below) plus a "Finish setup" footer. The step is explicitly optional: a persistent subdued caption tells the merchant they can manage expenses anytime on the Expenses page, shown whether or not any expense was added. "Finish" sets `onboarding_complete = true` and redirects to `/app`. Pool seeding (`ensurePoolSeeded`) runs here for stores tagged demo.
+
+---
+
+## Settings (`/app/settings`)
+
+PostEx + Meta Ads are configured inline (same validation as the corresponding onboarding step — e.g. PostEx re-validates against operational-cities). COGS and **Expenses** are *not* inline: each is a card with a primary button that links out to its own dedicated page (`/app/cogs`, `/app/expenses`). This keeps Settings short and the two data-heavy editors on focused pages with their own back-arrow to Settings.
+
+Meta Ads "Reconnect" reuses the OAuth flow. After OAuth the callback redirects to `/app` (the embedded app root); `app._index.tsx` notices a pending token in the OAuth session cookie and forwards to `/app/settings` to complete the connection — this preserves App Bridge auth context (server-side 302s strip it).
+
+---
+
+## Expenses page (`/app/expenses`)
+
+`app/routes/app.expenses.tsx`. Linked from the app nav (between Home and Ad Tracking) and from Settings. Mirrors the `/app/cogs` shell: full Polaris `Page` with `backAction` → Settings + App Bridge `TitleBar`.
+
+Two parts:
+
+1. **This-month impact card** — a month-to-date figure that reconciles *exactly* with the dashboard's MTD card, because it is computed through the same path: `get_expense_breakdown` RPC for `postex`/demo (orders from the pool via `effectiveStoreId`, expenses always the merchant's own shop via `p_expense_store_id = shop`), or the stats-adapter's shared JS allocator for `shopify_direct`. Folded into Fixed / Per-order / % buckets by the pure `app/lib/expense-impact.server.js` `summarizeImpact()` (unit-tested). If the impact path throws, the loader returns `impact: null` and the card is hidden — the manager still works and no wrong number is ever shown (the standing "never display a misleading figure" rule). The card is also absent when no expenses are configured.
+2. **The shared `<ExpenseManager>`** — same component and `handleExpenseAction` mutation handler as onboarding step 4. The component posts its forms to the current route, so this page owns an `action` that delegates to `handleExpenseAction`. One code path across all three surfaces (onboarding, this page); Settings no longer embeds it.
+
+## Dashboard layout
+
+`app/routes/app._index.tsx`. Reference imagery: `docs/img/img0.png`, `docs/img/img1.png`.
+
+- **4 KPI cards** — Today / Yesterday / MTD / Last Month. Sales + Net Profit show % change against the prior period (`get_period_comparison` against `daily_snapshots`). Last Month card shows no % change (no prior data in rolling window). ROAS / POAS / CAC render "N/A" when Meta isn't connected or Ad Spend = 0.
+- **Detail panel** (`<DetailPanel/>`) — slide-in, full breakdown for a card's period. `>` rows drill down to a paginated order table.
+- **City loss panel** (`<CityLossPanel/>`) — `get_city_breakdown` results.
+- **Trend panel** (`<TrendPanel/>`) — Polaris-Viz line chart over the period.
+- **Break-even section** (`<BreakEvenSection/>`) — implied break-even numbers given current ad spend.
+- **In-pipeline pills** (`<PipelinePills/>`) — Shopify unfulfilled orders, fed by `fetchUnfulfilledPipeline` (or `fetchDemoPipeline` for demo stores).
+- **Warning banners** (`<WarningBanner/>`) — missing COGS, Meta token expiring/expired, backfill in progress, sync errors.
+- **Empty state** — friendly copy when there are zero orders (vs cards full of zeros).
+
+---
+
+## Key business rules (non-negotiable unless deliberately scoped)
+
+1. **Sales = delivered orders only**.
+2. **COGS applies to delivered + returned** — product left the warehouse.
+3. **Returned orders**: `invoice_payment` excluded from Sales; reversal costs included in Delivery Cost; unsellable COGS portion counts as loss (not full COGS).
+4. **In-transit orders**: informational count only — zero financial impact (financial value lives in `in_transit_value`).
+5. **invoicePayment is GROSS** — what the customer paid, *not* what PostEx remits.
+6. **Strip `#` from `orderRefNumber`** before storing and before Shopify matching.
+7. **All aggregations via Supabase RPC** — never pull raw rows to the frontend for math.
+8. **`store_id` = `.myshopify.com`** — set via `set_app_store()` before every Supabase query.
+9. **`daily_snapshots` and `ad_spend` are never purged** — % change and historical ROAS depend on them.
+10. **Division by zero = NULL → "N/A"** — never display 0 for an undefined ratio.
+11. **Last Month card has no % change**.
+12. **All date logic uses PKT (UTC+5)** — convert to UTC at Supabase boundary.
+13. **Uninstall = full data deletion** — delete `stores` row, cascade handles the rest.
+14. **CAPI event_id must be deterministic** (`<event>:<shop>:<resource>`) — Shopify webhook retries depend on Meta deduping.
+15. **Multi-currency: convert at ingest, never at render** — historical numbers are frozen.
+
+---
+
+## Repository layout
+
+See `README.md` for the file-tree. Quick map:
 
 ```
 app/
-  routes/
-    auth.$/                         # Shopify OAuth callback
-    app._index/                     # Dashboard main view
-    app.onboarding/                 # Wizard shell + step routing
-    app.onboarding.step1-postex/    # PostEx token setup
-    app.onboarding.step2-meta/      # Meta OAuth (skippable)
-    app.onboarding.step3-cogs/      # COGS input table
-    app.onboarding.step4-expenses/  # Expenses setup
-    app.settings/                   # Settings page (all 4 sections)
-    api.cron.postex/                # PostEx 12-hour sync
-    api.cron.meta-today/            # Meta 2-hour today sync
-    api.cron.meta-finalize/         # Meta 2 AM finalize
-    api.cron.snapshot/              # 11:55 PM daily snapshot
-    api.cron.purge/                 # Monthly purge
-    api.webhooks.uninstall/         # Shopify app/uninstalled webhook
-  components/
-    KPICard.jsx                     # Dashboard card (Today/Yesterday/MTD/Last Month)
-    DetailPanel.jsx                 # "More" slide-in panel
-    DrillDownTable.jsx              # Paginated order table inside detail panel
-    COGSTable.jsx                   # Product cost input table (onboarding + settings)
-    WarningBanner.jsx               # Dashboard warning banners
-  lib/
-    postex.server.js                # PostEx API client + upsert logic
-    shopify.server.js               # Shopify Admin API client
-    meta.server.js                  # Meta Marketing API client
-    supabase.server.js              # Supabase client with store_id RLS helper
-    sync.server.js                  # Orchestrates PostEx sync + COGS matching
-    backfill.server.js              # Historical backfill (chunked by month)
-    calculations.server.js          # Financial formula functions
-    dates.server.js                 # PKT date helpers, period boundary calculations
+  shopify.server.ts                  shopifyApp + canonical scopes + afterAuth
+  routes/                            see README
+  lib/                               server-only modules (.server.js suffix)
+  components/                        Polaris components shared across routes
+supabase/
+  schema.sql                         base tables + RLS + RPCs
+  migrations/001..023*.sql           run in order
+scripts/                             ops scripts (audit, backfill, smoke). _*.mjs are throwaway.
+shopify.app.toml                     scopes / webhooks / app proxy
+Dockerfile, railway.json             Railway deploy
 ```
 
 ---
 
-## Key Business Rules (Never Break)
+## When you change behavior
 
-1. **Sales = Delivered orders only** — `is_delivered = true`
-2. **COGS applies to Delivered AND Returned** — product left the warehouse
-3. **Returned orders**: `invoice_payment` excluded from Sales; reversal costs included in Delivery Cost
-4. **In-transit orders**: informational count only — zero impact on any financial figure
-5. **invoicePayment is GROSS** — the customer paid this; PostEx deducts fees before remitting
-6. **Strip `#` from orderRefNumber** before storing and before Shopify matching
-7. **All aggregations via Supabase RPC** — never pull raw order rows to the frontend for calculation
-8. **store_id = .myshopify.com domain** — set via `set_app_store()` RPC before every Supabase query
-9. **daily_snapshots are never purged** — % change calculations depend on them
-10. **ad_spend rows are never purged** — historical ROAS reference
-11. **Currency is PKR only** — no conversion, no other currency display, ever
-12. **Division by zero = N/A** — never show 0 for ratio metrics when denominator is 0
-13. **Last Month card has no % change** — prior month data does not exist in rolling DB
-14. **All date logic uses PKT (UTC+5)** — convert to UTC when querying Supabase
-15. **Uninstall = full data deletion** — delete `stores` row, cascade handles the rest
+- **Schema changes** → add a numbered migration to `supabase/migrations/`. Update the relevant section here.
+- **Scope changes** → update both `shopify.app.toml` and `CANONICAL_SCOPES` in `app/shopify.server.ts`. Run `npm run deploy` so Shopify knows.
+- **Webhook subscription changes** → update `shopify.app.toml` (managed-install). For belt-and-suspenders shop-specific subs, update `registerMetaPixelWebhooks` in `app/lib/shopify.server.js` (it's re-asserted on every `afterAuth`).
+- **Cron changes** → update Railway scheduled jobs and the table above.
+- **Calculation changes** → edit `get_dashboard_stats` (SQL is the source of truth). Update the formulas section here.
+- **New env var** → add it to `example.env` with a comment, and to Railway. The app should fail loudly on startup if the var is required and missing (see `SUPABASE_DATABASE_URL`).

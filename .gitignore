@@ -22,3 +22,6 @@ database.sqlite
 
 # Claude Code local settings
 .claude/
+
+# Ad-tracking daily-check runtime output (keep the script, not the logs)
+scripts/logs/
