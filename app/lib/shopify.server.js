@@ -177,10 +177,22 @@ export async function getOrderByName(session, orderRefNumber) {
   const { orders } = await res.json();
   if (!orders?.length) return null;
 
-  return orders[0].line_items.map(item => ({
-    variant_id: String(item.variant_id),
+  return orders[0].line_items.map(mapEnrichedLineItem);
+}
+
+// Line-item shape stored on orders.line_items. variant_id may legitimately
+// be null (draft/custom items) — keep it null rather than the string "null"
+// so the COGS matcher can tell "no variant" from a real id. name/price/
+// product_id give the matcher per-item signals when the variant has no cost
+// row (deleted variants, typed items): see cogs.server.js tiers 0 and 5a.
+function mapEnrichedLineItem(item) {
+  return {
+    variant_id: item.variant_id == null ? null : String(item.variant_id),
+    product_id: item.product_id == null ? null : String(item.product_id),
     quantity:   item.quantity,
-  }));
+    name:       item.name ?? null,
+    price:      item.price != null ? Number(item.price) : null,
+  };
 }
 
 // Fetches all Shopify orders in a window and returns a Map keyed on
@@ -223,10 +235,7 @@ export async function getOrdersLineItemMap(session, createdAtMin) {
 
     for (const order of orders ?? []) {
       map.set(order.name, {
-        lineItems: order.line_items.map(item => ({
-          variant_id: String(item.variant_id),
-          quantity:   item.quantity,
-        })),
+        lineItems: order.line_items.map(mapEnrichedLineItem),
         createdAt: order.created_at ?? null,
       });
     }

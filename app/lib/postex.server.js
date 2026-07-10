@@ -21,7 +21,11 @@ const STRING_STATUS_MAP = {
   'Delivered':             '0005',
   'Return':                '0002', // actual API value — NOT 'Returned'
   'Returned':              '0002', // kept as safety fallback
+  'Return In-Transit':     '0006', // package on its way back — reversal fees are
+                                   // already charged, so count it as returned now.
+                                   // Previously unmapped → stuck as in-transit forever.
   'Booked':                '0003',
+  'In Stock':              '0003', // at PostEx warehouse, pre-dispatch
   'Out For Delivery':      '0004',
   'Attempted':             '0013',
   'Under Verification':    '0008', // actual API value for 'Delivery Under Review'

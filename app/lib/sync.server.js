@@ -4,6 +4,7 @@ import {
   buildCostIndex,
   buildCostsByVariantId,
   computeCOGSFromOrder,
+  deriveCostRatio,
 } from './cogs.server.js';
 import { enrichOrdersWithShopify, loadOfflineSession } from './enrich.server.js';
 import { cancelStaleBooked } from './stale-orders.server.js';
@@ -15,11 +16,46 @@ const BATCH_CHUNK = 1000; // rows per apply_cogs_batch RPC call
 // even if PostEx hasn't caught up yet — get picked up.
 const ROLLING_ENRICH_DAYS = 30;
 
+// Rolling PostEx sync window. 20 days is the normal case; when the store
+// still has non-terminal orders older than that (e.g. long-running returns
+// that flip status after weeks), the window stretches to cover them so their
+// final status + reversal fees still land. Capped so one permanently-odd row
+// can't make every sync fetch unbounded history.
+const SYNC_WINDOW_MIN_DAYS = 20;
+const SYNC_WINDOW_MAX_DAYS = 90;
+
+// Exported for tests.
+export function computeSyncWindowDays(oldestInTransitISO, now = Date.now()) {
+  if (!oldestInTransitISO) return SYNC_WINDOW_MIN_DAYS;
+  const ts = new Date(oldestInTransitISO).getTime();
+  if (!Number.isFinite(ts)) return SYNC_WINDOW_MIN_DAYS;
+  const ageDays = Math.ceil((now - ts) / 86_400_000) + 1;
+  return Math.min(SYNC_WINDOW_MAX_DAYS, Math.max(SYNC_WINDOW_MIN_DAYS, ageDays));
+}
+
 // ------------------------------------------------------------
-// 20-day rolling sync from PostEx + line-items enrichment.
+// Rolling sync from PostEx + line-items enrichment.
 // ------------------------------------------------------------
 export async function syncStore(storeRow, supabase) {
-  const { start, end } = getLastNDays(20, storeRow.timezone ?? 'Asia/Karachi');
+  // Stretch the window to the oldest order still awaiting a terminal status,
+  // so late status flips (returns especially) aren't missed once they age
+  // past the default window. Best-effort — any error keeps the default.
+  let windowDays = SYNC_WINDOW_MIN_DAYS;
+  try {
+    const { data: oldestRows } = await supabase
+      .from('orders')
+      .select('transaction_date')
+      .eq('store_id', storeRow.store_id)
+      .eq('is_in_transit', true)
+      .not('transaction_date', 'is', null)
+      .order('transaction_date', { ascending: true })
+      .limit(1);
+    windowDays = computeSyncWindowDays(oldestRows?.[0]?.transaction_date);
+  } catch (err) {
+    console.error(`[sync ${storeRow.store_id}] window probe failed, using ${SYNC_WINDOW_MIN_DAYS}d:`, err.message ?? err);
+  }
+
+  const { start, end } = getLastNDays(windowDays, storeRow.timezone ?? 'Asia/Karachi');
   const rawOrders = await fetchOrders(storeRow.postex_token, start, end);
   const mapped = rawOrders.map(o => mapOrder(o, storeRow.store_id));
 
@@ -166,7 +202,7 @@ export async function retroactiveCOGSMatch(supabase, storeId) {
     // shopify_variant_id is the primary key for the variant_id direct path.
     const costsRes = await supabase
       .from('product_costs')
-      .select('product_title, variant_title, unit_cost, sku, shopify_variant_id')
+      .select('product_title, variant_title, unit_cost, sku, shopify_variant_id, shopify_product_id')
       .eq('store_id', storeId);
 
     const costs = costsRes.data ?? [];
@@ -188,7 +224,7 @@ export async function retroactiveCOGSMatch(supabase, storeId) {
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await supabase
         .from('orders')
-        .select('tracking_number, order_detail, line_items')
+        .select('tracking_number, order_detail, line_items, invoice_payment, items')
         .eq('store_id', storeId)
         .not('line_items', 'is', null)
         .range(from, from + PAGE - 1);
@@ -207,7 +243,7 @@ export async function retroactiveCOGSMatch(supabase, storeId) {
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await supabase
         .from('orders')
-        .select('tracking_number, order_detail, line_items')
+        .select('tracking_number, order_detail, line_items, invoice_payment, items')
         .eq('store_id', storeId)
         .in('cogs_match_source', ['none', 'fuzzy', 'sibling_avg', 'fallback_avg'])
         .range(from, from + PAGE - 1);
@@ -232,19 +268,52 @@ export async function retroactiveCOGSMatch(supabase, storeId) {
       return { evaluated: 0, updated: 0, ...counts };
     }
 
-    // ---- compute all updates in-memory ----
+    // ---- compute all updates in-memory (two passes) ----
+    // Pass 1 resolves the deterministic variant_id orders and harvests their
+    // cogs/revenue ratios; pass 2 resolves the rest with that ratio as a
+    // price anchor, so unmatched items are estimated from what THIS store's
+    // products actually cost relative to their selling price.
     const textIndex = buildCostIndex(costs);
     const costsByVariantId = buildCostsByVariantId(costs);
 
+    const resolved = new Map(); // tracking_number → result from pass 1
+    const ratioSamples = [];
+    for (const o of orders) {
+      const r = computeCOGSFromOrder(o, costsByVariantId, textIndex, null);
+      if (r.source === 'variant_id') {
+        resolved.set(o.tracking_number, r);
+        const invoice = Number(o.invoice_payment) || 0;
+        if (invoice > 0 && r.cogsTotal > 0) ratioSamples.push(r.cogsTotal / invoice);
+      }
+    }
+    const costRatio = deriveCostRatio(ratioSamples);
+
+    const unitCountOf = (o) => {
+      const items = Array.isArray(o.line_items) ? o.line_items : null;
+      const fromLines = items
+        ? items.reduce((sum, it) => sum + (Number(it?.quantity) || 0), 0)
+        : 0;
+      return fromLines > 0 ? fromLines : (Number(o.items) || 1);
+    };
+
     const updates = [];
     for (const o of orders) {
-      const { cogsTotal, allMatched, source } = computeCOGSFromOrder(o, costsByVariantId, textIndex);
-      counts[source]++;
+      let r = resolved.get(o.tracking_number);
+      if (!r) {
+        const invoice = Number(o.invoice_payment) || 0;
+        const units = unitCountOf(o);
+        const anchor = {
+          costRatio,
+          perUnitPrice: invoice > 0 && units > 0 ? invoice / units : null,
+        };
+        r = computeCOGSFromOrder(o, costsByVariantId, textIndex, anchor);
+      }
+      counts[r.source]++;
       updates.push({
         tracking_number: o.tracking_number,
-        cogs_total: cogsTotal,
-        cogs_matched: allMatched,
-        cogs_match_source: source,
+        cogs_total: r.cogsTotal,
+        cogs_matched: r.allMatched,
+        cogs_match_source: r.source,
       });
     }
 
